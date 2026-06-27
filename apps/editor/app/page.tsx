@@ -635,7 +635,7 @@ const Example = () => {
   };
 
   return (
-    <div className="relative flex h-full w-full bg-background overflow-hidden">
+    <div className="relative flex h-screen w-screen bg-background overflow-hidden">
       {/* Backdrops for mobile view */}
       {isLeftSidebarOpen && (
         <div
