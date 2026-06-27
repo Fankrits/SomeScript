@@ -52,7 +52,7 @@ import {
 } from "@/components/ai-elements/task";
 import { Terminal, TerminalContent } from "@/components/ai-elements/terminal";
 import { cn } from "@/lib/utils";
-import { CheckCircle2Icon, ListTodoIcon } from "lucide-react";
+import { CheckCircle2Icon, ListTodoIcon, FilePlus, FolderPlus } from "lucide-react";
 import { nanoid } from "nanoid";
 import { useCallback, useEffect, useState } from "react";
 import { useEveAgent } from "eve/react";
@@ -600,7 +600,7 @@ const Example = () => {
             <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
               Create Resource
             </label>
-            <div className="flex gap-1">
+            <div className="flex gap-1.5 items-center">
               <input
                 type="text"
                 value={newItemName}
@@ -611,18 +611,18 @@ const Example = () => {
               <button
                 type="button"
                 onClick={() => handleCreateResourceSubmit(false)}
-                className="rounded border px-2 py-1 text-xs font-semibold cursor-pointer hover:bg-muted"
+                className="p-1.5 rounded border hover:bg-muted cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
                 title="New File"
               >
-                File
+                <FilePlus className="size-4" />
               </button>
               <button
                 type="button"
                 onClick={() => handleCreateResourceSubmit(true)}
-                className="rounded border px-2 py-1 text-xs font-semibold cursor-pointer hover:bg-muted"
+                className="p-1.5 rounded border hover:bg-muted cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
                 title="New Folder"
               >
-                Dir
+                <FolderPlus className="size-4" />
               </button>
             </div>
           </div>

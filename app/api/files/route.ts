@@ -75,7 +75,8 @@ export async function GET(req: NextRequest) {
 
     // List file tree
     const tree = await getFileTree(projectPath);
-    return Response.json({ tree, projectPath });
+    const relativePath = path.relative(process.cwd(), projectPath) || ".";
+    return Response.json({ tree, projectPath: relativePath });
   } catch (error: any) {
     return Response.json({ error: error.message }, { status: 500 });
   }
@@ -88,7 +89,8 @@ export async function POST(req: NextRequest) {
     // Switch project path
     if (body.path && !body.action) {
       const resolved = await setProjectPath(body.path);
-      return Response.json({ success: true, projectPath: resolved });
+      const relativePath = path.relative(process.cwd(), resolved) || ".";
+      return Response.json({ success: true, projectPath: relativePath });
     }
     
     // Create file or folder
