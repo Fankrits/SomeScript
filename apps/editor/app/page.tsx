@@ -322,23 +322,14 @@ The email validation uses a regex pattern to check for valid email format. The f
 
 // Mock terminal output
 const mockTerminalLines = [
-  "\u001B[32m✓\u001B[0m Building application...",
-  "\u001B[36m  src/app.tsx\u001B[0m → \u001B[33mdist/app.js\u001B[0m",
-  "\u001B[36m  src/components/button.tsx\u001B[0m → \u001B[33mdist/button.js\u001B[0m",
-  "\u001B[36m  src/components/input.tsx\u001B[0m → \u001B[33mdist/input.js\u001B[0m",
-  "\u001B[36m  src/utils/helpers.ts\u001B[0m → \u001B[33mdist/helpers.js\u001B[0m",
+  "\u001B[32m✓\u001B[0m Initializing Tectonic LaTeX environment...",
+  "\u001B[36m  Loading core engines\u001B[0m: XeTeX, BibTeX, xdvipdfmx",
+  "\u001B[36m  Connecting packages cache\u001B[0m: tectonic-cache-repo",
   "",
-  "\u001B[32m✓\u001B[0m Build completed in \u001B[33m1.2s\u001B[0m",
+  "\u001B[32m✓\u001B[0m LaTeX system ready in \u001B[33m0.8s\u001B[0m",
   "",
-  "\u001B[34mRunning tests...\u001B[0m",
-  "",
-  " \u001B[32m✓\u001B[0m validateForm › returns errors for empty fields",
-  " \u001B[32m✓\u001B[0m validateForm › returns error for invalid email",
-  " \u001B[32m✓\u001B[0m validateForm › passes for valid input",
-  " \u001B[32m✓\u001B[0m Button › renders with correct variant",
-  " \u001B[32m✓\u001B[0m Input › shows error state",
-  "",
-  "\u001B[32mAll tests passed!\u001B[0m (5/5)",
+  "System Status: IDLE",
+  "Click 'Compile' on any .tex file to build and render the PDF document.",
 ];
 
 const Example = () => {
