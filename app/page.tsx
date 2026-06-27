@@ -56,6 +56,8 @@ import { CheckCircle2Icon, ListTodoIcon, FilePlus, FolderPlus } from "lucide-rea
 import { nanoid } from "nanoid";
 import { useCallback, useEffect, useState } from "react";
 import { useEveAgent } from "eve/react";
+import CodeMirror from "@uiw/react-codemirror";
+import { latex } from "codemirror-lang-latex";
 import type { BundledLanguage } from "shiki";
 
 // Types
@@ -382,6 +384,8 @@ const Example = () => {
         return "css";
       case "md":
         return "markdown";
+      case "tex":
+        return "latex";
       default:
         return "text";
     }
@@ -682,13 +686,16 @@ const Example = () => {
           )}
         </div>
 
-        {/* Code Block / Textarea Editor */}
-        <div className="flex-1 relative overflow-auto">
+        {/* Code Block / CodeMirror Editor */}
+        <div className="flex-1 relative overflow-auto h-full">
           {isEditing ? (
-            <textarea
+            <CodeMirror
               value={editedCode}
-              onChange={(e) => setEditedCode(e.target.value)}
-              className="absolute inset-0 w-full h-full p-4 font-mono text-sm bg-background border-none resize-none focus:outline-none"
+              height="100%"
+              theme="dark"
+              extensions={currentLanguage === "latex" ? [latex()] : []}
+              onChange={(value) => setEditedCode(value)}
+              className="absolute inset-0 w-full h-full text-sm font-mono border-none focus:outline-none"
             />
           ) : (
             <CodeBlock
