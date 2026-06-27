@@ -1,11 +1,7 @@
 import { getProjectPath } from "@/lib/project";
-import { exec } from "child_process";
-import fs from "fs/promises";
+import { spawn } from "child_process";
 import { NextRequest } from "next/server";
 import path from "path";
-import { promisify } from "util";
-
-const execAsync = promisify(exec);
 
 export async function POST(req: NextRequest) {
   try {
@@ -26,18 +22,42 @@ export async function POST(req: NextRequest) {
       return Response.json({ error: "Only .tex files can be compiled" }, { status: 400 });
     }
 
-    // Run Tectonic command to compile the LaTeX document
-    const command = `tectonic "${resolvedTexPath}"`;
-    await execAsync(command);
+    const responseStream = new TransformStream();
+    const writer = responseStream.writable.getWriter();
+    const encoder = new TextEncoder();
 
-    // Read the compiled PDF file
-    const pdfPath = resolvedTexPath.replace(/\.tex$/, ".pdf");
-    const pdfBuffer = await fs.readFile(pdfPath);
+    // Spawn Tectonic command to compile the LaTeX document
+    // We run it with stdout and stderr output streamed line by line
+    const child = spawn("tectonic", [resolvedTexPath], { cwd: projectPath });
 
-    return new Response(pdfBuffer, {
+    child.stdout.on("data", (data) => {
+      writer.write(encoder.encode(data.toString()));
+    });
+
+    child.stderr.on("data", (data) => {
+      writer.write(encoder.encode(data.toString()));
+    });
+
+    child.on("close", (code) => {
+      if (code === 0) {
+        const relativePdfPath = fileRelativePath.replace(/\.tex$/, ".pdf");
+        writer.write(encoder.encode(`\n[SUCCESS] ${relativePdfPath}\n`));
+      } else {
+        writer.write(encoder.encode(`\n[ERROR] Tectonic exited with code ${code}\n`));
+      }
+      writer.close();
+    });
+
+    child.on("error", (err) => {
+      writer.write(encoder.encode(`\n[ERROR] Failed to start Tectonic: ${err.message}\n`));
+      writer.close();
+    });
+
+    return new Response(responseStream.readable, {
       headers: {
-        "Content-Type": "application/pdf",
-        "Content-Disposition": `inline; filename="${path.basename(pdfPath)}"`,
+        "Content-Type": "text/plain; charset=utf-8",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
       },
     });
   } catch (error: any) {

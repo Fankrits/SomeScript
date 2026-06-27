@@ -69,6 +69,13 @@ export async function GET(req: NextRequest) {
         return Response.json({ error: "Access denied" }, { status: 403 });
       }
 
+      if (filePath.endsWith(".pdf")) {
+        const buffer = await fs.readFile(resolvedPath);
+        return new Response(buffer, {
+          headers: { "Content-Type": "application/pdf" },
+        });
+      }
+
       const content = await fs.readFile(resolvedPath, "utf-8");
       return Response.json({ content });
     }

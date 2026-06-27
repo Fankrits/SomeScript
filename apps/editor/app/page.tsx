@@ -483,6 +483,9 @@ const Example = () => {
   const handleCompileLatex = useCallback(async () => {
     if (!selectedPath || !selectedPath.endsWith(".tex")) return;
     setIsCompiling(true);
+    setTerminalOutput("");
+    setIsTerminalStreaming(true);
+
     try {
       // First save the file content to ensure it compiles current edits
       await fetch("/api/files", {
@@ -500,20 +503,41 @@ const Example = () => {
       });
 
       if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.error || "Compilation failed");
+        throw new Error("Failed to start compilation");
       }
 
-      // Read PDF blob and create object URL
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      setPdfUrl(url);
+      const reader = res.body?.getReader();
+      if (!reader) {
+        throw new Error("No readable stream from compiler");
+      }
+
+      const decoder = new TextDecoder();
+      let logBuffer = "";
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        const text = decoder.decode(value, { stream: true });
+        logBuffer += text;
+        setTerminalOutput(logBuffer);
+
+        // Check if stream finished with success
+        if (logBuffer.includes("[SUCCESS]")) {
+          const match = logBuffer.match(/\[SUCCESS\]\s+(.*)/);
+          if (match && match[1]) {
+            const pdfPath = match[1].trim();
+            setPdfUrl(`/api/files?path=${encodeURIComponent(pdfPath)}&t=${Date.now()}`);
+          }
+        }
+      }
     } catch (err: any) {
       console.error("Compilation error", err);
       // Put compilation error into the terminal output
       setTerminalOutput((prev) => `${prev}\n\u001B[31mError compiling LaTeX:\u001B[0m ${err.message}\n`);
     } finally {
       setIsCompiling(false);
+      setIsTerminalStreaming(false);
     }
   }, [selectedPath, editedCode]);
 
