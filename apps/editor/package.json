@@ -12,6 +12,7 @@
     "@ai-sdk/google": "^4.0.1",
     "@ai-sdk/openai": "^4.0.1",
     "@base-ui/react": "^1.6.0",
+    "@embedpdf/react-pdf-viewer": "^2.14.4",
     "@radix-ui/react-use-controllable-state": "^1.2.3",
     "@rive-app/react-webgl2": "^4.29.3",
     "@shadcn/react": "^0.1.0",

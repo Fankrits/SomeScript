@@ -58,6 +58,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useEveAgent } from "eve/react";
 import CodeMirror from "@uiw/react-codemirror";
 import { latex } from "codemirror-lang-latex";
+import { PDFViewer } from "@embedpdf/react-pdf-viewer";
 import type { BundledLanguage } from "shiki";
 
 // Types
@@ -766,11 +767,9 @@ const Example = () => {
             </div>
             <div className="flex-1 bg-muted/10 flex items-center justify-center relative overflow-hidden">
               {pdfUrl ? (
-                <iframe
-                  src={pdfUrl}
-                  className="w-full h-full border-none bg-white"
-                  title="PDF Preview"
-                />
+                <div className="w-full h-full">
+                  <PDFViewer config={{ src: pdfUrl }} />
+                </div>
               ) : (
                 <div className="text-xs font-mono text-muted-foreground p-4 text-center">
                   {isCompiling ? "Compiling document..." : "Click Compile to generate PDF"}
@@ -791,78 +790,11 @@ const Example = () => {
 
       {/* Right Sidebar - AI Chat */}
       <div className="flex w-80 flex-col border-l">
-        {/* Plan Section */}
-        <div className="border-b p-3">
-          <Plan defaultOpen>
-            <PlanHeader>
-              <div>
-                <PlanTitle>Implementation Plan</PlanTitle>
-                <PlanDescription>Adding form validation</PlanDescription>
-              </div>
-              <PlanAction>
-                <PlanTrigger />
-              </PlanAction>
-            </PlanHeader>
-            <PlanContent className="pt-0">
-              <Task defaultOpen>
-                <TaskTrigger title="Search for validation patterns" />
-                <TaskContent>
-                  <TaskItemFile>src/utils/helpers.ts</TaskItemFile>
-                  <TaskItemFile>src/app.tsx</TaskItemFile>
-                </TaskContent>
-              </Task>
-            </PlanContent>
-          </Plan>
-        </div>
-
-        {/* Task Queue */}
-        <div className="border-b p-3">
-          <Queue>
-            <QueueSection defaultOpen>
-              <QueueSectionTrigger>
-                <QueueSectionLabel
-                  count={pendingTasks.length}
-                  icon={<ListTodoIcon className="size-4" />}
-                  label="Pending"
-                />
-              </QueueSectionTrigger>
-              <QueueSectionContent>
-                <QueueList>
-                  {pendingTasks.map((task) => (
-                    <QueueItem key={task.id}>
-                      <div className="flex items-center gap-2">
-                        <QueueItemIndicator />
-                        <QueueItemContent>{task.title}</QueueItemContent>
-                      </div>
-                    </QueueItem>
-                  ))}
-                </QueueList>
-              </QueueSectionContent>
-            </QueueSection>
-            <QueueSection defaultOpen={false}>
-              <QueueSectionTrigger>
-                <QueueSectionLabel
-                  count={completedTasks.length}
-                  icon={<CheckCircle2Icon className="size-4" />}
-                  label="Completed"
-                />
-              </QueueSectionTrigger>
-              <QueueSectionContent>
-                <QueueList>
-                  {completedTasks.map((task) => (
-                    <QueueItem key={task.id}>
-                      <div className="flex items-center gap-2">
-                        <QueueItemIndicator completed />
-                        <QueueItemContent completed>
-                          {task.title}
-                        </QueueItemContent>
-                      </div>
-                    </QueueItem>
-                  ))}
-                </QueueList>
-              </QueueSectionContent>
-            </QueueSection>
-          </Queue>
+        {/* Chat Header */}
+        <div className="border-b p-3 bg-muted/10 flex items-center justify-between">
+          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            AI Assistant
+          </span>
         </div>
 
         {/* Chat Messages */}
