@@ -52,7 +52,7 @@ import {
 } from "@/components/ai-elements/task";
 import { Terminal, TerminalContent } from "@/components/ai-elements/terminal";
 import { cn } from "@/lib/utils";
-import { CheckCircle2Icon, ListTodoIcon, FilePlus, FolderPlus } from "lucide-react";
+import { CheckCircle2Icon, ListTodoIcon, FilePlus, FolderPlus, PanelLeft, PanelRight } from "lucide-react";
 import { nanoid } from "nanoid";
 import { useCallback, useEffect, useState } from "react";
 import { useEveAgent } from "eve/react";
@@ -362,6 +362,10 @@ const Example = () => {
   // Checkpoint state
   const [showCheckpoint, setShowCheckpoint] = useState<boolean>(false);
 
+  // Sidebar states
+  const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState<boolean>(true);
+  const [isRightSidebarOpen, setIsRightSidebarOpen] = useState<boolean>(true);
+
   const getLanguageFromPath = (filePath: string): string => {
     const ext = filePath.split(".").pop();
     switch (ext) {
@@ -631,9 +635,28 @@ const Example = () => {
   };
 
   return (
-    <div className="flex h-full w-full bg-background">
+    <div className="relative flex h-full w-full bg-background overflow-hidden">
+      {/* Backdrops for mobile view */}
+      {isLeftSidebarOpen && (
+        <div
+          onClick={() => setIsLeftSidebarOpen(false)}
+          className="lg:hidden fixed inset-0 z-10 bg-background/80 backdrop-blur-sm"
+        />
+      )}
+      {isRightSidebarOpen && (
+        <div
+          onClick={() => setIsRightSidebarOpen(false)}
+          className="lg:hidden fixed inset-0 z-10 bg-background/80 backdrop-blur-sm"
+        />
+      )}
+
       {/* Left Sidebar - File Tree */}
-      <div className="flex w-64 flex-col border-r">
+      <div
+        className={cn(
+          "flex flex-col border-r transition-all duration-300 ease-in-out overflow-hidden z-20 bg-background lg:static absolute top-0 bottom-0 left-0 shadow-lg lg:shadow-none",
+          isLeftSidebarOpen ? "w-64" : "w-0 border-r-0"
+        )}
+      >
         <div className="border-b p-3 bg-muted/10 flex flex-col gap-2.5">
           <form onSubmit={handleUpdateProject} className="flex flex-col gap-1.5">
             <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
@@ -704,14 +727,23 @@ const Example = () => {
       {/* Center Panel - Code + Terminal */}
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Editor + PDF Split Pane */}
-        <div className="flex-1 flex overflow-hidden">
+        <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
           {/* Left: CodeMirror Editor */}
           <div className="flex-1 relative border-r flex flex-col min-w-0">
             <div className="flex items-center justify-between border-b px-4 py-2 bg-muted/10">
-              <span className="text-xs font-mono font-medium text-foreground">
-                {selectedPath || "No file selected"}
-              </span>
-              <div className="flex gap-2">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setIsLeftSidebarOpen((prev) => !prev)}
+                  className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer"
+                  title="Toggle Left Sidebar"
+                >
+                  <PanelLeft className="size-4" />
+                </button>
+                <span className="text-xs font-mono font-medium text-foreground">
+                  {selectedPath || "No file selected"}
+                </span>
+              </div>
+              <div className="flex gap-2 items-center">
                 {selectedPath && (
                   <button
                     onClick={handleSaveCode}
@@ -729,6 +761,13 @@ const Example = () => {
                     {isCompiling ? "Compiling..." : "Compile"}
                   </button>
                 )}
+                <button
+                  onClick={() => setIsRightSidebarOpen((prev) => !prev)}
+                  className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer"
+                  title="Toggle Right Sidebar"
+                >
+                  <PanelRight className="size-4" />
+                </button>
               </div>
             </div>
             <div className="flex-1 relative overflow-auto">
@@ -780,7 +819,12 @@ const Example = () => {
       </div>
 
       {/* Right Sidebar - AI Chat */}
-      <div className="flex w-80 flex-col border-l">
+      <div
+        className={cn(
+          "flex flex-col border-l transition-all duration-300 ease-in-out overflow-hidden z-20 bg-background lg:static absolute top-0 bottom-0 right-0 shadow-lg lg:shadow-none",
+          isRightSidebarOpen ? "w-80" : "w-0 border-l-0"
+        )}
+      >
         {/* Chat Header */}
         <div className="border-b p-3 bg-muted/10 flex items-center justify-between">
           <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
