@@ -352,6 +352,8 @@ const Example = () => {
   const [currentLanguage, setCurrentLanguage] = useState<string>("typescript");
   const [editedCode, setEditedCode] = useState<string>("");
   const [newItemName, setNewItemName] = useState<string>("");
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [isCompiling, setIsCompiling] = useState<boolean>(false);
 
   // Terminal state
   const [terminalOutput, setTerminalOutput] = useState<string>("");
@@ -393,6 +395,7 @@ const Example = () => {
   // Handle file selection
   const handleFileSelect = useCallback(async (path: string) => {
     setSelectedPath(path);
+    setPdfUrl(null);
     try {
       const res = await fetch(`/api/files?path=${encodeURIComponent(path)}`);
       const data = await res.json();
@@ -474,6 +477,43 @@ const Example = () => {
       }
     } catch (err) {
       console.error("Failed to save file content", err);
+    }
+  }, [selectedPath, editedCode]);
+
+  const handleCompileLatex = useCallback(async () => {
+    if (!selectedPath || !selectedPath.endsWith(".tex")) return;
+    setIsCompiling(true);
+    try {
+      // First save the file content to ensure it compiles current edits
+      await fetch("/api/files", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "save", path: selectedPath, content: editedCode }),
+      });
+      setCurrentCode(editedCode);
+
+      // Trigger compilation
+      const res = await fetch("/api/compile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: selectedPath }),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || "Compilation failed");
+      }
+
+      // Read PDF blob and create object URL
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      setPdfUrl(url);
+    } catch (err: any) {
+      console.error("Compilation error", err);
+      // Put compilation error into the terminal output
+      setTerminalOutput((prev) => `${prev}\n\u001B[31mError compiling LaTeX:\u001B[0m ${err.message}\n`);
+    } finally {
+      setIsCompiling(false);
     }
   }, [selectedPath, editedCode]);
 
@@ -647,37 +687,73 @@ const Example = () => {
 
       {/* Center Panel - Code + Terminal */}
       <div className="flex flex-1 flex-col overflow-hidden">
-        {/* Code Panel Header */}
-        <div className="flex items-center justify-between border-b px-4 py-2 bg-muted/10">
-          <span className="text-xs font-mono font-medium text-foreground">
-            {selectedPath || "No file selected"}
-          </span>
-          {selectedPath && (
-            <button
-              onClick={handleSaveCode}
-              className="rounded bg-primary text-primary-foreground px-2.5 py-1 text-xs font-semibold hover:opacity-90 cursor-pointer"
-            >
-              Save
-            </button>
-          )}
-        </div>
-
-        {/* Code Block / CodeMirror Editor */}
-        <div className="flex-1 relative overflow-auto h-full">
-          {selectedPath ? (
-            <CodeMirror
-              value={editedCode}
-              height="100%"
-              theme="dark"
-              extensions={currentLanguage === "latex" ? [latex()] : []}
-              onChange={(value) => setEditedCode(value)}
-              className="absolute inset-0 w-full h-full text-sm font-mono border-none focus:outline-none"
-            />
-          ) : (
-            <div className="flex items-center justify-center h-full text-muted-foreground text-sm font-mono bg-background">
-              // Select a file from the sidebar to edit
+        {/* Editor + PDF Split Pane */}
+        <div className="flex-1 flex overflow-hidden">
+          {/* Left: CodeMirror Editor */}
+          <div className="flex-1 relative border-r flex flex-col min-w-0">
+            <div className="flex items-center justify-between border-b px-4 py-2 bg-muted/10">
+              <span className="text-xs font-mono font-medium text-foreground">
+                {selectedPath || "No file selected"}
+              </span>
+              <div className="flex gap-2">
+                {selectedPath && (
+                  <button
+                    onClick={handleSaveCode}
+                    className="rounded bg-primary text-primary-foreground px-2.5 py-1 text-xs font-semibold hover:opacity-90 cursor-pointer"
+                  >
+                    Save
+                  </button>
+                )}
+                {selectedPath && selectedPath.endsWith(".tex") && (
+                  <button
+                    onClick={handleCompileLatex}
+                    disabled={isCompiling}
+                    className="rounded bg-emerald-600 text-white px-2.5 py-1 text-xs font-semibold hover:bg-emerald-700 cursor-pointer disabled:opacity-50"
+                  >
+                    {isCompiling ? "Compiling..." : "Compile"}
+                  </button>
+                )}
+              </div>
             </div>
-          )}
+            <div className="flex-1 relative overflow-auto">
+              {selectedPath ? (
+                <CodeMirror
+                  value={editedCode}
+                  height="100%"
+                  theme="dark"
+                  extensions={currentLanguage === "latex" ? [latex()] : []}
+                  onChange={(value) => setEditedCode(value)}
+                  className="absolute inset-0 w-full h-full text-sm font-mono border-none focus:outline-none"
+                />
+              ) : (
+                <div className="flex items-center justify-center h-full text-muted-foreground text-sm font-mono bg-background">
+                  // Select a file from the sidebar to edit
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Right: PDF Preview */}
+          <div className="flex-1 flex flex-col bg-muted/5 min-w-0">
+            <div className="flex items-center border-b px-4 py-2 bg-muted/10">
+              <span className="text-xs font-semibold text-foreground">
+                PDF Preview
+              </span>
+            </div>
+            <div className="flex-1 bg-muted/10 flex items-center justify-center relative overflow-hidden">
+              {pdfUrl ? (
+                <iframe
+                  src={pdfUrl}
+                  className="w-full h-full border-none bg-white"
+                  title="PDF Preview"
+                />
+              ) : (
+                <div className="text-xs font-mono text-muted-foreground p-4 text-center">
+                  {isCompiling ? "Compiling document..." : "Click Compile to generate PDF"}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
         <Terminal
