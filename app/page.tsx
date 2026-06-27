@@ -78,6 +78,13 @@ interface TaskItem {
   status: "pending" | "in_progress" | "completed";
 }
 
+interface FileNode {
+  name: string;
+  path: string;
+  isDir: boolean;
+  children?: FileNode[];
+}
+
 // Mock file contents
 const mockFiles: MockFile[] = [
   {
@@ -333,13 +340,15 @@ const mockTerminalLines = [
 
 const Example = () => {
   // File tree state
-  const [selectedPath, setSelectedPath] = useState<string>("src/app.tsx");
+  const [selectedPath, setSelectedPath] = useState<string>("agent/agent.ts");
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(
-    new Set(["src", "src/components", "src/utils"])
+    new Set(["agent", "agent/tools"])
   );
+  const [fileTree, setFileTree] = useState<FileNode[]>([]);
 
   // Code editor state
-  const [currentFile, setCurrentFile] = useState<MockFile>(mockFiles[0]);
+  const [currentCode, setCurrentCode] = useState<string>("// Select a file to view content");
+  const [currentLanguage, setCurrentLanguage] = useState<string>("typescript");
 
   // Terminal state
   const [terminalOutput, setTerminalOutput] = useState<string>("");
@@ -356,18 +365,86 @@ const Example = () => {
   // Checkpoint state
   const [showCheckpoint, setShowCheckpoint] = useState<boolean>(false);
 
-  // Find file by path
-  const findFileByPath = (path: string): MockFile | undefined =>
-    mockFiles.find((f) => f.path === path);
+  const getLanguageFromPath = (filePath: string): string => {
+    const ext = filePath.split(".").pop();
+    switch (ext) {
+      case "ts":
+      case "tsx":
+        return "typescript";
+      case "js":
+      case "jsx":
+        return "javascript";
+      case "json":
+        return "json";
+      case "css":
+        return "css";
+      case "md":
+        return "markdown";
+      default:
+        return "text";
+    }
+  };
 
   // Handle file selection
-  const handleFileSelect = useCallback((path: string) => {
+  const handleFileSelect = useCallback(async (path: string) => {
     setSelectedPath(path);
-    const file = findFileByPath(path);
-    if (file) {
-      setCurrentFile(file);
+    try {
+      const res = await fetch(`/api/files?path=${encodeURIComponent(path)}`);
+      const data = await res.json();
+      if (data.content !== undefined) {
+        setCurrentCode(data.content);
+        setCurrentLanguage(getLanguageFromPath(path));
+      }
+    } catch (err) {
+      console.error("Failed to read file", err);
     }
   }, []);
+
+  // Load file tree
+  const refreshWorkspace = useCallback(async () => {
+    try {
+      const res = await fetch("/api/files");
+      const data = await res.json();
+      if (data.tree) {
+        setFileTree(data.tree);
+      }
+    } catch (err) {
+      console.error("Failed to load file tree", err);
+    }
+  }, []);
+
+  // Reload current file content
+  const refreshCurrentFile = useCallback(async () => {
+    if (!selectedPath) return;
+    try {
+      const res = await fetch(`/api/files?path=${encodeURIComponent(selectedPath)}`);
+      const data = await res.json();
+      if (data.content !== undefined) {
+        setCurrentCode(data.content);
+        setCurrentLanguage(getLanguageFromPath(selectedPath));
+      }
+    } catch (err) {
+      console.error("Failed to reload file content", err);
+    }
+  }, [selectedPath]);
+
+  // Load tree on mount
+  useEffect(() => {
+    refreshWorkspace();
+  }, [refreshWorkspace]);
+
+  // Reload current file when selectedPath changes
+  useEffect(() => {
+    refreshCurrentFile();
+  }, [selectedPath, refreshCurrentFile]);
+
+  // Refresh workspace when agent finishes work (goes back to ready)
+  useEffect(() => {
+    if (agent.status === "ready") {
+      refreshWorkspace();
+      refreshCurrentFile();
+    }
+  }, [agent.status, refreshWorkspace, refreshCurrentFile]);
 
   // Stream terminal output line by line
   const streamTerminal = useCallback(async () => {
@@ -417,6 +494,21 @@ const Example = () => {
   const completedTasks = tasks.filter((t) => t.status === "completed");
   const pendingTasks = tasks.filter((t) => t.status !== "completed");
 
+  const renderTreeNodes = (nodes: FileNode[]) => {
+    return nodes.map((node) => {
+      if (node.isDir) {
+        return (
+          <FileTreeFolder key={node.path} name={node.name} path={node.path}>
+            {node.children && renderTreeNodes(node.children)}
+          </FileTreeFolder>
+        );
+      }
+      return (
+        <FileTreeFile key={node.path} name={node.name} path={node.path} />
+      );
+    });
+  };
+
   return (
     <div className="flex h-full w-full bg-background">
       {/* Left Sidebar - File Tree */}
@@ -429,24 +521,7 @@ const Example = () => {
             onSelect={handleFileSelect}
             selectedPath={selectedPath}
           >
-            <FileTreeFolder name="src" path="src">
-              <FileTreeFolder name="components" path="src/components">
-                <FileTreeFile
-                  name="button.tsx"
-                  path="src/components/button.tsx"
-                />
-                <FileTreeFile
-                  name="input.tsx"
-                  path="src/components/input.tsx"
-                />
-              </FileTreeFolder>
-              <FileTreeFolder name="utils" path="src/utils">
-                <FileTreeFile name="helpers.ts" path="src/utils/helpers.ts" />
-              </FileTreeFolder>
-              <FileTreeFile name="app.tsx" path="src/app.tsx" />
-            </FileTreeFolder>
-            <FileTreeFile name="package.json" path="package.json" />
-            <FileTreeFile name="README.md" path="README.md" />
+            {renderTreeNodes(fileTree)}
           </FileTree>
         </div>
       </div>
@@ -456,8 +531,8 @@ const Example = () => {
         {/* Code Block */}
         <CodeBlock
           className="rounded-none border-0"
-          code={currentFile.content}
-          language={currentFile.language}
+          code={currentCode}
+          language={currentLanguage as any}
           showLineNumbers
         />
 
