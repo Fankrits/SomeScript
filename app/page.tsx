@@ -348,6 +348,9 @@ const Example = () => {
   // Code editor state
   const [currentCode, setCurrentCode] = useState<string>("// Select a file to view content");
   const [currentLanguage, setCurrentLanguage] = useState<string>("typescript");
+  const [isEditing, setIsEditing] = useState<boolean>(false);
+  const [editedCode, setEditedCode] = useState<string>("");
+  const [newItemName, setNewItemName] = useState<string>("");
 
   // Terminal state
   const [terminalOutput, setTerminalOutput] = useState<string>("");
@@ -433,6 +436,42 @@ const Example = () => {
       console.error("Failed to update project path", err);
     }
   }, [projectPathInput, refreshWorkspace]);
+
+  const handleCreateResourceSubmit = useCallback(async (isDir: boolean) => {
+    if (!newItemName.trim()) return;
+    try {
+      const res = await fetch("/api/files", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "create", path: newItemName, isDir }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setNewItemName("");
+        refreshWorkspace();
+      }
+    } catch (err) {
+      console.error("Failed to create resource", err);
+    }
+  }, [newItemName, refreshWorkspace]);
+
+  const handleSaveCode = useCallback(async () => {
+    if (!selectedPath) return;
+    try {
+      const res = await fetch("/api/files", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "save", path: selectedPath, content: editedCode }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setIsEditing(false);
+        setCurrentCode(editedCode);
+      }
+    } catch (err) {
+      console.error("Failed to save file content", err);
+    }
+  }, [selectedPath, editedCode]);
 
   // Reload current file content
   const refreshCurrentFile = useCallback(async () => {
@@ -534,7 +573,7 @@ const Example = () => {
     <div className="flex h-full w-full bg-background">
       {/* Left Sidebar - File Tree */}
       <div className="flex w-64 flex-col border-r">
-        <div className="border-b p-3 bg-muted/10">
+        <div className="border-b p-3 bg-muted/10 flex flex-col gap-2.5">
           <form onSubmit={handleUpdateProject} className="flex flex-col gap-1.5">
             <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
               Project Path
@@ -555,6 +594,38 @@ const Example = () => {
               </button>
             </div>
           </form>
+
+          {/* Create Resource Form */}
+          <div className="flex flex-col gap-1.5 pt-2 border-t">
+            <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+              Create Resource
+            </label>
+            <div className="flex gap-1">
+              <input
+                type="text"
+                value={newItemName}
+                onChange={(e) => setNewItemName(e.target.value)}
+                placeholder="src/index.js"
+                className="flex-1 min-w-0 rounded border px-2 py-1 text-xs bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+              <button
+                type="button"
+                onClick={() => handleCreateResourceSubmit(false)}
+                className="rounded border px-2 py-1 text-xs font-semibold cursor-pointer hover:bg-muted"
+                title="New File"
+              >
+                File
+              </button>
+              <button
+                type="button"
+                onClick={() => handleCreateResourceSubmit(true)}
+                className="rounded border px-2 py-1 text-xs font-semibold cursor-pointer hover:bg-muted"
+                title="New Folder"
+              >
+                Dir
+              </button>
+            </div>
+          </div>
         </div>
         <div className="flex-1 overflow-auto p-1">
           <FileTree
@@ -571,13 +642,63 @@ const Example = () => {
 
       {/* Center Panel - Code + Terminal */}
       <div className="flex flex-1 flex-col overflow-hidden">
-        {/* Code Block */}
-        <CodeBlock
-          className="rounded-none border-0"
-          code={currentCode}
-          language={currentLanguage as any}
-          showLineNumbers
-        />
+        {/* Code Panel Header */}
+        <div className="flex items-center justify-between border-b px-4 py-2 bg-muted/10">
+          <span className="text-xs font-mono font-medium text-foreground">
+            {selectedPath || "No file selected"}
+          </span>
+          {selectedPath && (
+            <div className="flex gap-2">
+              {isEditing ? (
+                <>
+                  <button
+                    onClick={handleSaveCode}
+                    className="rounded bg-primary text-primary-foreground px-2.5 py-1 text-xs font-semibold hover:opacity-90 cursor-pointer"
+                  >
+                    Save
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsEditing(false);
+                      setEditedCode(currentCode);
+                    }}
+                    className="rounded border px-2.5 py-1 text-xs font-semibold hover:bg-muted cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => {
+                    setIsEditing(true);
+                    setEditedCode(currentCode);
+                  }}
+                  className="rounded border px-2.5 py-1 text-xs font-semibold hover:bg-muted cursor-pointer"
+                >
+                  Edit Code
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Code Block / Textarea Editor */}
+        <div className="flex-1 relative overflow-auto">
+          {isEditing ? (
+            <textarea
+              value={editedCode}
+              onChange={(e) => setEditedCode(e.target.value)}
+              className="absolute inset-0 w-full h-full p-4 font-mono text-sm bg-background border-none resize-none focus:outline-none"
+            />
+          ) : (
+            <CodeBlock
+              className="rounded-none border-0"
+              code={currentCode}
+              language={currentLanguage as any}
+              showLineNumbers
+            />
+          )}
+        </div>
 
         <Terminal
           className="h-64 rounded-none border-0"

@@ -83,9 +83,46 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { path: newPath } = await req.json();
-    const resolved = await setProjectPath(newPath);
-    return Response.json({ success: true, projectPath: resolved });
+    const body = await req.json();
+    
+    // Switch project path
+    if (body.path && !body.action) {
+      const resolved = await setProjectPath(body.path);
+      return Response.json({ success: true, projectPath: resolved });
+    }
+    
+    // Create file or folder
+    if (body.action === "create") {
+      const projectPath = await getProjectPath();
+      const resolvedPath = path.resolve(projectPath, body.path);
+      
+      if (!resolvedPath.startsWith(projectPath)) {
+        return Response.json({ error: "Access denied" }, { status: 403 });
+      }
+      
+      if (body.isDir) {
+        await fs.mkdir(resolvedPath, { recursive: true });
+      } else {
+        await fs.mkdir(path.dirname(resolvedPath), { recursive: true });
+        await fs.writeFile(resolvedPath, "", "utf-8"); // empty file
+      }
+      return Response.json({ success: true });
+    }
+
+    // Save edited file content
+    if (body.action === "save") {
+      const projectPath = await getProjectPath();
+      const resolvedPath = path.resolve(projectPath, body.path);
+      
+      if (!resolvedPath.startsWith(projectPath)) {
+        return Response.json({ error: "Access denied" }, { status: 403 });
+      }
+      
+      await fs.writeFile(resolvedPath, body.content, "utf-8");
+      return Response.json({ success: true });
+    }
+
+    return Response.json({ error: "Invalid action" }, { status: 400 });
   } catch (error: any) {
     return Response.json({ error: error.message }, { status: 500 });
   }
