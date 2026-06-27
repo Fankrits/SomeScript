@@ -52,7 +52,7 @@ import {
 } from "@/components/ai-elements/task";
 import { Terminal, TerminalContent } from "@/components/ai-elements/terminal";
 import { cn } from "@/lib/utils";
-import { CheckCircle2Icon, ListTodoIcon, FilePlus, FolderPlus, PanelLeft, PanelRight } from "lucide-react";
+import { CheckCircle2Icon, ListTodoIcon, FilePlus, FolderPlus, PanelLeft, PanelRight, Sparkles } from "lucide-react";
 import { nanoid } from "nanoid";
 import { useCallback, useEffect, useState } from "react";
 import { useEveAgent } from "eve/react";
@@ -364,7 +364,7 @@ const Example = () => {
 
   // Sidebar states
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState<boolean>(true);
-  const [isRightSidebarOpen, setIsRightSidebarOpen] = useState<boolean>(true);
+  const [activeTab, setActiveTab] = useState<"files" | "chat">("files");
 
   const getLanguageFromPath = (filePath: string): string => {
     const ext = filePath.split(".").pop();
@@ -643,85 +643,207 @@ const Example = () => {
           className="lg:hidden fixed inset-0 z-10 bg-background/80 backdrop-blur-sm"
         />
       )}
-      {isRightSidebarOpen && (
-        <div
-          onClick={() => setIsRightSidebarOpen(false)}
-          className="lg:hidden fixed inset-0 z-10 bg-background/80 backdrop-blur-sm"
-        />
-      )}
 
-      {/* Left Sidebar - File Tree */}
+      {/* Left Sidebar - File Tree & AI Chat Tabs */}
       <div
         className={cn(
           "flex flex-col border-r transition-all duration-300 ease-in-out overflow-hidden z-20 bg-background lg:static absolute top-0 bottom-0 left-0 shadow-lg lg:shadow-none",
-          isLeftSidebarOpen ? "w-64" : "w-0 border-r-0"
+          isLeftSidebarOpen ? "w-80" : "w-0 border-r-0"
         )}
       >
-        <div className="border-b p-3 bg-muted/10 flex flex-col gap-2.5">
-          <form onSubmit={handleUpdateProject} className="flex flex-col gap-1.5">
-            <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-              Project Path
-            </label>
-            <div className="flex gap-1.5">
-              <input
-                type="text"
-                value={projectPathInput}
-                onChange={(e) => setProjectPathInput(e.target.value)}
-                placeholder="./my-project"
-                className="flex-1 rounded border px-2 py-1 text-xs bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-              />
-              <button
-                type="submit"
-                className="rounded bg-primary text-primary-foreground px-2 py-1 text-xs font-semibold cursor-pointer hover:opacity-90 transition-opacity"
-              >
-                Set
-              </button>
-            </div>
-          </form>
+        {/* Tabs header */}
+        <div className="border-b p-2 bg-muted/10 flex items-center justify-around gap-1">
+          <button
+            onClick={() => setActiveTab("files")}
+            className={cn(
+              "flex-1 flex justify-center items-center gap-2 py-1.5 px-3 rounded text-xs font-semibold cursor-pointer transition-colors",
+              activeTab === "files"
+                ? "bg-muted text-foreground"
+                : "text-muted-foreground hover:bg-muted/5 hover:text-foreground"
+            )}
+          >
+            <FolderPlus className="size-4" />
+            <span>Files</span>
+          </button>
+          <button
+            onClick={() => setActiveTab("chat")}
+            className={cn(
+              "flex-1 flex justify-center items-center gap-2 py-1.5 px-3 rounded text-xs font-semibold cursor-pointer transition-colors",
+              activeTab === "chat"
+                ? "bg-muted text-foreground"
+                : "text-muted-foreground hover:bg-muted/5 hover:text-foreground"
+            )}
+          >
+            <Sparkles className="size-4" />
+            <span>AI Assistant</span>
+          </button>
+        </div>
 
-          {/* Create Resource Form */}
-          <div className="flex flex-col gap-1.5 pt-2 border-t">
-            <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-              Create Resource
-            </label>
-            <div className="flex gap-1.5 items-center">
-              <input
-                type="text"
-                value={newItemName}
-                onChange={(e) => setNewItemName(e.target.value)}
-                placeholder="src/index.js"
-                className="flex-1 min-w-0 rounded border px-2 py-1 text-xs bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-              />
-              <button
-                type="button"
-                onClick={() => handleCreateResourceSubmit(false)}
-                className="p-1.5 rounded border hover:bg-muted cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
-                title="New File"
+        {activeTab === "files" ? (
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <div className="border-b p-3 bg-muted/10 flex flex-col gap-2.5">
+              <form onSubmit={handleUpdateProject} className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                  Project Path
+                </label>
+                <div className="flex gap-1.5">
+                  <input
+                    type="text"
+                    value={projectPathInput}
+                    onChange={(e) => setProjectPathInput(e.target.value)}
+                    placeholder="./my-project"
+                    className="flex-1 rounded border px-2 py-1 text-xs bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                  <button
+                    type="submit"
+                    className="rounded bg-primary text-primary-foreground px-2 py-1 text-xs font-semibold cursor-pointer hover:opacity-90 transition-opacity"
+                  >
+                    Set
+                  </button>
+                </div>
+              </form>
+
+              {/* Create Resource Form */}
+              <div className="flex flex-col gap-1.5 pt-2 border-t">
+                <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                  Create Resource
+                </label>
+                <div className="flex gap-1.5 items-center">
+                  <input
+                    type="text"
+                    value={newItemName}
+                    onChange={(e) => setNewItemName(e.target.value)}
+                    placeholder="src/index.js"
+                    className="flex-1 min-w-0 rounded border px-2 py-1 text-xs bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleCreateResourceSubmit(false)}
+                    className="p-1.5 rounded border hover:bg-muted cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
+                    title="New File"
+                  >
+                    <FilePlus className="size-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleCreateResourceSubmit(true)}
+                    className="p-1.5 rounded border hover:bg-muted cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
+                    title="New Folder"
+                  >
+                    <FolderPlus className="size-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div className="flex-1 overflow-auto p-1">
+              <FileTree
+                className="border-none"
+                expanded={expandedPaths}
+                onExpandedChange={setExpandedPaths}
+                onSelect={handleFileSelect}
+                selectedPath={selectedPath}
               >
-                <FilePlus className="size-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => handleCreateResourceSubmit(true)}
-                className="p-1.5 rounded border hover:bg-muted cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
-                title="New Folder"
-              >
-                <FolderPlus className="size-4" />
-              </button>
+                {renderTreeNodes(fileTree)}
+              </FileTree>
             </div>
           </div>
-        </div>
-        <div className="flex-1 overflow-auto p-1">
-          <FileTree
-            className="border-none"
-            expanded={expandedPaths}
-            onExpandedChange={setExpandedPaths}
-            onSelect={handleFileSelect}
-            selectedPath={selectedPath}
-          >
-            {renderTreeNodes(fileTree)}
-          </FileTree>
-        </div>
+        ) : (
+          <div className="flex-1 flex flex-col overflow-hidden bg-background">
+            {/* Chat Messages */}
+            <div className="flex flex-1 flex-col overflow-hidden">
+              <Conversation className="flex-1">
+                <ConversationContent className="gap-4 p-3">
+                  {agent.data.messages.map((message) => {
+                    const content = message.parts
+                      .map((part) => (part.type === "text" ? part.text : ""))
+                      .join("");
+
+                    const pendingApprovalPart = message.parts.find(
+                      (part) => part.type === "dynamic-tool" && part.state === "approval-requested"
+                    );
+                    const inputRequest = pendingApprovalPart?.type === "dynamic-tool"
+                      ? pendingApprovalPart.toolMetadata?.eve?.inputRequest
+                      : undefined;
+
+                    return (
+                      <Message from={message.role === "user" ? "user" : "assistant"} key={message.id}>
+                        <MessageContent
+                          className={cn(
+                            message.role === "user"
+                              ? "rounded-lg bg-secondary px-3 py-2"
+                              : ""
+                          )}
+                        >
+                          {message.role === "assistant" ? (
+                            <MessageResponse>{content}</MessageResponse>
+                          ) : (
+                            content
+                          )}
+
+                          {pendingApprovalPart && inputRequest && (
+                            <div className="mt-3 flex flex-col gap-2 rounded-md border border-amber-200 bg-amber-50/50 p-3 dark:border-amber-900/50 dark:bg-amber-950/20">
+                              <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
+                                {inputRequest.prompt || `Approve calling ${pendingApprovalPart.toolName}?`}
+                              </p>
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => {
+                                    void agent.send({
+                                      inputResponses: [{ requestId: inputRequest.requestId, optionId: "approve" }],
+                                    });
+                                  }}
+                                  className="rounded bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 cursor-pointer"
+                                >
+                                  Approve
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    void agent.send({
+                                      inputResponses: [{ requestId: inputRequest.requestId, optionId: "reject" }],
+                                    });
+                                  }}
+                                  className="rounded bg-secondary px-3 py-1.5 text-xs font-semibold hover:bg-secondary/80 cursor-pointer"
+                                >
+                                  Reject
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </MessageContent>
+                      </Message>
+                    );
+                  })}
+                  {showCheckpoint && (
+                    <Checkpoint>
+                      <CheckpointIcon />
+                      <CheckpointTrigger tooltip="Restore to this checkpoint">
+                        Checkpoint saved
+                      </CheckpointTrigger>
+                    </Checkpoint>
+                  )}
+                </ConversationContent>
+              </Conversation>
+
+              {/* Chat Input */}
+              <div className="border-t p-3 bg-background">
+                <PromptInput className="rounded-lg border" onSubmit={handleSubmit}>
+                  <PromptInputTextarea
+                    className="min-h-10"
+                    onChange={handleChatTextChange}
+                    placeholder="Ask about the code..."
+                    value={chatText}
+                  />
+                  <PromptInputFooter className="justify-end p-2">
+                    <PromptInputSubmit
+                      disabled={agent.status !== "ready" || !chatText.trim()}
+                      status={agent.status === "streaming" ? "streaming" : undefined}
+                    />
+                  </PromptInputFooter>
+                </PromptInput>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Center Panel - Code + Terminal */}
@@ -761,13 +883,6 @@ const Example = () => {
                     {isCompiling ? "Compiling..." : "Compile"}
                   </button>
                 )}
-                <button
-                  onClick={() => setIsRightSidebarOpen((prev) => !prev)}
-                  className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer"
-                  title="Toggle Right Sidebar"
-                >
-                  <PanelRight className="size-4" />
-                </button>
               </div>
             </div>
             <div className="flex-1 relative overflow-auto">
@@ -816,115 +931,6 @@ const Example = () => {
         >
           <TerminalContent className="max-h-full" />
         </Terminal>
-      </div>
-
-      {/* Right Sidebar - AI Chat */}
-      <div
-        className={cn(
-          "flex flex-col border-l transition-all duration-300 ease-in-out overflow-hidden z-20 bg-background lg:static absolute top-0 bottom-0 right-0 shadow-lg lg:shadow-none",
-          isRightSidebarOpen ? "w-80" : "w-0 border-l-0"
-        )}
-      >
-        {/* Chat Header */}
-        <div className="border-b p-3 bg-muted/10 flex items-center justify-between">
-          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            AI Assistant
-          </span>
-        </div>
-
-        {/* Chat Messages */}
-        <div className="flex flex-1 flex-col overflow-hidden">
-          <Conversation className="flex-1">
-            <ConversationContent className="gap-4 p-3">
-              {agent.data.messages.map((message) => {
-                const content = message.parts
-                  .map((part) => (part.type === "text" ? part.text : ""))
-                  .join("");
-
-                const pendingApprovalPart = message.parts.find(
-                  (part) => part.type === "dynamic-tool" && part.state === "approval-requested"
-                );
-                const inputRequest = pendingApprovalPart?.type === "dynamic-tool"
-                  ? pendingApprovalPart.toolMetadata?.eve?.inputRequest
-                  : undefined;
-
-                return (
-                  <Message from={message.role === "user" ? "user" : "assistant"} key={message.id}>
-                    <MessageContent
-                      className={cn(
-                        message.role === "user"
-                          ? "rounded-lg bg-secondary px-3 py-2"
-                          : ""
-                      )}
-                    >
-                      {message.role === "assistant" ? (
-                        <MessageResponse>{content}</MessageResponse>
-                      ) : (
-                        content
-                      )}
-
-                      {pendingApprovalPart && inputRequest && (
-                        <div className="mt-3 flex flex-col gap-2 rounded-md border border-amber-200 bg-amber-50/50 p-3 dark:border-amber-900/50 dark:bg-amber-950/20">
-                          <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
-                            {inputRequest.prompt || `Approve calling ${pendingApprovalPart.toolName}?`}
-                          </p>
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => {
-                                void agent.send({
-                                  inputResponses: [{ requestId: inputRequest.requestId, optionId: "approve" }],
-                                });
-                              }}
-                              className="rounded bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 cursor-pointer"
-                            >
-                              Approve
-                            </button>
-                            <button
-                              onClick={() => {
-                                void agent.send({
-                                  inputResponses: [{ requestId: inputRequest.requestId, optionId: "reject" }],
-                                });
-                              }}
-                              className="rounded bg-secondary px-3 py-1.5 text-xs font-semibold hover:bg-secondary/80 cursor-pointer"
-                            >
-                              Reject
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </MessageContent>
-                  </Message>
-                );
-              })}
-              {showCheckpoint && (
-                <Checkpoint>
-                  <CheckpointIcon />
-                  <CheckpointTrigger tooltip="Restore to this checkpoint">
-                    Checkpoint saved
-                  </CheckpointTrigger>
-                </Checkpoint>
-              )}
-            </ConversationContent>
-          </Conversation>
-
-          {/* Chat Input */}
-          <div className="border-t p-3">
-            <PromptInput className="rounded-lg border" onSubmit={handleSubmit}>
-              <PromptInputTextarea
-                className="min-h-10"
-                onChange={handleChatTextChange}
-                placeholder="Ask about the code..."
-                value={chatText}
-              />
-              <PromptInputFooter className="justify-end p-2">
-                <PromptInputSubmit
-                  disabled={agent.status !== "ready" || !chatText.trim()}
-                  status={agent.status === "streaming" ? "streaming" : undefined}
-                />
-              </PromptInputFooter>
-            </PromptInput>
-          </div>
-        </div>
       </div>
     </div>
   );
