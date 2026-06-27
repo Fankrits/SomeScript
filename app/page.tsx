@@ -350,7 +350,6 @@ const Example = () => {
   // Code editor state
   const [currentCode, setCurrentCode] = useState<string>("// Select a file to view content");
   const [currentLanguage, setCurrentLanguage] = useState<string>("typescript");
-  const [isEditing, setIsEditing] = useState<boolean>(false);
   const [editedCode, setEditedCode] = useState<string>("");
   const [newItemName, setNewItemName] = useState<string>("");
 
@@ -399,6 +398,7 @@ const Example = () => {
       const data = await res.json();
       if (data.content !== undefined) {
         setCurrentCode(data.content);
+        setEditedCode(data.content);
         setCurrentLanguage(getLanguageFromPath(path));
       }
     } catch (err) {
@@ -434,6 +434,7 @@ const Example = () => {
       if (data.success) {
         setSelectedPath("");
         setCurrentCode("// Select a file to view content");
+        setEditedCode("");
         refreshWorkspace();
       }
     } catch (err) {
@@ -469,7 +470,6 @@ const Example = () => {
       });
       const data = await res.json();
       if (data.success) {
-        setIsEditing(false);
         setCurrentCode(editedCode);
       }
     } catch (err) {
@@ -485,6 +485,7 @@ const Example = () => {
       const data = await res.json();
       if (data.content !== undefined) {
         setCurrentCode(data.content);
+        setEditedCode(data.content);
         setCurrentLanguage(getLanguageFromPath(selectedPath));
       }
     } catch (err) {
@@ -652,43 +653,18 @@ const Example = () => {
             {selectedPath || "No file selected"}
           </span>
           {selectedPath && (
-            <div className="flex gap-2">
-              {isEditing ? (
-                <>
-                  <button
-                    onClick={handleSaveCode}
-                    className="rounded bg-primary text-primary-foreground px-2.5 py-1 text-xs font-semibold hover:opacity-90 cursor-pointer"
-                  >
-                    Save
-                  </button>
-                  <button
-                    onClick={() => {
-                      setIsEditing(false);
-                      setEditedCode(currentCode);
-                    }}
-                    className="rounded border px-2.5 py-1 text-xs font-semibold hover:bg-muted cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                </>
-              ) : (
-                <button
-                  onClick={() => {
-                    setIsEditing(true);
-                    setEditedCode(currentCode);
-                  }}
-                  className="rounded border px-2.5 py-1 text-xs font-semibold hover:bg-muted cursor-pointer"
-                >
-                  Edit Code
-                </button>
-              )}
-            </div>
+            <button
+              onClick={handleSaveCode}
+              className="rounded bg-primary text-primary-foreground px-2.5 py-1 text-xs font-semibold hover:opacity-90 cursor-pointer"
+            >
+              Save
+            </button>
           )}
         </div>
 
         {/* Code Block / CodeMirror Editor */}
         <div className="flex-1 relative overflow-auto h-full">
-          {isEditing ? (
+          {selectedPath ? (
             <CodeMirror
               value={editedCode}
               height="100%"
@@ -698,12 +674,9 @@ const Example = () => {
               className="absolute inset-0 w-full h-full text-sm font-mono border-none focus:outline-none"
             />
           ) : (
-            <CodeBlock
-              className="rounded-none border-0"
-              code={currentCode}
-              language={currentLanguage as any}
-              showLineNumbers
-            />
+            <div className="flex items-center justify-center h-full text-muted-foreground text-sm font-mono bg-background">
+              // Select a file from the sidebar to edit
+            </div>
           )}
         </div>
 
