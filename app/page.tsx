@@ -340,11 +340,10 @@ const mockTerminalLines = [
 
 const Example = () => {
   // File tree state
-  const [selectedPath, setSelectedPath] = useState<string>("agent/agent.ts");
-  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(
-    new Set(["agent", "agent/tools"])
-  );
+  const [selectedPath, setSelectedPath] = useState<string>("");
+  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
   const [fileTree, setFileTree] = useState<FileNode[]>([]);
+  const [projectPathInput, setProjectPathInput] = useState<string>("./my-new-project");
 
   // Code editor state
   const [currentCode, setCurrentCode] = useState<string>("// Select a file to view content");
@@ -408,10 +407,32 @@ const Example = () => {
       if (data.tree) {
         setFileTree(data.tree);
       }
+      if (data.projectPath) {
+        setProjectPathInput(data.projectPath);
+      }
     } catch (err) {
       console.error("Failed to load file tree", err);
     }
   }, []);
+
+  const handleUpdateProject = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetch("/api/files", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: projectPathInput }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSelectedPath("");
+        setCurrentCode("// Select a file to view content");
+        refreshWorkspace();
+      }
+    } catch (err) {
+      console.error("Failed to update project path", err);
+    }
+  }, [projectPathInput, refreshWorkspace]);
 
   // Reload current file content
   const refreshCurrentFile = useCallback(async () => {
@@ -513,6 +534,28 @@ const Example = () => {
     <div className="flex h-full w-full bg-background">
       {/* Left Sidebar - File Tree */}
       <div className="flex w-64 flex-col border-r">
+        <div className="border-b p-3 bg-muted/10">
+          <form onSubmit={handleUpdateProject} className="flex flex-col gap-1.5">
+            <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+              Project Path
+            </label>
+            <div className="flex gap-1.5">
+              <input
+                type="text"
+                value={projectPathInput}
+                onChange={(e) => setProjectPathInput(e.target.value)}
+                placeholder="./my-project"
+                className="flex-1 rounded border px-2 py-1 text-xs bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+              <button
+                type="submit"
+                className="rounded bg-primary text-primary-foreground px-2 py-1 text-xs font-semibold cursor-pointer hover:opacity-90 transition-opacity"
+              >
+                Set
+              </button>
+            </div>
+          </form>
+        </div>
         <div className="flex-1 overflow-auto p-1">
           <FileTree
             className="border-none"

@@ -1,3 +1,4 @@
+import { getProjectPath, setProjectPath } from "@/lib/project";
 import fs from "fs/promises";
 import { NextRequest } from "next/server";
 import path from "path";
@@ -56,14 +57,15 @@ async function getFileTree(dirPath: string, relativeRoot = ""): Promise<FileNode
 
 export async function GET(req: NextRequest) {
   try {
+    const projectPath = await getProjectPath();
     const { searchParams } = new URL(req.url);
     const filePath = searchParams.get("path");
 
     if (filePath) {
       // Read file content
-      const resolvedPath = path.resolve(process.cwd(), filePath);
-      // Security check: ensure path is within workspace
-      if (!resolvedPath.startsWith(process.cwd())) {
+      const resolvedPath = path.resolve(projectPath, filePath);
+      // Security check: ensure path is within the project workspace
+      if (!resolvedPath.startsWith(projectPath)) {
         return Response.json({ error: "Access denied" }, { status: 403 });
       }
 
@@ -72,8 +74,18 @@ export async function GET(req: NextRequest) {
     }
 
     // List file tree
-    const tree = await getFileTree(process.cwd());
-    return Response.json({ tree });
+    const tree = await getFileTree(projectPath);
+    return Response.json({ tree, projectPath });
+  } catch (error: any) {
+    return Response.json({ error: error.message }, { status: 500 });
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const { path: newPath } = await req.json();
+    const resolved = await setProjectPath(newPath);
+    return Response.json({ success: true, projectPath: resolved });
   } catch (error: any) {
     return Response.json({ error: error.message }, { status: 500 });
   }
