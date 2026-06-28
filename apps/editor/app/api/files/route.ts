@@ -72,7 +72,11 @@ export async function GET(req: NextRequest) {
       if (filePath.endsWith(".pdf")) {
         const buffer = await fs.readFile(resolvedPath);
         return new Response(buffer, {
-          headers: { "Content-Type": "application/pdf" },
+          headers: {
+            "Content-Type": "application/pdf",
+            "Content-Length": buffer.length.toString(),
+            "Accept-Ranges": "bytes",
+          },
         });
       }
 
@@ -96,6 +100,37 @@ export async function POST(req: NextRequest) {
     // Switch project path
     if (body.path && !body.action) {
       const resolved = await setProjectPath(body.path);
+
+      // Seed default main.tex if it doesn't exist (crucial for newly created projects from dashboard)
+      const mainTexPath = path.join(resolved, "main.tex");
+      try {
+        await fs.access(mainTexPath);
+      } catch {
+        const defaultTemplate = `\\documentclass[11pt, a4paper]{article}
+
+\\usepackage[utf8]{inputenc}
+\\usepackage[margin=1in]{geometry}
+\\usepackage{amsmath, amssymb}
+\\usepackage{graphicx}
+\\usepackage{hyperref}
+
+\\title{\\textbf{New LaTeX Project}}
+\\author{Author}
+\\date{\\today}
+
+\\begin{document}
+
+\\maketitle
+
+\\section{Introduction}
+Welcome to your new LaTeX project! Describe what you want the AI assistant to write or edit, and click compile to generate a preview.
+
+\\end{document}
+`;
+        await fs.mkdir(path.dirname(mainTexPath), { recursive: true });
+        await fs.writeFile(mainTexPath, defaultTemplate, "utf-8");
+      }
+
       const relativePath = path.relative(process.cwd(), resolved) || ".";
       return Response.json({ success: true, projectPath: relativePath });
     }
