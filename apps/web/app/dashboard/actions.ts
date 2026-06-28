@@ -9,38 +9,41 @@ import { revalidatePath } from "next/cache";
 async function ensureWorkspaceExists(orgId: string | null, userId: string) {
   const targetId = orgId || userId;
 
-  // Check if workspace exists
+  // 1. Always ensure the user row exists in the database first (essential for local dev webhooks bypass)
+  const user = await currentUser();
+  if (user) {
+    await db
+      .insert(users)
+      .values({
+        id: userId,
+        email: user.emailAddresses[0]?.emailAddress || "",
+        name: `${user.firstName || ""} ${user.lastName || ""}`.trim() || "User",
+        imageUrl: user.imageUrl,
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: users.id,
+        set: {
+          email: user.emailAddresses[0]?.emailAddress || "",
+          name: `${user.firstName || ""} ${user.lastName || ""}`.trim() || "User",
+          imageUrl: user.imageUrl,
+          updatedAt: new Date(),
+        },
+      });
+  }
+
+  // 2. Check if workspace exists
   const existing = await db.query.workspaces.findFirst({
     where: (w, { eq }) => eq(w.id, targetId),
   });
 
   if (!existing) {
-    // If it's a personal workspace, get user details to name it
-    let name = "Personal Workspace";
-    let slug = "personal";
+    let name = orgId ? `Workspace ${orgId.substring(0, 8)}` : "Personal Workspace";
+    let slug = orgId ? `org-${orgId.substring(0, 8)}` : "personal";
 
-    if (orgId) {
-      // The webhook should have created it, but as a fallback/safety:
-      name = `Workspace ${orgId.substring(0, 8)}`;
-      slug = `org-${orgId.substring(0, 8)}`;
-    } else {
-      const user = await currentUser();
-      if (user) {
-        name = `${user.firstName || "User"}'s Workspace`;
-        slug = `${user.firstName?.toLowerCase() || "user"}-personal`;
-
-        // Also ensure user row exists
-        await db
-          .insert(users)
-          .values({
-            id: userId,
-            email: user.emailAddresses[0]?.emailAddress || "",
-            name: `${user.firstName || ""} ${user.lastName || ""}`.trim() || "User",
-            imageUrl: user.imageUrl,
-            updatedAt: new Date(),
-          })
-          .onConflictDoNothing();
-      }
+    if (!orgId && user) {
+      name = `${user.firstName || "User"}'s Workspace`;
+      slug = `${user.firstName?.toLowerCase() || "user"}-personal`;
     }
 
     await db.insert(workspaces).values({
