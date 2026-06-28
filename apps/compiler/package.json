@@ -1,0 +1,15 @@
+{
+  "name": "compiler",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "bun --watch index.ts",
+    "start": "bun index.ts"
+  },
+  "dependencies": {
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0"
+  }
+}
