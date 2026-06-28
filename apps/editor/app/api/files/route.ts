@@ -1,77 +1,29 @@
 import { getProjectPath, setProjectPath } from "@/lib/project";
-import fs from "fs/promises";
+import { storage } from "@/lib/storage";
 import { NextRequest } from "next/server";
 import path from "path";
 
-// Exclude build artifacts and node modules from tree listing
-const EXCLUDED_DIRS = new Set([
-  "node_modules",
-  ".git",
-  ".next",
-  ".eve",
-  ".workflow-data",
-]);
-
-interface FileNode {
-  name: string;
-  path: string;
-  isDir: boolean;
-  children?: FileNode[];
-}
-
-async function getFileTree(dirPath: string, relativeRoot = ""): Promise<FileNode[]> {
-  const entries = await fs.readdir(dirPath, { withFileTypes: true });
-  const nodes: FileNode[] = [];
-
-  for (const entry of entries) {
-    if (EXCLUDED_DIRS.has(entry.name)) {
-      continue;
-    }
-
-    const relPath = relativeRoot ? `${relativeRoot}/${entry.name}` : entry.name;
-
-    if (entry.isDirectory()) {
-      const children = await getFileTree(path.join(dirPath, entry.name), relPath);
-      nodes.push({
-        children,
-        isDir: true,
-        name: entry.name,
-        path: relPath,
-      });
-    } else {
-      nodes.push({
-        isDir: false,
-        name: entry.name,
-        path: relPath,
-      });
-    }
+// Helper to extract the projectId from the active project path
+function getProjectIdFromPath(projectPath: string): string {
+  const parts = projectPath.split(path.sep);
+  const projectsIndex = parts.indexOf("projects");
+  if (projectsIndex !== -1 && projectsIndex < parts.length - 1) {
+    return parts[projectsIndex + 1];
   }
-
-  // Sort directories first, then files alphabetically
-  return nodes.sort((a, b) => {
-    if (a.isDir && !b.isDir) return -1;
-    if (!a.isDir && b.isDir) return 1;
-    return a.name.localeCompare(b.name);
-  });
+  return "default";
 }
 
 export async function GET(req: NextRequest) {
   try {
     const projectPath = await getProjectPath();
+    const projectId = getProjectIdFromPath(projectPath);
     const { searchParams } = new URL(req.url);
     const filePath = searchParams.get("path");
 
     if (filePath) {
-      // Read file content
-      const resolvedPath = path.resolve(projectPath, filePath);
-      // Security check: ensure path is within the project workspace
-      if (!resolvedPath.startsWith(projectPath)) {
-        return Response.json({ error: "Access denied" }, { status: 403 });
-      }
-
       if (filePath.endsWith(".pdf")) {
-        const buffer = await fs.readFile(resolvedPath);
-        return new Response(buffer, {
+        const buffer = await storage.readBinaryFile(projectId, filePath);
+        return new Response(new Uint8Array(buffer), {
           headers: {
             "Content-Type": "application/pdf",
             "Content-Length": buffer.length.toString(),
@@ -80,12 +32,12 @@ export async function GET(req: NextRequest) {
         });
       }
 
-      const content = await fs.readFile(resolvedPath, "utf-8");
+      const content = await storage.readFile(projectId, filePath);
       return Response.json({ content });
     }
 
-    // List file tree
-    const tree = await getFileTree(projectPath);
+    // List file tree via our unified storage client
+    const tree = await storage.listProjectFiles(projectId);
     const relativePath = path.relative(process.cwd(), projectPath) || ".";
     return Response.json({ tree, projectPath: relativePath });
   } catch (error: any) {
@@ -100,11 +52,11 @@ export async function POST(req: NextRequest) {
     // Switch project path
     if (body.path && !body.action) {
       const resolved = await setProjectPath(body.path);
+      const projectId = getProjectIdFromPath(resolved);
 
       // Seed default main.tex if it doesn't exist (crucial for newly created projects from dashboard)
-      const mainTexPath = path.join(resolved, "main.tex");
       try {
-        await fs.access(mainTexPath);
+        await storage.readFile(projectId, "main.tex");
       } catch {
         const defaultTemplate = `\\documentclass[11pt, a4paper]{article}
 
@@ -127,8 +79,7 @@ Welcome to your new LaTeX project! Describe what you want the AI assistant to wr
 
 \\end{document}
 `;
-        await fs.mkdir(path.dirname(mainTexPath), { recursive: true });
-        await fs.writeFile(mainTexPath, defaultTemplate, "utf-8");
+        await storage.writeFile(projectId, "main.tex", defaultTemplate);
       }
 
       const relativePath = path.relative(process.cwd(), resolved) || ".";
@@ -138,17 +89,12 @@ Welcome to your new LaTeX project! Describe what you want the AI assistant to wr
     // Create file or folder
     if (body.action === "create") {
       const projectPath = await getProjectPath();
-      const resolvedPath = path.resolve(projectPath, body.path);
-      
-      if (!resolvedPath.startsWith(projectPath)) {
-        return Response.json({ error: "Access denied" }, { status: 403 });
-      }
+      const projectId = getProjectIdFromPath(projectPath);
       
       if (body.isDir) {
-        await fs.mkdir(resolvedPath, { recursive: true });
+        await storage.createDirectory(projectId, body.path);
       } else {
-        await fs.mkdir(path.dirname(resolvedPath), { recursive: true });
-        await fs.writeFile(resolvedPath, "", "utf-8"); // empty file
+        await storage.writeFile(projectId, body.path, ""); // create empty file
       }
       return Response.json({ success: true });
     }
@@ -156,13 +102,9 @@ Welcome to your new LaTeX project! Describe what you want the AI assistant to wr
     // Save edited file content
     if (body.action === "save") {
       const projectPath = await getProjectPath();
-      const resolvedPath = path.resolve(projectPath, body.path);
+      const projectId = getProjectIdFromPath(projectPath);
       
-      if (!resolvedPath.startsWith(projectPath)) {
-        return Response.json({ error: "Access denied" }, { status: 403 });
-      }
-      
-      await fs.writeFile(resolvedPath, body.content, "utf-8");
+      await storage.writeFile(projectId, body.path, body.content);
       return Response.json({ success: true });
     }
 
