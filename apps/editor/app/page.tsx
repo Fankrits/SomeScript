@@ -665,9 +665,25 @@ const Example = () => {
     }
   }, [selectedPath]);
 
-  // Load tree on mount
+  // Load tree on mount and handle ?projectId parameter
   useEffect(() => {
-    refreshWorkspace();
+    const initWorkspace = async () => {
+      const params = new URLSearchParams(window.location.search);
+      const projectId = params.get("projectId");
+      try {
+        const targetPath = projectId ? `projects/${projectId}` : "./my-new-project";
+        await fetch("/api/files", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path: targetPath }),
+        });
+      } catch (err) {
+        console.error("Failed to initialize project path:", err);
+      }
+      refreshWorkspace();
+    };
+
+    initWorkspace();
   }, [refreshWorkspace]);
 
   // Reload current file when selectedPath changes
