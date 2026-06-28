@@ -11,5 +11,21 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  # Local S3-compatible Object Storage Bucket (MinIO)
+  # This fully mimics Railway Storage Buckets locally and provides a web dashboard!
+  minio:
+    image: minio/minio:latest
+    container_name: latex_editor_minio
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000" # MinIO API port (S3 client connects here)
+      - "9001:9001" # MinIO Console port (You can open this in your browser!)
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+
 volumes:
   postgres_data:
+  minio_data:
