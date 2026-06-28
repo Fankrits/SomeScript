@@ -13,6 +13,7 @@
     "@ai-sdk/openai": "^4.0.1",
     "@assistant-ui/react": "^0.14.24",
     "@assistant-ui/react-markdown": "^0.14.5",
+    "@aws-sdk/client-s3": "^3.1075.0",
     "@base-ui/react": "^1.6.0",
     "@embedpdf/core": "^2.14.4",
     "@embedpdf/react-pdf-viewer": "^2.14.4",
