@@ -158,8 +158,8 @@ export default async function DashboardPage() {
                       </td>
                       <td className="px-6 py-4 text-right">
                         <Link
-                          // Open in core editor (app runs on port 3002 now)
-                          href={`http://localhost:3002/?projectId=${project.id}`}
+                          // Open in core editor (url loaded dynamically from environment)
+                          href={`${process.env.NEXT_PUBLIC_EDITOR_URL || "http://localhost:3002"}/?projectId=${project.id}`}
                           className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:text-primary-foreground hover:bg-primary transition-colors bg-secondary/50 px-3 py-1.5 rounded-lg border border-border"
                         >
                           Open Editor <ArrowUpRight className="h-3.5 w-3.5" />
