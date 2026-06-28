@@ -1,0 +1,118 @@
+import { Webhook } from "svix";
+import { headers } from "next/headers";
+import { WebhookEvent } from "@clerk/nextjs/server";
+import { db } from "@/lib/db";
+import { users, workspaces } from "@/db/schema";
+import { eq } from "drizzle-orm";
+
+export async function POST(req: Request) {
+  const WEBHOOK_SECRET = process.env.CLERK_WEBHOOK_SECRET;
+
+  if (!WEBHOOK_SECRET) {
+    return new Response("Error: Please add CLERK_WEBHOOK_SECRET from Clerk Dashboard to .env or .env.local", {
+      status: 500,
+    });
+  }
+
+  // Get headers
+  const headerPayload = await headers();
+  const svix_id = headerPayload.get("svix-id");
+  const svix_timestamp = headerPayload.get("svix-timestamp");
+  const svix_signature = headerPayload.get("svix-signature");
+
+  if (!svix_id || !svix_timestamp || !svix_signature) {
+    return new Response("Error: Missing Svix headers", {
+      status: 400,
+    });
+  }
+
+  // Get body
+  const payload = await req.json();
+  const body = JSON.stringify(payload);
+
+  const wh = new Webhook(WEBHOOK_SECRET);
+
+  let evt: WebhookEvent;
+
+  try {
+    evt = wh.verify(body, {
+      "svix-id": svix_id,
+      "svix-timestamp": svix_timestamp,
+      "svix-signature": svix_signature,
+    }) as WebhookEvent;
+  } catch (err) {
+    console.error("Error: Could not verify webhook:", err);
+    return new Response("Error: Verification failed", {
+      status: 400,
+    });
+  }
+
+  const { id } = evt.data;
+  const eventType = evt.type;
+
+  try {
+    if (eventType === "user.created" || eventType === "user.updated") {
+      const { email_addresses, first_name, last_name, image_url } = evt.data;
+      const email = email_addresses?.[0]?.email_address;
+
+      if (!id || !email) {
+        return new Response("Error: Missing user ID or email", { status: 400 });
+      }
+
+      const fullName = [first_name, last_name].filter(Boolean).join(" ") || "User";
+
+      await db
+        .insert(users)
+        .values({
+          id,
+          email,
+          name: fullName,
+          imageUrl: image_url,
+          updatedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: users.id,
+          set: {
+            email,
+            name: fullName,
+            imageUrl: image_url,
+            updatedAt: new Date(),
+          },
+        });
+    }
+
+    if (eventType === "organization.created" || eventType === "organization.updated") {
+      const { name, slug, image_url, created_by } = evt.data;
+
+      if (!id || !name || !slug) {
+        return new Response("Error: Missing org ID, name, or slug", { status: 400 });
+      }
+
+      await db
+        .insert(workspaces)
+        .values({
+          id,
+          name,
+          slug,
+          imageUrl: image_url,
+          ownerId: created_by || null,
+          updatedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: workspaces.id,
+          set: {
+            name,
+            slug,
+            imageUrl: image_url,
+            ownerId: created_by || null,
+            updatedAt: new Date(),
+          },
+        });
+    }
+
+    return new Response("Webhook processed successfully", { status: 200 });
+  } catch (dbErr) {
+    console.error("Database sync failed inside clerk webhook handler:", dbErr);
+    return new Response("Error: Database sync failed", { status: 500 });
+  }
+}
