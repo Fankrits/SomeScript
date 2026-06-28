@@ -1,5 +1,5 @@
 import { defineAgent } from "eve";
 
 export default defineAgent({
-  model: "google/gemini-2.5-flash",
+  model: "meta/llama-3.1-8b",
 });
