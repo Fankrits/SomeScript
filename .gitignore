@@ -48,3 +48,9 @@ next-env.d.ts
 .eve
 .workflow-data
 
+# Local Editor projects / settings
+active-project.json
+projects/
+*.pdf
+
+
