@@ -52,14 +52,27 @@ import {
 } from "@/components/ai-elements/task";
 import { Terminal, TerminalContent } from "@/components/ai-elements/terminal";
 import { cn } from "@/lib/utils";
-import { CheckCircle2Icon, ListTodoIcon, FilePlus, FolderPlus, PanelLeft, PanelRight, Sparkles } from "lucide-react";
+import { CheckCircle2Icon, ListTodoIcon, FilePlus, FolderPlus, PanelLeft, PanelRight, Sparkles, Loader2, Check } from "lucide-react";
 import { nanoid } from "nanoid";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { PanelImperativeHandle } from "react-resizable-panels";
 import { useEveAgent } from "eve/react";
+import { EveThread } from "@/components/chat/eve-thread";
 import CodeMirror from "@uiw/react-codemirror";
 import { latex } from "codemirror-lang-latex";
-import { PDFViewer } from "@embedpdf/react-pdf-viewer";
+import dynamic from "next/dynamic";
+
+const PDFViewer = dynamic(
+  () => import("@embedpdf/react-pdf-viewer").then((mod) => mod.PDFViewer),
+  { ssr: false }
+);
 import type { BundledLanguage } from "shiki";
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "@/components/ui/resizable";
+
 
 // Types
 interface MockFile {
@@ -346,6 +359,7 @@ const Example = () => {
   const [newItemName, setNewItemName] = useState<string>("");
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [isCompiling, setIsCompiling] = useState<boolean>(false);
+  const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "unsaved" | "idle">("idle");
 
   // Terminal state
   const [terminalOutput, setTerminalOutput] = useState<string>("");
@@ -365,6 +379,45 @@ const Example = () => {
   // Sidebar states
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<"files" | "chat">("files");
+
+  // Resizable Panel Refs & States
+  const codePanelRef = useRef<PanelImperativeHandle>(null);
+  const pdfPanelRef = useRef<PanelImperativeHandle>(null);
+  const terminalPanelRef = useRef<PanelImperativeHandle>(null);
+  const [isCodeCollapsed, setIsCodeCollapsed] = useState<boolean>(false);
+  const [isPdfCollapsed, setIsPdfCollapsed] = useState<boolean>(false);
+  const [isTerminalCollapsed, setIsTerminalCollapsed] = useState<boolean>(false);
+
+  const handlePdfDoubleClick = useCallback(() => {
+    const codePanel = codePanelRef.current;
+    const pdfPanel = pdfPanelRef.current;
+    if (!codePanel || !pdfPanel) return;
+
+    const isCodeClosed = codePanel.isCollapsed();
+    const isPdfClosed = pdfPanel.isCollapsed();
+
+    if (!isCodeClosed && !isPdfClosed) {
+      // Both open: collapse PDF (show code only)
+      pdfPanel.collapse();
+    } else if (!isCodeClosed && isPdfClosed) {
+      // Code only: collapse code, expand PDF (show PDF only)
+      pdfPanel.expand();
+      codePanel.collapse();
+    } else {
+      // PDF only: expand code (show both)
+      codePanel.expand();
+    }
+  }, []);
+
+  const handleTerminalDoubleClick = useCallback(() => {
+    const panel = terminalPanelRef.current;
+    if (!panel) return;
+    if (panel.isCollapsed()) {
+      panel.expand();
+    } else {
+      panel.collapse();
+    }
+  }, []);
 
   const getLanguageFromPath = (filePath: string): string => {
     const ext = filePath.split(".").pop();
@@ -390,8 +443,41 @@ const Example = () => {
 
   // Handle file selection
   const handleFileSelect = useCallback(async (path: string) => {
+    if (selectedPath && editedCode !== currentCode) {
+      try {
+        await fetch("/api/files", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "save", path: selectedPath, content: editedCode }),
+        });
+      } catch (err) {
+        console.error("Failed to save changes before file switch", err);
+      }
+    }
+
     setSelectedPath(path);
-    setPdfUrl(null);
+    if (path.endsWith(".tex")) {
+      const pdfPath = path.replace(/\.tex$/, ".pdf");
+      const findPdf = (nodes: any[]): boolean => {
+        for (const n of nodes) {
+          if (n.path === pdfPath) return true;
+          if (n.children && findPdf(n.children)) return true;
+        }
+        return false;
+      };
+      if (findPdf(fileTree)) {
+        fetch(`${window.location.origin}/api/files?path=${encodeURIComponent(pdfPath)}`)
+          .then((r) => r.blob())
+          .then((blob) => {
+            setPdfUrl(URL.createObjectURL(blob));
+          })
+          .catch(() => setPdfUrl(null));
+      } else {
+        setPdfUrl(null);
+      }
+    } else {
+      setPdfUrl(null);
+    }
     try {
       const res = await fetch(`/api/files?path=${encodeURIComponent(path)}`);
       const data = await res.json();
@@ -399,11 +485,12 @@ const Example = () => {
         setCurrentCode(data.content);
         setEditedCode(data.content);
         setCurrentLanguage(getLanguageFromPath(path));
+        setSaveStatus("saved");
       }
     } catch (err) {
       console.error("Failed to read file", err);
     }
-  }, []);
+  }, [selectedPath, editedCode, currentCode, fileTree]);
 
   // Load file tree
   const refreshWorkspace = useCallback(async () => {
@@ -459,22 +546,37 @@ const Example = () => {
     }
   }, [newItemName, refreshWorkspace]);
 
-  const handleSaveCode = useCallback(async () => {
-    if (!selectedPath) return;
-    try {
-      const res = await fetch("/api/files", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "save", path: selectedPath, content: editedCode }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setCurrentCode(editedCode);
-      }
-    } catch (err) {
-      console.error("Failed to save file content", err);
+  // Autosave useEffect with debounce
+  useEffect(() => {
+    if (!selectedPath || editedCode === currentCode) {
+      return;
     }
-  }, [selectedPath, editedCode]);
+
+    setSaveStatus("unsaved");
+
+    const timer = setTimeout(async () => {
+      setSaveStatus("saving");
+      try {
+        const res = await fetch("/api/files", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "save", path: selectedPath, content: editedCode }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          setCurrentCode(editedCode);
+          setSaveStatus("saved");
+        } else {
+          setSaveStatus("unsaved");
+        }
+      } catch (err) {
+        console.error("Failed to autosave file content", err);
+        setSaveStatus("unsaved");
+      }
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [selectedPath, editedCode, currentCode]);
 
   const handleCompileLatex = useCallback(async () => {
     if (!selectedPath || !selectedPath.endsWith(".tex")) return;
@@ -523,7 +625,16 @@ const Example = () => {
           const match = logBuffer.match(/\[SUCCESS\]\s+(.*)/);
           if (match && match[1]) {
             const pdfPath = match[1].trim();
-            setPdfUrl(`/api/files?path=${encodeURIComponent(pdfPath)}&t=${Date.now()}`);
+            fetch(`${window.location.origin}/api/files?path=${encodeURIComponent(pdfPath)}`)
+              .then((r) => r.blob())
+              .then((blob) => {
+                const blobUrl = URL.createObjectURL(blob);
+                setPdfUrl(blobUrl);
+              })
+              .catch((err) => {
+                console.error("Error loading PDF blob", err);
+                setPdfUrl(`${window.location.origin}/api/files?path=${encodeURIComponent(pdfPath)}&t=${Date.now()}`);
+              });
           }
         }
       }
@@ -547,6 +658,7 @@ const Example = () => {
         setCurrentCode(data.content);
         setEditedCode(data.content);
         setCurrentLanguage(getLanguageFromPath(selectedPath));
+        setSaveStatus("saved");
       }
     } catch (err) {
       console.error("Failed to reload file content", err);
@@ -749,188 +861,176 @@ const Example = () => {
           </div>
         ) : (
           <div className="flex-1 flex flex-col overflow-hidden bg-background">
-            {/* Chat Messages */}
-            <div className="flex flex-1 flex-col overflow-hidden">
-              <Conversation className="flex-1">
-                <ConversationContent className="gap-4 p-3">
-                  {agent.data.messages.map((message) => {
-                    const content = message.parts
-                      .map((part) => (part.type === "text" ? part.text : ""))
-                      .join("");
-
-                    const pendingApprovalPart = message.parts.find(
-                      (part) => part.type === "dynamic-tool" && part.state === "approval-requested"
-                    );
-                    const inputRequest = pendingApprovalPart?.type === "dynamic-tool"
-                      ? pendingApprovalPart.toolMetadata?.eve?.inputRequest
-                      : undefined;
-
-                    return (
-                      <Message from={message.role === "user" ? "user" : "assistant"} key={message.id}>
-                        <MessageContent
-                          className={cn(
-                            message.role === "user"
-                              ? "rounded-lg bg-secondary px-3 py-2"
-                              : ""
-                          )}
-                        >
-                          {message.role === "assistant" ? (
-                            <MessageResponse>{content}</MessageResponse>
-                          ) : (
-                            content
-                          )}
-
-                          {pendingApprovalPart && inputRequest && (
-                            <div className="mt-3 flex flex-col gap-2 rounded-md border border-amber-200 bg-amber-50/50 p-3 dark:border-amber-900/50 dark:bg-amber-950/20">
-                              <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
-                                {inputRequest.prompt || `Approve calling ${pendingApprovalPart.toolName}?`}
-                              </p>
-                              <div className="flex gap-2">
-                                <button
-                                  onClick={() => {
-                                    void agent.send({
-                                      inputResponses: [{ requestId: inputRequest.requestId, optionId: "approve" }],
-                                    });
-                                  }}
-                                  className="rounded bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 cursor-pointer"
-                                >
-                                  Approve
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    void agent.send({
-                                      inputResponses: [{ requestId: inputRequest.requestId, optionId: "reject" }],
-                                    });
-                                  }}
-                                  className="rounded bg-secondary px-3 py-1.5 text-xs font-semibold hover:bg-secondary/80 cursor-pointer"
-                                >
-                                  Reject
-                                </button>
-                              </div>
-                            </div>
-                          )}
-                        </MessageContent>
-                      </Message>
-                    );
-                  })}
-                  {showCheckpoint && (
-                    <Checkpoint>
-                      <CheckpointIcon />
-                      <CheckpointTrigger tooltip="Restore to this checkpoint">
-                        Checkpoint saved
-                      </CheckpointTrigger>
-                    </Checkpoint>
-                  )}
-                </ConversationContent>
-              </Conversation>
-
-              {/* Chat Input */}
-              <div className="border-t p-3 bg-background">
-                <PromptInput className="rounded-lg border" onSubmit={handleSubmit}>
-                  <PromptInputTextarea
-                    className="min-h-10"
-                    onChange={handleChatTextChange}
-                    placeholder="Ask about the code..."
-                    value={chatText}
-                  />
-                  <PromptInputFooter className="justify-end p-2">
-                    <PromptInputSubmit
-                      disabled={agent.status !== "ready" || !chatText.trim()}
-                      status={agent.status === "streaming" ? "streaming" : undefined}
-                    />
-                  </PromptInputFooter>
-                </PromptInput>
-              </div>
-            </div>
+            <EveThread />
           </div>
         )}
       </div>
 
       {/* Center Panel - Code + Terminal */}
       <div className="flex flex-1 flex-col overflow-hidden">
-        {/* Editor + PDF Split Pane */}
-        <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
-          {/* Left: CodeMirror Editor */}
-          <div className="flex-1 relative border-r flex flex-col min-w-0">
-            <div className="flex items-center justify-between border-b px-4 py-2 bg-muted/10">
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setIsLeftSidebarOpen((prev) => !prev)}
-                  className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer"
-                  title="Toggle Left Sidebar"
-                >
-                  <PanelLeft className="size-4" />
-                </button>
-                <span className="text-xs font-mono font-medium text-foreground">
-                  {selectedPath || "No file selected"}
-                </span>
-              </div>
-              <div className="flex gap-2 items-center">
-                {selectedPath && (
-                  <button
-                    onClick={handleSaveCode}
-                    className="rounded bg-primary text-primary-foreground px-2.5 py-1 text-xs font-semibold hover:opacity-90 cursor-pointer"
-                  >
-                    Save
-                  </button>
-                )}
-                {selectedPath && selectedPath.endsWith(".tex") && (
-                  <button
-                    onClick={handleCompileLatex}
-                    disabled={isCompiling}
-                    className="rounded bg-emerald-600 text-white px-2.5 py-1 text-xs font-semibold hover:bg-emerald-700 cursor-pointer disabled:opacity-50"
-                  >
-                    {isCompiling ? "Compiling..." : "Compile"}
-                  </button>
-                )}
-              </div>
-            </div>
-            <div className="flex-1 relative overflow-auto">
-              {selectedPath ? (
-                <CodeMirror
-                  value={editedCode}
-                  height="100%"
-                  theme="dark"
-                  extensions={currentLanguage === "latex" ? [latex()] : []}
-                  onChange={(value) => setEditedCode(value)}
-                  className="absolute inset-0 w-full h-full text-sm font-mono border-none focus:outline-none"
-                />
-              ) : (
-                <div className="flex items-center justify-center h-full text-muted-foreground text-sm font-mono bg-background">
-                  // Select a file from the sidebar to edit
+        <ResizablePanelGroup orientation="vertical">
+          <ResizablePanel
+            defaultSize={75}
+            minSize={30}
+          >
+            {/* Editor + PDF Split Pane */}
+            <ResizablePanelGroup orientation="horizontal">
+              {/* Left: CodeMirror Editor */}
+              <ResizablePanel
+                panelRef={codePanelRef}
+                collapsible
+                collapsedSize={2}
+                defaultSize={50}
+                minSize={20}
+                onResize={(size) => {
+                  setIsCodeCollapsed(size.asPercentage <= 2);
+                }}
+              >
+                <div className="h-full relative flex flex-col min-w-0">
+                  <div className="flex items-center justify-between border-b px-4 py-2 bg-muted/10">
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setIsLeftSidebarOpen((prev) => !prev)}
+                        className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer"
+                        title="Toggle Left Sidebar"
+                      >
+                        <PanelLeft className="size-4" />
+                      </button>
+                      <span className="text-xs font-mono font-medium text-foreground">
+                        {selectedPath || "No file selected"}
+                      </span>
+                      {selectedPath && (
+                        <span className="flex items-center gap-1.5 text-[10px] text-muted-foreground px-2 py-0.5 rounded bg-muted/40 font-medium">
+                          {saveStatus === "saving" && (
+                            <>
+                              <Loader2 className="size-3 animate-spin text-amber-500" />
+                              <span className="text-amber-500">Saving...</span>
+                            </>
+                          )}
+                          {saveStatus === "unsaved" && (
+                            <>
+                              <span className="size-1.5 rounded-full bg-amber-500 animate-pulse" />
+                              <span>Unsaved</span>
+                            </>
+                          )}
+                          {(saveStatus === "saved" || saveStatus === "idle") && (
+                            <>
+                              <Check className="size-3 text-emerald-500" />
+                              <span className="text-emerald-500">Saved</span>
+                            </>
+                          )}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex gap-2 items-center">
+                      {selectedPath && selectedPath.endsWith(".tex") && (
+                        <button
+                          onClick={handleCompileLatex}
+                          disabled={isCompiling}
+                          className="rounded bg-emerald-600 text-white px-2.5 py-1 text-xs font-semibold hover:bg-emerald-700 cursor-pointer disabled:opacity-50"
+                        >
+                          {isCompiling ? "Compiling..." : "Compile"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex-1 relative overflow-auto">
+                    {selectedPath ? (
+                      <CodeMirror
+                        value={editedCode}
+                        height="100%"
+                        theme="dark"
+                        extensions={currentLanguage === "latex" ? [latex()] : []}
+                        onChange={(value) => setEditedCode(value)}
+                        className="absolute inset-0 w-full h-full text-sm font-mono border-none focus:outline-none"
+                      />
+                    ) : (
+                      <div className="flex items-center justify-center h-full text-muted-foreground text-sm font-mono bg-background">
+                        // Select a file from the sidebar to edit
+                      </div>
+                    )}
+                  </div>
                 </div>
-              )}
-            </div>
-          </div>
+              </ResizablePanel>
 
-          {/* Right: PDF Preview */}
-          <div className="flex-1 flex flex-col bg-muted/5 min-w-0">
-            <div className="flex items-center border-b px-4 py-2 bg-muted/10">
-              <span className="text-xs font-semibold text-foreground">
-                PDF Preview
-              </span>
-            </div>
-            <div className="flex-1 bg-muted/10 flex items-center justify-center relative overflow-hidden">
-              {pdfUrl ? (
-                <div className="w-full h-full">
-                  <PDFViewer config={{ src: pdfUrl }} />
-                </div>
-              ) : (
-                <div className="text-xs font-mono text-muted-foreground p-4 text-center">
-                  {isCompiling ? "Compiling document..." : "Click Compile to generate PDF"}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+              <ResizableHandle
+                withHandle
+                onDoubleClick={handlePdfDoubleClick}
+                className={cn(
+                  (isPdfCollapsed || isCodeCollapsed) && "bg-muted/80 w-3 hover:bg-muted cursor-pointer hover:after:w-10 after:w-8"
+                )}
+              />
 
-        <Terminal
-          className="h-64 rounded-none border-0"
-          isStreaming={isTerminalStreaming}
-          output={terminalOutput}
-        >
-          <TerminalContent className="max-h-full" />
-        </Terminal>
+              {/* Right: PDF Preview */}
+              <ResizablePanel
+                panelRef={pdfPanelRef}
+                collapsible
+                collapsedSize={2}
+                defaultSize={50}
+                minSize={20}
+                onResize={(size) => {
+                  setIsPdfCollapsed(size.asPercentage <= 2);
+                }}
+              >
+                <div className="h-full flex flex-col bg-muted/5 min-w-0">
+                  <div className="flex items-center border-b px-4 py-2 bg-muted/10">
+                    <span className="text-xs font-semibold text-foreground">
+                      PDF Preview
+                    </span>
+                  </div>
+                  <div className="flex-1 bg-muted/10 flex items-center justify-center relative overflow-hidden">
+                    {pdfUrl ? (
+                      <div className="relative w-full h-full overflow-hidden">
+                        <PDFViewer
+                          key={pdfUrl}
+                          config={{
+                            src: pdfUrl,
+                            theme: {
+                              preference: "light",
+                            },
+                            disabledCategories: ['document-open', 'document-close'],
+                          }}
+                          style={{ position: 'absolute', inset: 0 }}
+                        />
+                      </div>
+                    ) : (
+                      <div className="text-xs font-mono text-muted-foreground p-4 text-center">
+                        {isCompiling ? "Compiling document..." : "Click Compile to generate PDF"}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </ResizablePanel>
+            </ResizablePanelGroup>
+          </ResizablePanel>
+
+          <ResizableHandle
+            withHandle
+            onDoubleClick={handleTerminalDoubleClick}
+            className={cn(
+              isTerminalCollapsed && "bg-muted/80 h-3 hover:bg-muted cursor-pointer hover:after:h-10 after:h-8"
+            )}
+          />
+
+          <ResizablePanel
+            panelRef={terminalPanelRef}
+            collapsible
+            collapsedSize={2}
+            defaultSize={25}
+            minSize={10}
+            onResize={(size) => {
+              setIsTerminalCollapsed(size.asPercentage <= 2);
+            }}
+          >
+            <Terminal
+              className="h-full rounded-none border-0"
+              isStreaming={isTerminalStreaming}
+              output={terminalOutput}
+            >
+              <TerminalContent className="max-h-full" />
+            </Terminal>
+          </ResizablePanel>
+        </ResizablePanelGroup>
       </div>
     </div>
   );
