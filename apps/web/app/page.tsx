@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { Sparkles, ArrowRight, Code, FileText, CheckCircle2, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -10,10 +11,8 @@ export default function Home() {
 
       {/* Header */}
       <header className="sticky top-0 z-50 backdrop-blur-md bg-background/80 border-b border-border px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-primary to-primary/80 flex items-center justify-center shadow-lg shadow-primary/10">
-            <span className="font-bold text-primary-foreground text-lg">S</span>
-          </div>
+        <div className="flex items-center gap-1.5">
+          <Image src="/logo.svg" alt="SomeScript Logo" width={36} height={36} className="h-9 w-9 -mr-1.5" />
           <span className="font-semibold text-lg tracking-tight text-foreground">
             SomeScript
           </span>

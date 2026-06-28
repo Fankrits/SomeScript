@@ -7,6 +7,7 @@ import { UserButton, OrganizationSwitcher } from "@clerk/nextjs";
 import { NewProjectDialog } from "@/components/new-project-dialog";
 import { FileText, Folder, Calendar, ArrowUpRight, Search, Settings } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 
 export default async function DashboardPage() {
   const { userId, orgId } = await auth();
@@ -30,10 +31,8 @@ export default async function DashboardPage() {
       <aside className="w-64 border-r border-border bg-sidebar flex flex-col justify-between p-6">
         <div className="flex flex-col gap-8">
           {/* Logo */}
-          <div className="flex items-center gap-3">
-            <div className="h-8 w-8 rounded-lg bg-gradient-to-tr from-primary to-primary/80 flex items-center justify-center shadow-md shadow-primary/10">
-              <span className="font-bold text-primary-foreground text-base">S</span>
-            </div>
+          <div className="flex items-center gap-1.5">
+            <Image src="/logo.svg" alt="SomeScript Logo" width={32} height={32} className="h-8 w-8 -mr-1" />
             <span className="font-semibold text-base tracking-tight text-foreground">
               SomeScript
             </span>
