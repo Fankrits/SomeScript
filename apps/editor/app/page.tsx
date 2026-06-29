@@ -52,12 +52,37 @@ import {
 } from "@/components/ai-elements/task";
 import { Terminal, TerminalContent } from "@/components/ai-elements/terminal";
 import { cn } from "@/lib/utils";
-import { CheckCircle2Icon, ListTodoIcon, FilePlus, FolderPlus, PanelLeft, PanelRight, Sparkles, Loader2, Check } from "lucide-react";
+import { CheckCircle2Icon, ListTodoIcon, FilePlus, FolderPlus, PanelLeft, PanelRight, Sparkles, Loader2, Check, Home, ChevronRight, ArrowLeft } from "lucide-react";
 import { nanoid } from "nanoid";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useInsertionEffect, useRef, useState } from "react";
 import type { PanelImperativeHandle } from "react-resizable-panels";
 import { useEveAgent } from "eve/react";
 import { EveThread } from "@/components/chat/eve-thread";
+
+// Custom VS Code style Layout Toggle Icons
+const LayoutIconLeft = ({ active }: { active: boolean }) => (
+  <svg width="18" height="18" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" className="size-4.5">
+    <rect x="1.5" y="1.5" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.5" />
+    <path d="M5.5 1.5V14.5" stroke="currentColor" strokeWidth="1.5" />
+    {active && <rect x="2.25" y="2.25" width="2.5" height="11.5" fill="currentColor" opacity="0.8" />}
+  </svg>
+);
+
+const LayoutIconBottom = ({ active }: { active: boolean }) => (
+  <svg width="18" height="18" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" className="size-4.5">
+    <rect x="1.5" y="1.5" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.5" />
+    <path d="M1.5 10.5H14.5" stroke="currentColor" strokeWidth="1.5" />
+    {active && <rect x="2.25" y="11.25" width="11.5" height="2.5" fill="currentColor" opacity="0.8" />}
+  </svg>
+);
+
+const LayoutIconRight = ({ active }: { active: boolean }) => (
+  <svg width="18" height="18" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" className="size-4.5">
+    <rect x="1.5" y="1.5" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.5" />
+    <path d="M10.5 1.5V14.5" stroke="currentColor" strokeWidth="1.5" />
+    {active && <rect x="11.25" y="2.25" width="2.5" height="11.5" fill="currentColor" opacity="0.8" />}
+  </svg>
+);
 import CodeMirror from "@uiw/react-codemirror";
 import { latex } from "codemirror-lang-latex";
 import dynamic from "next/dynamic";
@@ -744,6 +769,158 @@ const Example = () => {
     [agent]
   );
 
+  const [dashboardUrl, setDashboardUrl] = useState<string>("/dashboard");
+  const [projectName, setProjectName] = useState<string>("my-new-project");
+
+  const handleRegistryReady = useCallback((registry: any) => {
+    try {
+      const ui = registry.getPlugin ? registry.getPlugin('ui') : registry.plugins?.ui;
+      if (ui && typeof ui.getSchema === 'function') {
+        const schema = ui.getSchema();
+        if (schema && schema.toolbars) {
+          let modified = false;
+          let fullscreenItem: any = null;
+          let downloadItem: any = null;
+
+          // 1. Locate and extract any existing fullscreen & download/export buttons
+          for (const key of Object.keys(schema.toolbars)) {
+            const tb = schema.toolbars[key];
+            if (tb.items) {
+              const originalLength = tb.items.length;
+              tb.items = tb.items.filter((item: any) => {
+                const isFullscreen = (item.commandId === 'fullscreen' || item.id === 'fullscreen-btn' || item.id === 'fullscreen');
+                const isDownload = (
+                  item.commandId === 'download' || 
+                  item.commandId === 'export' || 
+                  item.commandId === 'document-export' || 
+                  item.id === 'download-btn' || 
+                  item.id === 'download' || 
+                  item.id === 'export-btn' || 
+                  item.id === 'export' || 
+                  item.id === 'document-export-btn' || 
+                  item.id === 'document-export'
+                );
+                if (isFullscreen) {
+                  fullscreenItem = item;
+                }
+                if (isDownload) {
+                  downloadItem = item;
+                }
+                return !isFullscreen && !isDownload;
+              });
+              if (tb.items.length !== originalLength) {
+                modified = true;
+              }
+            }
+          }
+
+          // Fallback: create fullscreen button if it wasn't defined
+          if (!fullscreenItem) {
+            fullscreenItem = {
+              type: 'command-button',
+              id: 'fullscreen-btn',
+              commandId: 'fullscreen',
+              variant: 'icon'
+            };
+          }
+
+          // Fallback: create download button if it wasn't defined
+          if (!downloadItem) {
+            downloadItem = {
+              type: 'command-button',
+              id: 'document-export-btn',
+              commandId: 'document-export',
+              variant: 'icon'
+            };
+          }
+
+          // 2. Append to main top toolbar
+          const mainToolbarKey = Object.keys(schema.toolbars).find(key => {
+            const tb = schema.toolbars[key];
+            return tb.position && tb.position.placement === 'top';
+          }) || Object.keys(schema.toolbars)[0];
+
+          if (mainToolbarKey) {
+            const mainTb = schema.toolbars[mainToolbarKey];
+            if (!mainTb.items) {
+              mainTb.items = [];
+            }
+            const existsFullscreen = mainTb.items.some((item: any) => item.id === fullscreenItem.id || item.commandId === fullscreenItem.commandId);
+            if (!existsFullscreen) {
+              mainTb.items.push(fullscreenItem);
+              modified = true;
+            }
+            const existsDownload = mainTb.items.some((item: any) => item.id === downloadItem.id || item.commandId === downloadItem.commandId);
+            if (!existsDownload) {
+              mainTb.items.push(downloadItem);
+              modified = true;
+            }
+          }
+
+          // 3. Filter out view-related buttons
+          for (const key of Object.keys(schema.toolbars)) {
+            const tb = schema.toolbars[key];
+            if (tb.items) {
+              const originalCount = tb.items.length;
+              tb.items = tb.items.filter((item: any) => {
+                const serialized = JSON.stringify(item).toLowerCase();
+                const isViewRelated = 
+                  serialized.includes("view") || 
+                  serialized.includes("spread") || 
+                  serialized.includes("layout") || 
+                  serialized.includes("rotate");
+                return !isViewRelated;
+              });
+              if (tb.items.length !== originalCount) {
+                modified = true;
+              }
+            }
+          }
+
+          if (modified && typeof ui.mergeSchema === 'function') {
+            ui.mergeSchema(schema);
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Error customizing PDFViewer UI schema:", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    // Dashboard URL
+    const hostname = window.location.hostname;
+    const port = window.location.port;
+    if (port === "3002" || port === "3001" || port === "3000") {
+      setDashboardUrl(`http://${hostname}:3000/dashboard`);
+    } else {
+      setDashboardUrl("/dashboard");
+    }
+
+    // Project Name
+    const params = new URLSearchParams(window.location.search);
+    const projectId = params.get("projectId");
+    if (projectId) {
+      fetch(`/api/project/name?projectId=${projectId}`)
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.name) {
+            setProjectName(data.name);
+          } else {
+            setProjectName(projectId);
+          }
+        })
+        .catch(() => {
+          setProjectName(projectId);
+        });
+    } else if (projectPathInput) {
+      const parts = projectPathInput.split("/");
+      setProjectName(parts[parts.length - 1] || "my-new-project");
+    }
+  }, [projectPathInput]);
+
   const completedTasks = tasks.filter((t) => t.status === "completed");
   const pendingTasks = tasks.filter((t) => t.status !== "completed");
 
@@ -763,9 +940,84 @@ const Example = () => {
   };
 
   return (
-    <div className="relative flex h-screen w-screen bg-background overflow-hidden">
-      {/* Backdrops for mobile view */}
-      {isLeftSidebarOpen && (
+    <div className="relative flex flex-col h-screen w-screen bg-background overflow-hidden">
+      {/* Top Header */}
+      <header className="flex items-center justify-between border-b px-4 h-14 bg-background z-30">
+        <div className="flex items-center gap-3">
+          <a
+            href={dashboardUrl}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground rounded-md border bg-muted/10 hover:bg-muted/30 transition-all cursor-pointer"
+          >
+            <ArrowLeft className="size-3.5" />
+            <span>Dashboard</span>
+          </a>
+          <div className="h-4 w-px bg-border" />
+          <nav className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Home className="size-4 text-muted-foreground/80" />
+            <ChevronRight className="size-3.5 text-muted-foreground/50" />
+            <span className="font-semibold text-foreground bg-muted/40 px-2 py-0.5 rounded text-xs">
+              {projectName}
+            </span>
+          </nav>
+        </div>
+
+        {/* VS Code Style Layout Toggles */}
+        <div className="flex items-center gap-1 border rounded-md p-0.5 bg-muted/20">
+          <button
+            onClick={() => setIsLeftSidebarOpen((prev) => !prev)}
+            className={cn(
+              "p-1.5 rounded-sm hover:bg-muted cursor-pointer transition-colors",
+              isLeftSidebarOpen ? "text-foreground bg-muted/50" : "text-muted-foreground/60 hover:text-foreground"
+            )}
+            title="Toggle Primary Side Bar (Left Sidebar)"
+          >
+            <LayoutIconLeft active={isLeftSidebarOpen} />
+          </button>
+          <button
+            onClick={() => {
+              const panel = terminalPanelRef.current;
+              if (panel) {
+                if (panel.isCollapsed()) {
+                  panel.expand();
+                } else {
+                  panel.collapse();
+                }
+              }
+            }}
+            className={cn(
+              "p-1.5 rounded-sm hover:bg-muted cursor-pointer transition-colors",
+              !isTerminalCollapsed ? "text-foreground bg-muted/50" : "text-muted-foreground/60 hover:text-foreground"
+            )}
+            title="Toggle Panel (Bottom Terminal)"
+          >
+            <LayoutIconBottom active={!isTerminalCollapsed} />
+          </button>
+          <button
+            onClick={() => {
+              const panel = pdfPanelRef.current;
+              if (panel) {
+                if (panel.isCollapsed()) {
+                  panel.expand();
+                } else {
+                  panel.collapse();
+                }
+              }
+            }}
+            className={cn(
+              "p-1.5 rounded-sm hover:bg-muted cursor-pointer transition-colors",
+              !isPdfCollapsed ? "text-foreground bg-muted/50" : "text-muted-foreground/60 hover:text-foreground"
+            )}
+            title="Toggle PDF Preview (Right Sidebar)"
+          >
+            <LayoutIconRight active={!isPdfCollapsed} />
+          </button>
+        </div>
+      </header>
+
+      {/* Main body wrapper */}
+      <div className="relative flex flex-1 w-full overflow-hidden">
+        {/* Backdrops for mobile view */}
+        {isLeftSidebarOpen && (
         <div
           onClick={() => setIsLeftSidebarOpen(false)}
           className="lg:hidden fixed inset-0 z-10 bg-background/80 backdrop-blur-sm"
@@ -810,29 +1062,8 @@ const Example = () => {
         {activeTab === "files" ? (
           <div className="flex-1 flex flex-col overflow-hidden">
             <div className="border-b p-3 bg-muted/10 flex flex-col gap-2.5">
-              <form onSubmit={handleUpdateProject} className="flex flex-col gap-1.5">
-                <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-                  Project Path
-                </label>
-                <div className="flex gap-1.5">
-                  <input
-                    type="text"
-                    value={projectPathInput}
-                    onChange={(e) => setProjectPathInput(e.target.value)}
-                    placeholder="./my-project"
-                    className="flex-1 rounded border px-2 py-1 text-xs bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-                  />
-                  <button
-                    type="submit"
-                    className="rounded bg-primary text-primary-foreground px-2 py-1 text-xs font-semibold cursor-pointer hover:opacity-90 transition-opacity"
-                  >
-                    Set
-                  </button>
-                </div>
-              </form>
-
               {/* Create Resource Form */}
-              <div className="flex flex-col gap-1.5 pt-2 border-t">
+              <div className="flex flex-col gap-1.5">
                 <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
                   Create Resource
                 </label>
@@ -970,10 +1201,9 @@ const Example = () => {
               </ResizablePanel>
 
               <ResizableHandle
-                withHandle
                 onDoubleClick={handlePdfDoubleClick}
                 className={cn(
-                  (isPdfCollapsed || isCodeCollapsed) && "bg-muted/80 w-3 hover:bg-muted cursor-pointer hover:after:w-10 after:w-8"
+                  (isPdfCollapsed || isCodeCollapsed) && "cursor-pointer w-3"
                 )}
               />
 
@@ -989,11 +1219,6 @@ const Example = () => {
                 }}
               >
                 <div className="h-full flex flex-col bg-muted/5 min-w-0">
-                  <div className="flex items-center border-b px-4 py-2 bg-muted/10">
-                    <span className="text-xs font-semibold text-foreground">
-                      PDF Preview
-                    </span>
-                  </div>
                   <div className="flex-1 bg-muted/10 flex items-center justify-center relative overflow-hidden">
                     {pdfUrl ? (
                       <div className="relative w-full h-full overflow-hidden">
@@ -1004,8 +1229,19 @@ const Example = () => {
                             theme: {
                               preference: "light",
                             },
-                            disabledCategories: ['document-open', 'document-close'],
+                            disabledCategories: [
+                              'document-open',
+                              'document-close',
+                              'page',
+                              'annotation',
+                              'redaction',
+                              'form',
+                              'tools',
+                              'insert'
+                            ],
+                            export: {}
                           }}
+                          onReady={handleRegistryReady}
                           style={{ position: 'absolute', inset: 0 }}
                         />
                       </div>
@@ -1021,17 +1257,16 @@ const Example = () => {
           </ResizablePanel>
 
           <ResizableHandle
-            withHandle
             onDoubleClick={handleTerminalDoubleClick}
             className={cn(
-              isTerminalCollapsed && "bg-muted/80 h-3 hover:bg-muted cursor-pointer hover:after:h-10 after:h-8"
+              isTerminalCollapsed && "cursor-pointer h-3"
             )}
           />
 
           <ResizablePanel
             panelRef={terminalPanelRef}
             collapsible
-            collapsedSize={2}
+            collapsedSize={0}
             defaultSize={25}
             minSize={10}
             onResize={(size) => {
@@ -1047,6 +1282,7 @@ const Example = () => {
             </Terminal>
           </ResizablePanel>
         </ResizablePanelGroup>
+      </div>
       </div>
     </div>
   );

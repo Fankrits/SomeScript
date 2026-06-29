@@ -129,3 +129,15 @@
     @apply font-sans;
   }
 }
+
+/* Hide View options/layout dropdown in PDF Viewer */
+[data-epdf-i*="view" i],
+[data-epdf-i*="layout" i],
+[data-epdf-i*="spread" i],
+[data-epdf-i*="rotate" i],
+[data-epdf-cat*="view" i],
+[data-epdf-cat*="layout" i],
+[data-epdf-cat*="spread" i],
+[data-epdf-cat*="rotate" i] {
+  display: none !important;
+}
