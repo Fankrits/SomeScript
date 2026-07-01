@@ -1,7 +1,6 @@
 import { getProjectPath, getProjectIdFromPath } from "@/lib/project";
 import { storage, FileNode } from "@/lib/storage";
 import { NextRequest } from "next/server";
-import path from "path";
 import { createHash } from "crypto";
 
 // Simple in-memory cache to track file content hashes per project
@@ -215,8 +214,9 @@ export async function POST(req: NextRequest) {
         },
       });
     }
-  } catch (error: any) {
-    return Response.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
+    return Response.json({ error: errMsg }, { status: 500 });
   }
 }
 

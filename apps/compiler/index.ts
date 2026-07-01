@@ -216,7 +216,7 @@ const server = Bun.serve({
           // Output Cache Verification (For remote/upload compilation)
           let cacheKey = "";
           if (projectId) {
-            cacheKey = projectHash || crypto.createHash("sha256").update(bodyText).digest("hex");
+            cacheKey = `${projectId}:${projectHash || crypto.createHash("sha256").update(bodyText).digest("hex")}`;
             const cached = compilationCache.get(cacheKey);
             if (cached) {
               console.log(`[Cache HIT] Serving cached PDF for project: ${projectId}`);
