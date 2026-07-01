@@ -1,26 +1,22 @@
-import { getProjectPath, setProjectPath } from "@/lib/project";
+import { getProjectPath, setProjectPath, getProjectIdFromPath } from "@/lib/project";
 import { storage } from "@/lib/storage";
 import { NextRequest } from "next/server";
 import path from "path";
 
-// Helper to extract the projectId from the active project path
-function getProjectIdFromPath(projectPath: string): string {
-  const parts = projectPath.split(path.sep);
-  const projectsIndex = parts.indexOf("projects");
-  if (projectsIndex !== -1 && projectsIndex < parts.length - 1) {
-    return parts[projectsIndex + 1];
-  }
-  return "default";
-}
 
 export async function GET(req: NextRequest) {
+  console.log("[FILES API] GET request received");
   try {
+    console.log("[FILES API] Fetching project path...");
     const projectPath = await getProjectPath();
     const projectId = getProjectIdFromPath(projectPath);
+    console.log("[FILES API] Project path:", projectPath, "Project ID:", projectId);
+    
     const { searchParams } = new URL(req.url);
     const filePath = searchParams.get("path");
 
     if (filePath) {
+      console.log("[FILES API] Reading file:", filePath);
       if (filePath.endsWith(".pdf")) {
         const buffer = await storage.readBinaryFile(projectId, filePath);
         return new Response(new Uint8Array(buffer), {
@@ -33,14 +29,18 @@ export async function GET(req: NextRequest) {
       }
 
       const content = await storage.readFile(projectId, filePath);
+      console.log("[FILES API] File content fetched successfully");
       return Response.json({ content });
     }
 
     // List file tree via our unified storage client
+    console.log("[FILES API] Listing project files from storage...");
     const tree = await storage.listProjectFiles(projectId);
+    console.log("[FILES API] Listing success. Tree nodes:", tree.length);
     const relativePath = path.relative(process.cwd(), projectPath) || ".";
     return Response.json({ tree, projectPath: relativePath });
   } catch (error: any) {
+    console.error("[FILES API] Error in GET:", error.message);
     return Response.json({ error: error.message }, { status: 500 });
   }
 }
@@ -105,6 +105,24 @@ Welcome to your new LaTeX project! Describe what you want the AI assistant to wr
       const projectId = getProjectIdFromPath(projectPath);
       
       await storage.writeFile(projectId, body.path, body.content);
+      return Response.json({ success: true });
+    }
+
+    // Move file or folder
+    if (body.action === "move") {
+      const projectPath = await getProjectPath();
+      const projectId = getProjectIdFromPath(projectPath);
+      
+      await storage.move(projectId, body.oldPath, body.newPath);
+      return Response.json({ success: true });
+    }
+
+    // Delete file or folder
+    if (body.action === "delete") {
+      const projectPath = await getProjectPath();
+      const projectId = getProjectIdFromPath(projectPath);
+      
+      await storage.delete(projectId, body.path);
       return Response.json({ success: true });
     }
 

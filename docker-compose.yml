@@ -11,21 +11,53 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
-  # Local S3-compatible Object Storage Bucket (MinIO)
-  # This fully mimics Railway Storage Buckets locally and provides a web dashboard!
-  minio:
-    image: minio/minio:latest
-    container_name: latex_editor_minio
-    environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+  # Local S3-compatible Object Storage Bucket (RustFS)
+  # This fully mimics Railway Storage Buckets locally with Apache 2.0 license and Rust performance!
+  rustfs:
+    image: rustfs/rustfs:latest
+    container_name: latex_editor_rustfs
     ports:
-      - "9000:9000" # MinIO API port (S3 client connects here)
-      - "9001:9001" # MinIO Console port (You can open this in your browser!)
+      - "9000:9000" # S3 API port
+      - "9001:9001" # Web Console/Dashboard
+    environment:
+      - RUSTFS_ACCESS_KEY=minioadmin
+      - RUSTFS_SECRET_KEY=minioadmin
+      - RUSTFS_CONSOLE_ENABLE=true
     volumes:
-      - minio_data:/data
-    command: server /data --console-address ":9001"
+      - rustfs_data:/data
+    command: /data
+
+  # Automatically creates required S3 buckets on startup
+  createbuckets:
+    image: amazon/aws-cli:latest
+    container_name: latex_editor_createbuckets
+    depends_on:
+      - rustfs
+    environment:
+      - AWS_ACCESS_KEY_ID=minioadmin
+      - AWS_SECRET_ACCESS_KEY=minioadmin
+      - AWS_DEFAULT_REGION=us-east-1
+    entrypoint: >
+      /bin/sh -c "
+        until aws --endpoint-url http://rustfs:9000 s3 ls; do
+          echo 'Waiting for RustFS...'; sleep 2;
+        done;
+        aws --endpoint-url http://rustfs:9000 s3 mb s3://latex-editor --region us-east-1 || true;
+        echo 'Bucket ready.';
+      "
+
+
+  compiler:
+    build:
+      context: ./apps/compiler
+      dockerfile: Dockerfile
+    container_name: latex_editor_compiler
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+
 
 volumes:
   postgres_data:
-  minio_data:
+  rustfs_data:

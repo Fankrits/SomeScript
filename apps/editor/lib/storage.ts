@@ -1,6 +1,6 @@
 import fs from "fs/promises";
 import path from "path";
-import { S3Client, GetObjectCommand, PutObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
+import { S3Client, GetObjectCommand, PutObjectCommand, ListObjectsV2Command, CopyObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 
 // Interface for File Nodes matching Editor's FileTree structures
 export interface FileNode {
@@ -16,6 +16,8 @@ export interface StorageProvider {
   writeFile(projectId: string, fileRelativePath: string, content: string | Buffer): Promise<void>;
   createDirectory(projectId: string, dirRelativePath: string): Promise<void>;
   listProjectFiles(projectId: string): Promise<FileNode[]>;
+  move(projectId: string, oldPath: string, newPath: string): Promise<void>;
+  delete(projectId: string, fileRelativePath: string): Promise<void>;
 }
 
 // -------------------------------------------------------------
@@ -27,7 +29,11 @@ class LocalStorageProvider implements StorageProvider {
     const baseDir = projectId === "default" || !projectId
       ? path.join(process.cwd(), "my-new-project")
       : path.join(process.cwd(), "projects", projectId);
-    return path.resolve(baseDir, fileRelativePath);
+    const resolved = path.resolve(baseDir, fileRelativePath);
+    if (!resolved.startsWith(baseDir)) {
+      throw new Error("Directory traversal attempt detected");
+    }
+    return resolved;
   }
 
   async readFile(projectId: string, fileRelativePath: string): Promise<string> {
@@ -53,6 +59,18 @@ class LocalStorageProvider implements StorageProvider {
   async createDirectory(projectId: string, dirRelativePath: string): Promise<void> {
     const fullPath = this.getLocalPath(projectId, dirRelativePath);
     await fs.mkdir(fullPath, { recursive: true });
+  }
+
+  async move(projectId: string, oldPath: string, newPath: string): Promise<void> {
+    const oldFullPath = this.getLocalPath(projectId, oldPath);
+    const newFullPath = this.getLocalPath(projectId, newPath);
+    await fs.mkdir(path.dirname(newFullPath), { recursive: true });
+    await fs.rename(oldFullPath, newFullPath);
+  }
+
+  async delete(projectId: string, fileRelativePath: string): Promise<void> {
+    const fullPath = this.getLocalPath(projectId, fileRelativePath);
+    await fs.rm(fullPath, { recursive: true, force: true });
   }
 
   async listProjectFiles(projectId: string): Promise<FileNode[]> {
@@ -127,7 +145,11 @@ class S3StorageProvider implements StorageProvider {
 
   private getS3Key(projectId: string, fileRelativePath: string): string {
     const cleanProj = projectId || "default";
-    return `projects/${cleanProj}/${fileRelativePath.replace(/^\//, "")}`;
+    const normalized = path.posix.normalize(fileRelativePath);
+    if (normalized.startsWith("../") || normalized === "..") {
+      throw new Error("Directory traversal attempt detected");
+    }
+    return `projects/${cleanProj}/${normalized.replace(/^\//, "")}`;
   }
 
   async readFile(projectId: string, fileRelativePath: string): Promise<string> {
@@ -182,6 +204,91 @@ class S3StorageProvider implements StorageProvider {
     );
   }
 
+  async move(projectId: string, oldPath: string, newPath: string): Promise<void> {
+    const oldPrefix = this.getS3Key(projectId, oldPath);
+    const newPrefix = this.getS3Key(projectId, newPath);
+
+    const listResponse = await this.client.send(
+      new ListObjectsV2Command({
+        Bucket: this.bucket,
+        Prefix: oldPrefix,
+      })
+    );
+
+    if (!listResponse.Contents || listResponse.Contents.length === 0) {
+      try {
+        await this.client.send(
+          new CopyObjectCommand({
+            Bucket: this.bucket,
+            CopySource: encodeURIComponent(`${this.bucket}/${oldPrefix}`),
+            Key: newPrefix,
+          })
+        );
+        await this.client.send(
+          new DeleteObjectCommand({
+            Bucket: this.bucket,
+            Key: oldPrefix,
+          })
+        );
+      } catch (error: any) {
+        console.error("Direct S3 move failed:", error.message);
+      }
+      return;
+    }
+
+    for (const object of listResponse.Contents) {
+      if (!object.Key) continue;
+      const relativePart = object.Key.substring(oldPrefix.length);
+      const destKey = newPrefix + relativePart;
+
+      await this.client.send(
+        new CopyObjectCommand({
+          Bucket: this.bucket,
+          CopySource: encodeURIComponent(`${this.bucket}/${object.Key}`),
+          Key: destKey,
+        })
+      );
+
+      await this.client.send(
+        new DeleteObjectCommand({
+          Bucket: this.bucket,
+          Key: object.Key,
+        })
+      );
+    }
+  }
+
+  async delete(projectId: string, fileRelativePath: string): Promise<void> {
+    const prefix = this.getS3Key(projectId, fileRelativePath);
+
+    const listResponse = await this.client.send(
+      new ListObjectsV2Command({
+        Bucket: this.bucket,
+        Prefix: prefix,
+      })
+    );
+
+    if (!listResponse.Contents || listResponse.Contents.length === 0) {
+      await this.client.send(
+        new DeleteObjectCommand({
+          Bucket: this.bucket,
+          Key: prefix,
+        })
+      );
+      return;
+    }
+
+    for (const object of listResponse.Contents) {
+      if (!object.Key) continue;
+      await this.client.send(
+        new DeleteObjectCommand({
+          Bucket: this.bucket,
+          Key: object.Key,
+        })
+      );
+    }
+  }
+
   async listProjectFiles(projectId: string): Promise<FileNode[]> {
     const prefix = `projects/${projectId || "default"}/`;
     const response = await this.client.send(
@@ -201,7 +308,7 @@ class S3StorageProvider implements StorageProvider {
       
       // Get path relative to the project folder prefix
       const relativePath = object.Key.substring(prefix.length);
-      if (!relativePath || relativePath === ".keep" || relativePath.endsWith("/.keep")) continue;
+      if (!relativePath || relativePath === ".keep") continue;
 
       const parts = relativePath.split("/");
       let currentPath = "";
@@ -232,6 +339,7 @@ class S3StorageProvider implements StorageProvider {
           }
         } else {
           // It's a file
+          if (part === ".keep") continue;
           const fileNode: FileNode = {
             name: part,
             path: currentPath,
@@ -264,9 +372,75 @@ class S3StorageProvider implements StorageProvider {
 }
 
 // -------------------------------------------------------------
+// 3. Hybrid / Fallback Storage Provider
+// -------------------------------------------------------------
+class HybridStorageProvider implements StorageProvider {
+  private s3: S3StorageProvider;
+  private local: LocalStorageProvider;
+  private useLocalFallback = false;
+
+  constructor() {
+    this.s3 = new S3StorageProvider();
+    this.local = new LocalStorageProvider();
+  }
+
+  private async execute<T>(projectId: string, operation: (provider: StorageProvider) => Promise<T>): Promise<T> {
+    if (this.useLocalFallback) {
+      return operation(this.local);
+    }
+    try {
+      return await operation(this.s3);
+    } catch (error: any) {
+      const isConnectionError = 
+        error.code === "ENOTFOUND" || 
+        error.code === "ECONNREFUSED" || 
+        error.message?.includes("fetch failed") || 
+        error.message?.includes("Network Error") || 
+        error.name === "ConnectTimeoutError";
+        
+      if (isConnectionError) {
+        console.warn("[STORAGE] S3 endpoint unreachable. Falling back to local storage.", error.message);
+        this.useLocalFallback = true;
+        return operation(this.local);
+      }
+      throw error;
+    }
+  }
+
+  async readFile(projectId: string, fileRelativePath: string): Promise<string> {
+    return this.execute(projectId, (p) => p.readFile(projectId, fileRelativePath));
+  }
+
+  async readBinaryFile(projectId: string, fileRelativePath: string): Promise<Buffer> {
+    return this.execute(projectId, (p) => p.readBinaryFile(projectId, fileRelativePath));
+  }
+
+  async writeFile(projectId: string, fileRelativePath: string, content: string | Buffer): Promise<void> {
+    return this.execute(projectId, (p) => p.writeFile(projectId, fileRelativePath, content));
+  }
+
+  async createDirectory(projectId: string, dirRelativePath: string): Promise<void> {
+    return this.execute(projectId, (p) => p.createDirectory(projectId, dirRelativePath));
+  }
+
+  async listProjectFiles(projectId: string): Promise<FileNode[]> {
+    return this.execute(projectId, (p) => p.listProjectFiles(projectId));
+  }
+
+  async move(projectId: string, oldPath: string, newPath: string): Promise<void> {
+    return this.execute(projectId, (p) => p.move(projectId, oldPath, newPath));
+  }
+
+  async delete(projectId: string, fileRelativePath: string): Promise<void> {
+    return this.execute(projectId, (p) => p.delete(projectId, fileRelativePath));
+  }
+}
+
+// -------------------------------------------------------------
 // Singleton Instance Selection based on environment variables
 // -------------------------------------------------------------
 export const storage: StorageProvider =
   process.env.STORAGE_PROVIDER === "s3"
-    ? new S3StorageProvider()
+    ? new HybridStorageProvider()
     : new LocalStorageProvider();
+

@@ -1,7 +1,8 @@
 import fs from "fs/promises";
 import path from "path";
+import os from "os";
 
-const CONFIG_PATH = path.join(/*turbopackIgnore: true*/ process.cwd(), "active-project.json");
+const CONFIG_PATH = path.join(os.tmpdir(), "somescript-active-project.json");
 
 export async function getProjectPath(): Promise<string> {
   try {
@@ -26,3 +27,13 @@ export async function setProjectPath(projectPath: string): Promise<string> {
   await fs.writeFile(CONFIG_PATH, JSON.stringify({ projectPath: resolved }, null, 2), "utf-8");
   return resolved;
 }
+
+export function getProjectIdFromPath(projectPath: string): string {
+  const parts = projectPath.split(path.sep);
+  const projectsIndex = parts.indexOf("projects");
+  if (projectsIndex !== -1 && projectsIndex < parts.length - 1) {
+    return parts[projectsIndex + 1];
+  }
+  return "default";
+}
+

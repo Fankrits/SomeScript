@@ -3,6 +3,7 @@ import { withEve } from "eve/next";
 import path from "path";
 
 const nextConfig: NextConfig = {
+  serverExternalPackages: ["@aws-sdk/client-s3"],
   turbopack: {
     root: path.resolve(__dirname, "../../"),
   },
