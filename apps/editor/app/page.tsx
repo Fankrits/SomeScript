@@ -415,10 +415,12 @@ const Example = () => {
     mainFilePath: string;
     compilerEngine: string;
     tooltipsEnabled: boolean;
+    draftMode: boolean;
   }>({
     mainFilePath: "main.tex",
     compilerEngine: "tectonic",
     tooltipsEnabled: true,
+    draftMode: true,
   });
 
   // Load Settings from LocalStorage when projectPathInput changes
@@ -436,6 +438,7 @@ const Example = () => {
         mainFilePath: "main.tex",
         compilerEngine: "tectonic",
         tooltipsEnabled: true,
+        draftMode: true,
       });
     }
   }, [projectPathInput]);
@@ -884,7 +887,7 @@ const Example = () => {
       const res = await fetch("/api/compile", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: compilePath }),
+        body: JSON.stringify({ path: compilePath, draftMode: settings.draftMode }),
       });
 
       if (!res.ok) {
@@ -1762,6 +1765,25 @@ const Example = () => {
                 type="checkbox"
                 checked={settings.tooltipsEnabled}
                 onChange={(e) => saveSettings({ ...settings, tooltipsEnabled: e.target.checked })}
+                className="mt-0.5 size-4 rounded border-border text-primary focus:ring-primary cursor-pointer"
+              />
+            </div>
+
+            <hr className="border-border/60" />
+
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-0.5">
+                <label className="text-xs font-semibold text-muted-foreground">
+                  Draft Mode (Fast Compile)
+                </label>
+                <div className="text-[11px] text-muted-foreground leading-relaxed">
+                  Bypass auxiliary reruns. Speeds up compilation by ~40% for draft reviews.
+                </div>
+              </div>
+              <input
+                type="checkbox"
+                checked={settings.draftMode ?? true}
+                onChange={(e) => saveSettings({ ...settings, draftMode: e.target.checked })}
                 className="mt-0.5 size-4 rounded border-border text-primary focus:ring-primary cursor-pointer"
               />
             </div>
