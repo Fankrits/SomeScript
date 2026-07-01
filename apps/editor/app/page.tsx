@@ -398,7 +398,6 @@ const Example = () => {
     useState<boolean>(false);
 
   // Chat state
-  const agent = useEveAgent();
   const [chatText, setChatText] = useState<string>("");
 
   // Tasks state
@@ -988,13 +987,57 @@ const Example = () => {
     refreshCurrentFile();
   }, [selectedPath, refreshCurrentFile]);
 
-  // Refresh workspace when agent finishes work (goes back to ready)
+  const stateRef = useRef({ selectedPath, editedCode, currentCode });
   useEffect(() => {
-    if (agent.status === "ready") {
+    stateRef.current = { selectedPath, editedCode, currentCode };
+  }, [selectedPath, editedCode, currentCode]);
+
+  // Listen for custom events to coordinate real-time saves and refreshes with the AI agent
+  useEffect(() => {
+    const handleForceSave = (e: Event) => {
+      const { selectedPath, editedCode, currentCode } = stateRef.current;
+      if (!selectedPath) return;
+
+      // If there are unsaved edits, save them immediately
+      if (editedCode !== currentCode) {
+        const customEvent = e as CustomEvent<{ promises: Promise<any>[] }>;
+        setSaveStatus("saving");
+        const savePromise = (async () => {
+          try {
+            const res = await fetch("/api/files", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ action: "save", path: selectedPath, content: editedCode }),
+            });
+            const data = await res.json();
+            if (data.success) {
+              setCurrentCode(editedCode);
+              setSaveStatus("saved");
+            } else {
+              setSaveStatus("unsaved");
+            }
+          } catch (err) {
+            console.error("Failed to force save file content", err);
+            setSaveStatus("unsaved");
+          }
+        })();
+        customEvent.detail.promises.push(savePromise);
+      }
+    };
+
+    const handleRefreshWorkspace = () => {
       refreshWorkspace();
       refreshCurrentFile();
-    }
-  }, [agent.status, refreshWorkspace, refreshCurrentFile]);
+    };
+
+    window.addEventListener("somescript:force-save", handleForceSave);
+    window.addEventListener("somescript:refresh-workspace", handleRefreshWorkspace);
+
+    return () => {
+      window.removeEventListener("somescript:force-save", handleForceSave);
+      window.removeEventListener("somescript:refresh-workspace", handleRefreshWorkspace);
+    };
+  }, [refreshWorkspace, refreshCurrentFile]);
 
   // Stream terminal output line by line
   const streamTerminal = useCallback(async () => {
@@ -1029,17 +1072,7 @@ const Example = () => {
     []
   );
 
-  // Handle chat submit
-  const handleSubmit = useCallback(
-    (message: PromptInputMessage) => {
-      if (!message.text.trim()) {
-        return;
-      }
-      setChatText("");
-      void agent.send({ message: message.text });
-    },
-    [agent]
-  );
+
 
   const [dashboardUrl, setDashboardUrl] = useState<string>("/dashboard");
   const [projectName, setProjectName] = useState<string>("my-new-project");
