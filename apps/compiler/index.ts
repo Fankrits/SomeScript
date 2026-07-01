@@ -2,20 +2,38 @@ import { spawn } from "child_process";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
+import { Bun } from "bun";
+import crypto from "crypto";
 
 const PORT = process.env.PORT || 3001;
+
+// Compilation PDF Output Cache (In-Memory)
+interface CacheEntry {
+  pdf: string; // base64 string
+  logs: string;
+  createdAt: number;
+}
+const compilationCache = new Map<string, CacheEntry>();
+
+// Cleanup compilation cache entries older than 1 hour (runs every 10 min)
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, value] of compilationCache.entries()) {
+    if (now - value.createdAt > 3600000) {
+      compilationCache.delete(key);
+    }
+  }
+}, 600000);
 
 // Helper to safely write uploaded files to a directory
 async function writeFiles(baseDir: string, files: { path: string; content: string }[]) {
   for (const file of files) {
     const filePath = path.join(baseDir, file.path);
-    // Security check: ensure path is within the baseDir
     const resolvedPath = path.resolve(filePath);
     if (!resolvedPath.startsWith(path.resolve(baseDir))) {
       throw new Error(`Invalid file path: ${file.path}`);
     }
     await fs.mkdir(path.dirname(resolvedPath), { recursive: true });
-    // Check if content is base64 or plain text
     if (file.content.startsWith("data:") || file.path.endsWith(".pdf") || file.path.endsWith(".png") || file.path.endsWith(".jpg")) {
       const base64Data = file.content.split(";base64,").pop() || file.content;
       await fs.writeFile(resolvedPath, Buffer.from(base64Data, "base64"));
@@ -25,21 +43,56 @@ async function writeFiles(baseDir: string, files: { path: string; content: strin
   }
 }
 
+// Cleanup workspaces stale for more than 24 hours
+async function cleanupStaleWorkspaces() {
+  const workspacesDir = path.resolve(process.cwd(), "workspaces");
+  try {
+    await fs.mkdir(workspacesDir, { recursive: true });
+    const dirs = await fs.readdir(workspacesDir);
+    const now = Date.now();
+    for (const dirName of dirs) {
+      const dirPath = path.join(workspacesDir, dirName);
+      const stat = await fs.stat(dirPath);
+      if (now - stat.mtimeMs > 86400000) { // 24 hours
+        await fs.rm(dirPath, { recursive: true, force: true });
+        console.log(`[GC] Cleaned up stale workspace: ${dirName}`);
+      }
+    }
+  } catch (e) {
+    console.error("[GC] Error cleaning up workspaces", e);
+  }
+}
+setInterval(cleanupStaleWorkspaces, 3600000); // run hourly
+
 const server = Bun.serve({
   port: PORT,
   async fetch(req) {
     const url = new URL(req.url);
 
-    // Health check
     if (url.pathname === "/health") {
       return new Response("OK", { status: 200 });
     }
 
-    // Compile endpoint
     if (url.pathname === "/compile" && req.method === "POST") {
       try {
-        const body = await req.json();
-        const { mode, localProjectPath, fileRelativePath, files } = body;
+        const bodyText = await req.text();
+        const body = JSON.parse(bodyText);
+        const { mode, localProjectPath, fileRelativePath, files, deletedFiles, projectId, syncType, draft } = body;
+
+        // 1. Output Cache Verification (For remote/upload compilation)
+        let payloadHash = "";
+        if (mode === "upload" && projectId) {
+          payloadHash = crypto.createHash("sha256").update(bodyText).digest("hex");
+          const cached = compilationCache.get(payloadHash);
+          if (cached) {
+            console.log(`[Cache HIT] Serving cached PDF for project: ${projectId}`);
+            return Response.json({
+              success: true,
+              logs: cached.logs + `\n[CACHE HIT] Loaded compiled PDF from memory\n`,
+              pdf: cached.pdf,
+            });
+          }
+        }
 
         if (mode === "local") {
           if (!localProjectPath || !fileRelativePath) {
@@ -51,35 +104,65 @@ const server = Bun.serve({
             return Response.json({ error: "Access denied" }, { status: 403 });
           }
 
-          // Create standard text encoder/decoder stream
           const { readable, writable } = new TransformStream();
           const writer = writable.getWriter();
           const encoder = new TextEncoder();
 
-          const child = spawn("tectonic", [resolvedTexPath], { cwd: localProjectPath });
+          const runTectonic = (args: string[]) => {
+            return new Promise<number>((resolve) => {
+              const child = spawn("tectonic", args, { cwd: localProjectPath });
 
-          child.stdout.on("data", (data) => {
-            writer.write(encoder.encode(data.toString()));
-          });
+              child.stdout.on("data", (data) => {
+                writer.write(encoder.encode(data.toString()));
+              });
 
-          child.stderr.on("data", (data) => {
-            writer.write(encoder.encode(data.toString()));
-          });
+              child.stderr.on("data", (data) => {
+                writer.write(encoder.encode(data.toString()));
+              });
 
-          child.on("close", (code) => {
-            if (code === 0) {
-              const relativePdfPath = fileRelativePath.replace(/\.tex$/, ".pdf");
-              writer.write(encoder.encode(`\n[SUCCESS] ${relativePdfPath}\n`));
-            } else {
-              writer.write(encoder.encode(`\n[ERROR] Tectonic exited with code ${code}\n`));
+              child.on("close", (code) => {
+                resolve(code ?? -1);
+              });
+
+              child.on("error", (err) => {
+                writer.write(encoder.encode(`\n[ERROR] Failed to start Tectonic: ${err.message}\n`));
+                resolve(-1);
+              });
+            });
+          };
+
+          (async () => {
+            try {
+              // Compile flags
+              const flags = ["-C"];
+              if (draft) {
+                flags.push("-r", "0");
+              }
+              flags.push(resolvedTexPath);
+
+              let code = await runTectonic(flags);
+              if (code !== 0) {
+                writer.write(encoder.encode(`\n[INFO] Cached compilation failed. Retrying with remote package fetching...\n`));
+                const fallbackFlags = [];
+                if (draft) {
+                  fallbackFlags.push("-r", "0");
+                }
+                fallbackFlags.push(resolvedTexPath);
+                code = await runTectonic(fallbackFlags);
+              }
+
+              if (code === 0) {
+                const relativePdfPath = fileRelativePath.replace(/\.tex$/, ".pdf");
+                writer.write(encoder.encode(`\n[SUCCESS] ${relativePdfPath}\n`));
+              } else {
+                writer.write(encoder.encode(`\n[ERROR] Tectonic exited with code ${code}\n`));
+              }
+            } catch (err: any) {
+              writer.write(encoder.encode(`\n[ERROR] Compilation process error: ${err.message}\n`));
+            } finally {
+              writer.close();
             }
-            writer.close();
-          });
-
-          child.on("error", (err) => {
-            writer.write(encoder.encode(`\n[ERROR] Failed to start Tectonic: ${err.message}\n`));
-            writer.close();
-          });
+          })();
 
           return new Response(readable, {
             headers: {
@@ -91,59 +174,115 @@ const server = Bun.serve({
         } 
         
         if (mode === "upload") {
-          if (!files || !Array.isArray(files) || !fileRelativePath) {
-            return Response.json({ error: "Missing files array or fileRelativePath for upload mode" }, { status: 400 });
+          if (!projectId || !fileRelativePath) {
+            return Response.json({ error: "Missing projectId or fileRelativePath for upload mode" }, { status: 400 });
           }
 
-          // Create a temp directory for compilation
-          const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "tectonic-compile-"));
-          
+          const workspacesDir = path.resolve(process.cwd(), "workspaces");
+          const projectDir = path.join(workspacesDir, projectId);
+
+          // Verify workspace directory exists if doing differential sync
+          let isWorkspaceMissing = false;
           try {
-            await writeFiles(tempDir, files);
-            const resolvedTexPath = path.resolve(tempDir, fileRelativePath);
+            await fs.access(projectDir);
+          } catch {
+            isWorkspaceMissing = true;
+          }
 
-            let logs = "";
-            const child = spawn("tectonic", [resolvedTexPath], { cwd: tempDir });
+          if (syncType === "differential" && isWorkspaceMissing) {
+            // Signal back that full sync is required
+            return Response.json({ requireFullSync: true }, { status: 409 });
+          }
 
-            child.stdout.on("data", (data) => {
-              logs += data.toString();
-            });
+          // Create workspace if missing
+          await fs.mkdir(projectDir, { recursive: true });
 
-            child.stderr.on("data", (data) => {
-              logs += data.toString();
-            });
-
-            const code = await new Promise<number | null>((resolve) => {
-              child.on("close", resolve);
-              child.on("error", () => resolve(-1));
-            });
-
-            if (code === 0) {
-              const pdfRelativePath = fileRelativePath.replace(/\.tex$/, ".pdf");
-              const pdfAbsolutePath = path.resolve(tempDir, pdfRelativePath);
-              const pdfBuffer = await fs.readFile(pdfAbsolutePath);
-              const pdfBase64 = pdfBuffer.toString("base64");
-
-              return Response.json({
-                success: true,
-                logs: logs + `\n[SUCCESS] ${pdfRelativePath}\n`,
-                pdf: pdfBase64,
-              });
-            } else {
-              return Response.json({
-                success: false,
-                logs: logs + `\n[ERROR] Tectonic exited with code ${code}\n`,
-              }, { status: 422 });
-            }
-          } finally {
-            // Clean up temp directory after response is constructed/sent
-            setTimeout(async () => {
-              try {
-                await fs.rm(tempDir, { recursive: true, force: true });
-              } catch (err) {
-                console.error("Failed to clean up temp dir:", tempDir, err);
+          // Apply deletions
+          if (deletedFiles && Array.isArray(deletedFiles)) {
+            for (const relPath of deletedFiles) {
+              const target = path.join(projectDir, relPath);
+              if (target.startsWith(projectDir)) {
+                await fs.rm(target, { recursive: true, force: true });
               }
-            }, 5000);
+            }
+          }
+
+          // Write modified files
+          if (files && Array.isArray(files)) {
+            await writeFiles(projectDir, files);
+          }
+
+          const resolvedTexPath = path.resolve(projectDir, fileRelativePath);
+          let logs = "";
+
+          const runTectonicUpload = (args: string[]) => {
+            return new Promise<number>((resolve) => {
+              const child = spawn("tectonic", args, { cwd: projectDir });
+
+              child.stdout.on("data", (data) => {
+                logs += data.toString();
+              });
+
+              child.stderr.on("data", (data) => {
+                logs += data.toString();
+              });
+
+              child.on("close", (code) => {
+                resolve(code ?? -1);
+              });
+
+              child.on("error", (err) => {
+                logs += `\n[ERROR] Failed to start Tectonic: ${err.message}\n`;
+                resolve(-1);
+              });
+            });
+          };
+
+          // Compile flags
+          const flags = ["-C"];
+          if (draft) {
+            flags.push("-r", "0");
+          }
+          flags.push(resolvedTexPath);
+
+          let code = await runTectonicUpload(flags);
+          if (code !== 0) {
+            logs += `\n[INFO] Cached compilation failed or package missing. Retrying with remote package fetching...\n`;
+            const fallbackFlags = [];
+            if (draft) {
+              fallbackFlags.push("-r", "0");
+            }
+            fallbackFlags.push(resolvedTexPath);
+            code = await runTectonicUpload(fallbackFlags);
+          }
+
+          if (code === 0) {
+            const pdfRelativePath = fileRelativePath.replace(/\.tex$/, ".pdf");
+            const pdfAbsolutePath = path.resolve(projectDir, pdfRelativePath);
+            const pdfBuffer = await fs.readFile(pdfAbsolutePath);
+            const pdfBase64 = pdfBuffer.toString("base64");
+
+            const responseObj = {
+              success: true,
+              logs: logs + `\n[SUCCESS] ${pdfRelativePath}\n`,
+              pdf: pdfBase64,
+            };
+
+            // Cache the successful compilation
+            if (payloadHash) {
+              compilationCache.set(payloadHash, {
+                pdf: pdfBase64,
+                logs: logs,
+                createdAt: Date.now(),
+              });
+            }
+
+            return Response.json(responseObj);
+          } else {
+            return Response.json({
+              success: false,
+              logs: logs + `\n[ERROR] Tectonic exited with code ${code}\n`,
+            }, { status: 422 });
           }
         }
 
