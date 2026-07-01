@@ -198,8 +198,14 @@ export async function POST(req: NextRequest) {
       for (const key of pendingCacheDeletions) {
         uploadedFilesCache.delete(key);
       }
-      for (const [key, hash] of pendingCacheUpdates.entries()) {
-        uploadedFilesCache.set(key, hash);
+      for (const [cacheKey, contentHash] of pendingCacheUpdates.entries()) {
+        if (uploadedFilesCache.size >= 1000 && !uploadedFilesCache.has(cacheKey)) {
+          const oldestKey = uploadedFilesCache.keys().next().value;
+          if (oldestKey !== undefined) {
+            uploadedFilesCache.delete(oldestKey);
+          }
+        }
+        uploadedFilesCache.set(cacheKey, contentHash);
       }
 
       const result = await response.json();

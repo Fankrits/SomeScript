@@ -206,7 +206,7 @@ const server = Bun.serve({
             for (const relPath of deletedFiles) {
               const target = path.resolve(projectDir, relPath);
               const relative = path.relative(projectDir, target);
-              if (relative.startsWith("..") || path.isAbsolute(relative)) {
+              if (relative.startsWith("..") || path.isAbsolute(relative) || !relative || relative === ".") {
                 throw new Error(`Invalid file path: ${relPath}`);
               }
               await fs.rm(target, { recursive: true, force: true });
@@ -295,7 +295,7 @@ const server = Bun.serve({
 
             // Cache the successful compilation
             if (cacheKey) {
-              if (compilationCache.size >= 100) {
+              if (compilationCache.size >= 100 && !compilationCache.has(cacheKey)) {
                 const oldestKey = compilationCache.keys().next().value;
                 if (oldestKey !== undefined) {
                   compilationCache.delete(oldestKey);
