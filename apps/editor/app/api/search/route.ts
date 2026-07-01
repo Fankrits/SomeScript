@@ -83,6 +83,9 @@ export async function GET(req: NextRequest) {
                       text: lineText,
                       matchIndex: match.index,
                     });
+                    if (match[0].length === 0) {
+                      re.lastIndex++;
+                    }
                     match = re.exec(lineText);
                   }
                 } catch {
