@@ -692,12 +692,7 @@ const Example = () => {
         return false;
       };
       if (findPdf(fileTree)) {
-        fetch(`${window.location.origin}/api/files?path=${encodeURIComponent(pdfPath)}`)
-          .then((r) => r.blob())
-          .then((blob) => {
-            setPdfUrl(URL.createObjectURL(blob));
-          })
-          .catch(() => setPdfUrl(null));
+        setPdfUrl(`${window.location.origin}/api/files?path=${encodeURIComponent(pdfPath)}&t=${Date.now()}`);
       } else {
         setPdfUrl(null);
       }
@@ -930,16 +925,7 @@ const Example = () => {
           const match = logBuffer.match(/\[SUCCESS\]\s+(.*)/);
           if (match && match[1]) {
             const pdfPath = match[1].trim();
-            fetch(`${window.location.origin}/api/files?path=${encodeURIComponent(pdfPath)}`)
-              .then((r) => r.blob())
-              .then((blob) => {
-                const blobUrl = URL.createObjectURL(blob);
-                setPdfUrl(blobUrl);
-              })
-              .catch((err) => {
-                console.error("Error loading PDF blob", err);
-                setPdfUrl(`${window.location.origin}/api/files?path=${encodeURIComponent(pdfPath)}&t=${Date.now()}`);
-              });
+            setPdfUrl(`${window.location.origin}/api/files?path=${encodeURIComponent(pdfPath)}&t=${Date.now()}`);
           }
         }
       }
