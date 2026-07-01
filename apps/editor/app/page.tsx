@@ -1775,7 +1775,7 @@ const Example = () => {
                         value={editedCode}
                         height="100%"
                         theme="dark"
-                        extensions={currentLanguage === "latex" ? [latex()] : []}
+                        extensions={currentLanguage === "latex" ? [latex(), EditorView.lineWrapping] : [EditorView.lineWrapping]}
                         onChange={(value) => setEditedCode(value)}
                         onCreateEditor={(view) => {
                           editorViewRef.current = view;
