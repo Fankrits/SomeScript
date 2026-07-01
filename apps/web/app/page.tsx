@@ -22,7 +22,7 @@ export default function Home() {
           <Link href="/dashboard" className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors">
             Dashboard
           </Link>
-          <Button asChild size="sm" className="bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-xl transition-all shadow-md shadow-primary/10">
+          <Button asChild size="sm" className="bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-md transition-all shadow-md shadow-primary/10">
             <Link href="/dashboard">
               Get Started <ArrowRight className="ml-1.5 h-4 w-4" />
             </Link>
@@ -55,12 +55,12 @@ export default function Home() {
 
           {/* CTAs */}
           <div className="flex flex-col sm:flex-row items-center gap-4 w-full justify-center mt-4">
-            <Button asChild size="lg" className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-primary-foreground px-8 py-6 rounded-2xl text-base shadow-lg shadow-primary/15 transition-all font-semibold">
+            <Button asChild size="lg" className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-primary-foreground px-8 py-6 rounded-lg text-base shadow-lg shadow-primary/15 transition-all font-semibold">
               <Link href="/dashboard">
                 Start Writing Free <ChevronRight className="ml-1.5 h-5 w-5" />
               </Link>
             </Button>
-            <Button asChild variant="outline" size="lg" className="w-full sm:w-auto border-border hover:bg-secondary/40 bg-card text-foreground px-8 py-6 rounded-2xl text-base font-semibold">
+            <Button asChild variant="outline" size="lg" className="w-full sm:w-auto border-border hover:bg-secondary/40 bg-card text-foreground px-8 py-6 rounded-lg text-base font-semibold">
               <Link href="/dashboard">
                 Sign In
               </Link>
@@ -70,8 +70,8 @@ export default function Home() {
 
         {/* Feature Grid / Visual Mockup */}
         <section className="mt-20 lg:mt-32 max-w-5xl w-full grid grid-cols-1 md:grid-cols-3 gap-6 relative">
-          <div className="p-6 rounded-2xl border border-border bg-card/60 backdrop-blur-sm flex flex-col gap-4 shadow-sm">
-            <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+          <div className="p-6 rounded-xl border border-border bg-card/60 backdrop-blur-sm flex flex-col gap-4 shadow-sm">
+            <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
               <Code className="h-5 w-5" />
             </div>
             <h3 className="font-semibold text-lg text-foreground">AI Generation</h3>
@@ -80,8 +80,8 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="p-6 rounded-2xl border border-border bg-card/60 backdrop-blur-sm flex flex-col gap-4 shadow-sm">
-            <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+          <div className="p-6 rounded-xl border border-border bg-card/60 backdrop-blur-sm flex flex-col gap-4 shadow-sm">
+            <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
               <FileText className="h-5 w-5" />
             </div>
             <h3 className="font-semibold text-lg text-foreground">Tectonic Compilation</h3>
@@ -90,8 +90,8 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="p-6 rounded-2xl border border-border bg-card/60 backdrop-blur-sm flex flex-col gap-4 shadow-sm">
-            <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+          <div className="p-6 rounded-xl border border-border bg-card/60 backdrop-blur-sm flex flex-col gap-4 shadow-sm">
+            <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
               <CheckCircle2 className="h-5 w-5" />
             </div>
             <h3 className="font-semibold text-lg text-foreground">Workspace Isolation</h3>
