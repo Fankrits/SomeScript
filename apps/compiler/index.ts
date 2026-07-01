@@ -1,7 +1,6 @@
 import { spawn } from "child_process";
 import fs from "fs/promises";
 import path from "path";
-import os from "os";
 import { Bun } from "bun";
 import crypto from "crypto";
 
@@ -68,6 +67,7 @@ async function cleanupStaleWorkspaces() {
   }
 }
 setInterval(cleanupStaleWorkspaces, 3600000); // run hourly
+cleanupStaleWorkspaces();
 
 const server = Bun.serve({
   port: PORT,
@@ -83,21 +83,6 @@ const server = Bun.serve({
         const bodyText = await req.text();
         const body = JSON.parse(bodyText);
         const { mode, localProjectPath, fileRelativePath, files, deletedFiles, projectId, syncType, draft, projectHash } = body;
-
-        // 1. Output Cache Verification (For remote/upload compilation)
-        let cacheKey = "";
-        if (mode === "upload" && projectId) {
-          cacheKey = projectHash || crypto.createHash("sha256").update(bodyText).digest("hex");
-          const cached = compilationCache.get(cacheKey);
-          if (cached) {
-            console.log(`[Cache HIT] Serving cached PDF for project: ${projectId}`);
-            return Response.json({
-              success: true,
-              logs: cached.logs + `\n[CACHE HIT] Loaded compiled PDF from memory\n`,
-              pdf: cached.pdf,
-            });
-          }
-        }
 
         if (mode === "local") {
           if (!localProjectPath || !fileRelativePath) {
@@ -201,6 +186,9 @@ const server = Bun.serve({
           }
 
           // Create workspace if missing
+          if (syncType === "full") {
+            await fs.rm(projectDir, { recursive: true, force: true });
+          }
           await fs.mkdir(projectDir, { recursive: true });
 
           try {
@@ -223,6 +211,21 @@ const server = Bun.serve({
           // Write modified files
           if (files && Array.isArray(files)) {
             await writeFiles(projectDir, files);
+          }
+
+          // Output Cache Verification (For remote/upload compilation)
+          let cacheKey = "";
+          if (projectId) {
+            cacheKey = projectHash || crypto.createHash("sha256").update(bodyText).digest("hex");
+            const cached = compilationCache.get(cacheKey);
+            if (cached) {
+              console.log(`[Cache HIT] Serving cached PDF for project: ${projectId}`);
+              return Response.json({
+                success: true,
+                logs: cached.logs + `\n[CACHE HIT] Loaded compiled PDF from memory\n`,
+                pdf: cached.pdf,
+              });
+            }
           }
 
           const resolvedTexPath = path.resolve(projectDir, fileRelativePath);
