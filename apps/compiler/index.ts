@@ -172,6 +172,11 @@ const server = Bun.serve({
           const workspacesDir = path.resolve(process.cwd(), "workspaces");
           const projectDir = path.join(workspacesDir, projectId);
 
+          const relativeDir = path.relative(workspacesDir, projectDir);
+          if (relativeDir.startsWith("..") || path.isAbsolute(relativeDir)) {
+            return Response.json({ error: "Access denied" }, { status: 403 });
+          }
+
           // Verify workspace directory exists if doing differential sync
           let isWorkspaceMissing = false;
           try {

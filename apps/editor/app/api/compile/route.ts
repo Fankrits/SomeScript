@@ -50,6 +50,7 @@ async function getAllStorageFiles(projectId: string, nodes: FileNode[]): Promise
 export async function POST(req: NextRequest) {
   try {
     const { path: fileRelativePath, draftMode } = await req.json();
+    const isDraft = draftMode ?? true;
     if (!fileRelativePath) {
       return Response.json({ error: "Path parameter is required" }, { status: 400 });
     }
@@ -78,7 +79,7 @@ export async function POST(req: NextRequest) {
           mode: "local",
           localProjectPath: projectPath,
           fileRelativePath,
-          draft: draftMode ?? true,
+          draft: isDraft,
         }),
       });
 
@@ -102,7 +103,7 @@ export async function POST(req: NextRequest) {
       const sortedFiles = [...allFiles].sort((a, b) => a.path.localeCompare(b.path));
       const projectHash = createHash("sha256")
         .update(JSON.stringify(sortedFiles.map(f => ({ path: f.path, content: f.content }))))
-        .update(draftMode ? "draft" : "final")
+        .update(isDraft ? "draft" : "final")
         .update(fileRelativePath)
         .digest("hex");
 
@@ -144,7 +145,7 @@ export async function POST(req: NextRequest) {
         mode: "upload",
         projectId,
         fileRelativePath,
-        draft: draftMode ?? true,
+        draft: isDraft,
         syncType,
         files: syncType === "full" ? allFiles : changedFiles,
         deletedFiles,
@@ -178,7 +179,7 @@ export async function POST(req: NextRequest) {
               mode: "upload",
               projectId,
               fileRelativePath,
-              draft: draftMode ?? true,
+              draft: isDraft,
               syncType: "full",
               files: allFiles,
               deletedFiles: [],
