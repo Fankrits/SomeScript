@@ -104,6 +104,9 @@ export async function POST(req: NextRequest) {
       const changedFiles: DifferentialFile[] = [];
       const currentProjectKeys = new Set<string>();
 
+      let pendingCacheUpdates = new Map<string, string>();
+      let pendingCacheDeletions = new Set<string>();
+
       for (const file of allFiles) {
         const cacheKey = `${projectId}:${file.path}`;
         currentProjectKeys.add(cacheKey);
@@ -113,7 +116,7 @@ export async function POST(req: NextRequest) {
 
         if (cachedHash !== contentHash) {
           changedFiles.push(file);
-          uploadedFilesCache.set(cacheKey, contentHash);
+          pendingCacheUpdates.set(cacheKey, contentHash);
         }
       }
 
@@ -123,14 +126,13 @@ export async function POST(req: NextRequest) {
         if (cacheKey.startsWith(`${projectId}:`) && !currentProjectKeys.has(cacheKey)) {
           const filePath = cacheKey.substring(projectId.length + 1);
           deletedFiles.push(filePath);
-          uploadedFilesCache.delete(cacheKey);
+          pendingCacheDeletions.add(cacheKey);
         }
       }
 
       // Determine if we need full or differential sync
       // If cache was completely empty for this project, force a full sync
-      const projectCacheKeys = Array.from(uploadedFilesCache.keys()).filter(k => k.startsWith(`${projectId}:`));
-      const syncType = projectCacheKeys.length === changedFiles.length ? "full" : "differential";
+      const syncType = currentProjectKeys.size === changedFiles.length ? "full" : "differential";
 
       const compilePayload = {
         mode: "upload",
@@ -150,13 +152,16 @@ export async function POST(req: NextRequest) {
 
       // Handle full sync retry if compiler says workspace was missing/cleared
       if (response.status === 409) {
-        const errData = await response.json().catch(() => ({}));
+        const responseClone = response.clone();
+        const errData = await responseClone.json().catch(() => ({}));
         if (errData.requireFullSync) {
           // Clear cache and retry with a full upload
-          projectCacheKeys.forEach(k => uploadedFilesCache.delete(k));
+          const projectCacheKeys = Array.from(uploadedFilesCache.keys()).filter(k => k.startsWith(`${projectId}:`));
+          pendingCacheDeletions = new Set(projectCacheKeys);
+          pendingCacheUpdates = new Map();
           allFiles.forEach(file => {
             const hash = createHash("sha256").update(file.content).digest("hex");
-            uploadedFilesCache.set(`${projectId}:${file.path}`, hash);
+            pendingCacheUpdates.set(`${projectId}:${file.path}`, hash);
           });
 
           response = await fetch(`${compilerUrl}/compile`, {
@@ -178,6 +183,14 @@ export async function POST(req: NextRequest) {
       if (!response.ok) {
         const errData = await response.json().catch(() => ({ logs: "Failed to parse error response" }));
         return Response.json({ error: errData.logs || "Compiler service error" }, { status: response.status });
+      }
+
+      // Commit the pending updates and deletions to the global cache on success
+      for (const key of pendingCacheDeletions) {
+        uploadedFilesCache.delete(key);
+      }
+      for (const [key, hash] of pendingCacheUpdates.entries()) {
+        uploadedFilesCache.set(key, hash);
       }
 
       const result = await response.json();
