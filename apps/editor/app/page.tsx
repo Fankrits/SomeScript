@@ -429,7 +429,13 @@ const Example = () => {
     const stored = localStorage.getItem(`somescript-settings-${projectPathInput}`);
     if (stored) {
       try {
-        setSettings(JSON.parse(stored));
+        const parsed = JSON.parse(stored);
+        setSettings({
+          mainFilePath: parsed.mainFilePath ?? "main.tex",
+          compilerEngine: parsed.compilerEngine ?? "tectonic",
+          tooltipsEnabled: parsed.tooltipsEnabled ?? (typeof parsed.tooltipsEnabled === "boolean" ? parsed.tooltipsEnabled : true),
+          draftMode: parsed.draftMode ?? true,
+        });
       } catch (e) {
         console.error("Failed to parse settings", e);
       }
