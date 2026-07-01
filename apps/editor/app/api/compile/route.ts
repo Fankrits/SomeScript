@@ -1,17 +1,8 @@
-import { getProjectPath } from "@/lib/project";
+import { getProjectPath, getProjectIdFromPath } from "@/lib/project";
 import { storage, FileNode } from "@/lib/storage";
 import { NextRequest } from "next/server";
 import path from "path";
 
-// Helper to extract the projectId from the active project path
-function getProjectIdFromPath(projectPath: string): string {
-  const parts = projectPath.split(path.sep);
-  const projectsIndex = parts.indexOf("projects");
-  if (projectsIndex !== -1 && projectsIndex < parts.length - 1) {
-    return parts[projectsIndex + 1];
-  }
-  return "default";
-}
 
 // Recursively gather all project files via the unified storage provider
 async function getAllStorageFiles(projectId: string, nodes: FileNode[]): Promise<{ path: string; content: string }[]> {
@@ -64,12 +55,15 @@ export async function POST(req: NextRequest) {
     }
 
     const compilerUrl = process.env.COMPILER_URL || "http://127.0.0.1:3001";
-    const isLocalCompiler =
+    const defaultMode =
       compilerUrl.includes("localhost") ||
       compilerUrl.includes("127.0.0.1") ||
-      compilerUrl.includes("0.0.0.0");
+      compilerUrl.includes("0.0.0.0")
+        ? "local"
+        : "upload";
+    const compilerMode = process.env.COMPILER_MODE || defaultMode;
 
-    if (isLocalCompiler) {
+    if (compilerMode === "local") {
       // Local mode: Compile using local filesystem path passed directly to compiler
       const response = await fetch(`${compilerUrl}/compile`, {
         method: "POST",
