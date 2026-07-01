@@ -43,7 +43,7 @@ export default async function DashboardPage() {
             <span className="text-muted-foreground text-[10px] uppercase font-bold tracking-wider px-1">
               Active Workspace
             </span>
-            <div className="rounded-xl border border-sidebar-border bg-card p-1 flex items-center justify-between shadow-sm">
+            <div className="rounded-lg border border-sidebar-border bg-card p-1 flex items-center justify-between shadow-sm">
               <OrganizationSwitcher
                 hidePersonal={false}
                 afterCreateOrganizationUrl="/dashboard"
@@ -68,7 +68,7 @@ export default async function DashboardPage() {
             </span>
             <Link
               href="/dashboard"
-              className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all bg-primary/10 text-primary border border-primary/10"
+              className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all bg-primary/10 text-primary border border-primary/10"
             >
               <Folder className="h-4 w-4" />
               Projects
@@ -108,8 +108,8 @@ export default async function DashboardPage() {
         <div className="flex-1 overflow-y-auto p-8 z-10">
           {workspaceProjects.length === 0 ? (
             /* Empty State */
-            <div className="h-[400px] rounded-2xl border border-dashed border-border bg-card/40 flex flex-col items-center justify-center text-center p-8 max-w-2xl mx-auto mt-12 shadow-sm">
-              <div className="h-12 w-12 rounded-2xl bg-secondary/60 border border-border flex items-center justify-center text-primary mb-4">
+            <div className="h-[400px] rounded-xl border border-dashed border-border bg-card/40 flex flex-col items-center justify-center text-center p-8 max-w-2xl mx-auto mt-12 shadow-sm">
+              <div className="h-12 w-12 rounded-lg bg-secondary/60 border border-border flex items-center justify-center text-primary mb-4">
                 <FileText className="h-6 w-6" />
               </div>
               <h3 className="text-lg font-semibold text-foreground">No projects yet</h3>
@@ -120,7 +120,7 @@ export default async function DashboardPage() {
             </div>
           ) : (
             /* Projects Table */
-            <div className="border border-border rounded-2xl bg-card overflow-hidden shadow-sm">
+            <div className="border border-border rounded-xl bg-card overflow-hidden shadow-sm">
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="border-b border-border bg-secondary/30 text-muted-foreground text-xs font-semibold uppercase tracking-wider">

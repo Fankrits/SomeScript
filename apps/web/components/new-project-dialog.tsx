@@ -29,11 +29,11 @@ export function NewProjectDialog() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button className="bg-primary hover:bg-primary/95 text-primary-foreground font-medium gap-1.5 rounded-xl shadow-md shadow-primary/10">
+        <Button className="bg-primary hover:bg-primary/95 text-primary-foreground font-medium gap-1.5 rounded-md shadow-md shadow-primary/10">
           <Plus className="h-4 w-4" /> New Project
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[425px] bg-card border-border text-foreground rounded-2xl shadow-lg">
+      <DialogContent className="sm:max-w-[425px] bg-card border-border text-foreground rounded-xl shadow-lg">
         <DialogHeader>
           <DialogTitle className="text-xl font-bold tracking-tight text-foreground">Create LaTeX Project</DialogTitle>
         </DialogHeader>
@@ -45,7 +45,7 @@ export function NewProjectDialog() {
               name="name"
               placeholder="e.g., Physics Lab Report"
               required
-              className="bg-background border-border focus-visible:ring-primary rounded-xl text-foreground placeholder:text-muted-foreground/50"
+              className="bg-background border-border focus-visible:ring-primary rounded-md text-foreground placeholder:text-muted-foreground/50"
             />
           </div>
           <DialogFooter className="gap-2">
@@ -53,14 +53,14 @@ export function NewProjectDialog() {
               type="button"
               variant="outline"
               onClick={() => setOpen(false)}
-              className="border-border hover:bg-secondary bg-card text-foreground rounded-xl"
+              className="border-border hover:bg-secondary bg-card text-foreground rounded-md"
             >
               Cancel
             </Button>
             <Button
               type="submit"
               disabled={loading}
-              className="bg-primary hover:bg-primary/95 text-primary-foreground rounded-xl"
+              className="bg-primary hover:bg-primary/95 text-primary-foreground rounded-md"
             >
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Create Project"}
             </Button>
