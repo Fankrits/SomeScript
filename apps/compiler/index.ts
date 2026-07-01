@@ -52,11 +52,15 @@ async function cleanupStaleWorkspaces() {
     const dirs = await fs.readdir(workspacesDir);
     const now = Date.now();
     for (const dirName of dirs) {
-      const dirPath = path.join(workspacesDir, dirName);
-      const stat = await fs.stat(dirPath);
-      if (now - stat.mtimeMs > 86400000) { // 24 hours
-        await fs.rm(dirPath, { recursive: true, force: true });
-        console.log(`[GC] Cleaned up stale workspace: ${dirName}`);
+      try {
+        const dirPath = path.join(workspacesDir, dirName);
+        const stat = await fs.stat(dirPath);
+        if (now - stat.mtimeMs > 86400000) { // 24 hours
+          await fs.rm(dirPath, { recursive: true, force: true });
+          console.log(`[GC] Cleaned up stale workspace: ${dirName}`);
+        }
+      } catch (errDir) {
+        console.error(`[GC] Failed to process workspace folder ${dirName}:`, errDir);
       }
     }
   } catch (e) {
@@ -222,6 +226,10 @@ const server = Bun.serve({
           }
 
           const resolvedTexPath = path.resolve(projectDir, fileRelativePath);
+          const relativePathCheck = path.relative(projectDir, resolvedTexPath);
+          if (relativePathCheck.startsWith("..") || path.isAbsolute(relativePathCheck)) {
+            return Response.json({ error: "Access denied" }, { status: 403 });
+          }
           let logs = "";
 
           const runTectonicUpload = (args: string[]) => {
