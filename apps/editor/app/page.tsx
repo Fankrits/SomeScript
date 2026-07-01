@@ -9,8 +9,6 @@ import { CodeBlock } from "@/components/ai-elements/code-block";
 import { Conversation, ConversationContent } from "@/components/ai-elements/conversation";
 import {
   FileTree,
-  FileTreeFile,
-  FileTreeFolder,
 } from "@/components/ai-elements/file-tree";
 import {
   Message,
@@ -52,7 +50,7 @@ import {
 } from "@/components/ai-elements/task";
 import { Terminal, TerminalContent } from "@/components/ai-elements/terminal";
 import { cn } from "@/lib/utils";
-import { CheckCircle2Icon, ListTodoIcon, FilePlus, FolderPlus, PanelLeft, PanelRight, Sparkles, Loader2, Check, Home, ChevronRight, ArrowLeft } from "lucide-react";
+import { CheckCircle2Icon, ListTodoIcon, FilePlus, FolderPlus, PanelLeft, PanelRight, Sparkles, Loader2, Check, Home, ChevronRight, ArrowLeft, Clock, Trash2, Plus, Settings } from "lucide-react";
 import { nanoid } from "nanoid";
 import { useCallback, useEffect, useInsertionEffect, useRef, useState } from "react";
 import type { PanelImperativeHandle } from "react-resizable-panels";
@@ -83,7 +81,9 @@ const LayoutIconRight = ({ active }: { active: boolean }) => (
     {active && <rect x="11.25" y="2.25" width="2.5" height="11.5" fill="currentColor" opacity="0.8" />}
   </svg>
 );
-import CodeMirror from "@uiw/react-codemirror";
+import CodeMirror, { EditorView } from "@uiw/react-codemirror";
+import { undo, redo, undoDepth, redoDepth } from "@codemirror/commands";
+import { EditorToolbar } from "@/components/editor/editor-toolbar";
 import { latex } from "codemirror-lang-latex";
 import dynamic from "next/dynamic";
 
@@ -97,6 +97,13 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 
 // Types
@@ -373,7 +380,6 @@ const mockTerminalLines = [
 const Example = () => {
   // File tree state
   const [selectedPath, setSelectedPath] = useState<string>("");
-  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
   const [fileTree, setFileTree] = useState<FileNode[]>([]);
   const [projectPathInput, setProjectPathInput] = useState<string>("./my-new-project");
 
@@ -403,7 +409,143 @@ const Example = () => {
 
   // Sidebar states
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState<boolean>(true);
-  const [activeTab, setActiveTab] = useState<"files" | "chat">("files");
+  const [activeTab, setActiveTab] = useState<"files" | "chat" | "settings">("files");
+
+  // Settings State
+  const [settings, setSettings] = useState<{
+    mainFilePath: string;
+    compilerEngine: string;
+    tooltipsEnabled: boolean;
+  }>({
+    mainFilePath: "main.tex",
+    compilerEngine: "tectonic",
+    tooltipsEnabled: true,
+  });
+
+  // Load Settings from LocalStorage when projectPathInput changes
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = localStorage.getItem(`somescript-settings-${projectPathInput}`);
+    if (stored) {
+      try {
+        setSettings(JSON.parse(stored));
+      } catch (e) {
+        console.error("Failed to parse settings", e);
+      }
+    } else {
+      setSettings({
+        mainFilePath: "main.tex",
+        compilerEngine: "tectonic",
+        tooltipsEnabled: true,
+      });
+    }
+  }, [projectPathInput]);
+
+  const saveSettings = useCallback((newSettings: typeof settings) => {
+    setSettings(newSettings);
+    if (typeof window !== "undefined") {
+      localStorage.setItem(`somescript-settings-${projectPathInput}`, JSON.stringify(newSettings));
+    }
+  }, [projectPathInput]);
+
+  // Recursively collect all .tex files in project
+  const getTexFiles = useCallback((nodes: FileNode[]): string[] => {
+    const files: string[] = [];
+    const traverse = (list: FileNode[]) => {
+      for (const node of list) {
+        if (node.isDir && node.children) {
+          traverse(node.children);
+        } else if (!node.isDir && node.name.endsWith(".tex")) {
+          files.push(node.path);
+        }
+      }
+    };
+    traverse(nodes);
+    return files;
+  }, []);
+
+  // Chat History / Multi-thread states
+  const [threads, setThreads] = useState<Array<{ id: string; title: string; createdAt: number }>>([]);
+  const [activeThreadId, setActiveThreadId] = useState<string>("");
+  const [showHistory, setShowHistory] = useState<boolean>(false);
+
+  // Sync threads and active thread ID from localStorage
+  useEffect(() => {
+    const syncThreads = () => {
+      if (typeof window === "undefined") return;
+      const listRaw = localStorage.getItem("eve-threads-list");
+      const activeId = localStorage.getItem("eve-active-thread-id");
+      let currentList = [];
+      let currentActiveId = "";
+
+      if (listRaw) {
+        try {
+          currentList = JSON.parse(listRaw);
+        } catch {}
+      }
+
+      if (activeId) {
+        currentActiveId = activeId;
+      }
+
+      // If no threads exist, generate a default one
+      if (currentList.length === 0) {
+        const defaultId = typeof crypto !== "undefined" ? crypto.randomUUID() : Math.random().toString(36).substring(2);
+        const defaultThread = { id: defaultId, title: "New Chat", createdAt: Date.now() };
+        currentList = [defaultThread];
+        currentActiveId = defaultId;
+        localStorage.setItem("eve-threads-list", JSON.stringify(currentList));
+        localStorage.setItem("eve-active-thread-id", defaultId);
+      }
+
+      setThreads(currentList);
+      setActiveThreadId(currentActiveId);
+    };
+
+    syncThreads();
+    window.addEventListener("storage", syncThreads);
+    return () => window.removeEventListener("storage", syncThreads);
+  }, []);
+
+  const handleNewChat = useCallback(() => {
+    const newId = typeof crypto !== "undefined" ? crypto.randomUUID() : Math.random().toString(36).substring(2);
+    const newThread = { id: newId, title: "New Chat", createdAt: Date.now() };
+    const updatedList = [newThread, ...threads];
+    localStorage.setItem("eve-threads-list", JSON.stringify(updatedList));
+    localStorage.setItem("eve-active-thread-id", newId);
+    setThreads(updatedList);
+    setActiveThreadId(newId);
+    setShowHistory(false);
+  }, [threads]);
+
+  const handleSwitchChat = useCallback((id: string) => {
+    localStorage.setItem("eve-active-thread-id", id);
+    setActiveThreadId(id);
+    setShowHistory(false);
+  }, []);
+
+  const handleDeleteChat = useCallback((id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const updatedList = threads.filter((t) => t.id !== id);
+    localStorage.removeItem(`eve-thread-${id}`);
+
+    let nextActiveId = activeThreadId;
+    if (activeThreadId === id) {
+      if (updatedList.length > 0) {
+        nextActiveId = updatedList[0].id;
+      } else {
+        const newId = typeof crypto !== "undefined" ? crypto.randomUUID() : Math.random().toString(36).substring(2);
+        const newThread = { id: newId, title: "New Chat", createdAt: Date.now() };
+        updatedList.push(newThread);
+        nextActiveId = newId;
+      }
+    }
+
+    localStorage.setItem("eve-threads-list", JSON.stringify(updatedList));
+    localStorage.setItem("eve-active-thread-id", nextActiveId);
+    setThreads(updatedList);
+    setActiveThreadId(nextActiveId);
+  }, [threads, activeThreadId]);
 
   // Resizable Panel Refs & States
   const codePanelRef = useRef<PanelImperativeHandle>(null);
@@ -412,12 +554,60 @@ const Example = () => {
   const [isCodeCollapsed, setIsCodeCollapsed] = useState<boolean>(false);
   const [isPdfCollapsed, setIsPdfCollapsed] = useState<boolean>(false);
   const [isTerminalCollapsed, setIsTerminalCollapsed] = useState<boolean>(false);
+  const [isAnimatingTerminal, setIsAnimatingTerminal] = useState<boolean>(false);
+  const [isAnimatingPdf, setIsAnimatingPdf] = useState<boolean>(false);
+
+  // CodeMirror instance & History States
+  const editorViewRef = useRef<EditorView | null>(null);
+  const [canUndo, setCanUndo] = useState<boolean>(false);
+  const [canRedo, setCanRedo] = useState<boolean>(false);
+
+  const handleUpdate = useCallback((update: any) => {
+    if (update.docChanged || update.selectionSet) {
+      const view = editorViewRef.current;
+      if (view) {
+        setCanUndo(undoDepth(view.state) > 0);
+        setCanRedo(redoDepth(view.state) > 0);
+      }
+    }
+  }, []);
+
+  const handleUndo = useCallback(() => {
+    if (editorViewRef.current) {
+      undo(editorViewRef.current);
+      editorViewRef.current.focus();
+    }
+  }, []);
+
+  const handleRedo = useCallback(() => {
+    if (editorViewRef.current) {
+      redo(editorViewRef.current);
+      editorViewRef.current.focus();
+    }
+  }, []);
+
+  const handleInsertText = useCallback((text: string, cursorOffset = 0) => {
+    const view = editorViewRef.current;
+    if (!view) return;
+
+    const { state } = view;
+    const range = state.selection.main;
+    
+    view.dispatch({
+      changes: { from: range.from, to: range.to, insert: text },
+      selection: { anchor: range.from + text.length + cursorOffset },
+      userEvent: "input",
+    });
+    
+    view.focus();
+  }, []);
 
   const handlePdfDoubleClick = useCallback(() => {
     const codePanel = codePanelRef.current;
     const pdfPanel = pdfPanelRef.current;
     if (!codePanel || !pdfPanel) return;
 
+    setIsAnimatingPdf(true);
     const isCodeClosed = codePanel.isCollapsed();
     const isPdfClosed = pdfPanel.isCollapsed();
 
@@ -432,16 +622,19 @@ const Example = () => {
       // PDF only: expand code (show both)
       codePanel.expand();
     }
+    setTimeout(() => setIsAnimatingPdf(false), 300);
   }, []);
 
   const handleTerminalDoubleClick = useCallback(() => {
     const panel = terminalPanelRef.current;
     if (!panel) return;
+    setIsAnimatingTerminal(true);
     if (panel.isCollapsed()) {
       panel.expand();
     } else {
       panel.collapse();
     }
+    setTimeout(() => setIsAnimatingTerminal(false), 300);
   }, []);
 
   const getLanguageFromPath = (filePath: string): string => {
@@ -554,12 +747,35 @@ const Example = () => {
   }, [projectPathInput, refreshWorkspace]);
 
   const handleCreateResourceSubmit = useCallback(async (isDir: boolean) => {
-    if (!newItemName.trim()) return;
+    let targetPath = newItemName.trim();
+    if (!targetPath) {
+      const baseName = isDir ? "untitled-folder" : "untitled.tex";
+      targetPath = baseName;
+      
+      const exists = (name: string, nodes: any[]): boolean => {
+        for (const n of nodes) {
+          if (n.name === name) return true;
+          if (n.children && exists(name, n.children)) return true;
+        }
+        return false;
+      };
+      
+      let counter = 1;
+      while (exists(targetPath, fileTree)) {
+        if (isDir) {
+          targetPath = `untitled-folder-${counter}`;
+        } else {
+          targetPath = `untitled-${counter}.tex`;
+        }
+        counter++;
+      }
+    }
+
     try {
       const res = await fetch("/api/files", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "create", path: newItemName, isDir }),
+        body: JSON.stringify({ action: "create", path: targetPath, isDir }),
       });
       const data = await res.json();
       if (data.success) {
@@ -569,7 +785,48 @@ const Example = () => {
     } catch (err) {
       console.error("Failed to create resource", err);
     }
-  }, [newItemName, refreshWorkspace]);
+  }, [newItemName, fileTree, refreshWorkspace]);
+
+  const handleFileMove = useCallback(async (oldPath: string, newPath: string) => {
+    try {
+      const res = await fetch("/api/files", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "move", oldPath, newPath }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        if (selectedPath === oldPath) {
+          setSelectedPath(newPath);
+        }
+        refreshWorkspace();
+      }
+    } catch (err) {
+      console.error("Failed to move file", err);
+    }
+  }, [selectedPath, refreshWorkspace]);
+
+  const handleFileDelete = useCallback(async (path: string) => {
+    if (!confirm(`Are you sure you want to delete ${path}?`)) return;
+    try {
+      const res = await fetch("/api/files", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "delete", path }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        if (selectedPath === path) {
+          setSelectedPath("");
+          setCurrentCode("// Select a file to view content");
+          setEditedCode("");
+        }
+        refreshWorkspace();
+      }
+    } catch (err) {
+      console.error("Failed to delete file", err);
+    }
+  }, [selectedPath, refreshWorkspace]);
 
   // Autosave useEffect with debounce
   useEffect(() => {
@@ -604,30 +861,45 @@ const Example = () => {
   }, [selectedPath, editedCode, currentCode]);
 
   const handleCompileLatex = useCallback(async () => {
-    if (!selectedPath || !selectedPath.endsWith(".tex")) return;
+    const compilePath = settings.mainFilePath || selectedPath;
+    if (!compilePath || !compilePath.endsWith(".tex")) {
+      alert("Please select a main .tex file to compile (or open a .tex file). You can set the main file in the settings tab.");
+      return;
+    }
     setIsCompiling(true);
     setTerminalOutput("");
     setIsTerminalStreaming(true);
 
     try {
-      // First save the file content to ensure it compiles current edits
-      await fetch("/api/files", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "save", path: selectedPath, content: editedCode }),
-      });
-      setCurrentCode(editedCode);
+      // First save the current file content to ensure it compiles current edits
+      if (selectedPath) {
+        await fetch("/api/files", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "save", path: selectedPath, content: editedCode }),
+        });
+        setCurrentCode(editedCode);
+      }
 
-      // Trigger compilation
+      // Trigger compilation using compilePath
       const res = await fetch("/api/compile", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: selectedPath }),
+        body: JSON.stringify({ path: compilePath }),
       });
 
       if (!res.ok) {
+        const contentType = res.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+          const errData = await res.json().catch(() => ({}));
+          if (errData.error) {
+            setTerminalOutput(errData.error);
+            return;
+          }
+        }
         throw new Error("Failed to start compilation");
       }
+
 
       const reader = res.body?.getReader();
       if (!reader) {
@@ -671,7 +943,7 @@ const Example = () => {
       setIsCompiling(false);
       setIsTerminalStreaming(false);
     }
-  }, [selectedPath, editedCode]);
+  }, [selectedPath, editedCode, settings]);
 
   // Reload current file content
   const refreshCurrentFile = useCallback(async () => {
@@ -782,31 +1054,42 @@ const Example = () => {
           let fullscreenItem: any = null;
           let downloadItem: any = null;
 
-          // 1. Locate and extract any existing fullscreen & download/export buttons
+          const isFullscreenBtn = (item: any) => (
+            item.commandId === 'fullscreen' || 
+            item.commandId === 'document-fullscreen' || 
+            item.id === 'fullscreen-btn' || 
+            item.id === 'fullscreen' ||
+            item.id === 'document-fullscreen' ||
+            item.id === 'document-fullscreen-btn'
+          );
+
+          const isDownloadBtn = (item: any) => (
+            item.commandId === 'download' || 
+            item.commandId === 'export' || 
+            item.commandId === 'document-export' || 
+            item.id === 'download-btn' || 
+            item.id === 'download' || 
+            item.id === 'export-btn' || 
+            item.id === 'export' || 
+            item.id === 'document-export-btn' || 
+            item.id === 'document-export'
+          );
+
+          // 1. Locate and extract any existing fullscreen & download/export buttons from toolbars
           for (const key of Object.keys(schema.toolbars)) {
             const tb = schema.toolbars[key];
             if (tb.items) {
               const originalLength = tb.items.length;
               tb.items = tb.items.filter((item: any) => {
-                const isFullscreen = (item.commandId === 'fullscreen' || item.id === 'fullscreen-btn' || item.id === 'fullscreen');
-                const isDownload = (
-                  item.commandId === 'download' || 
-                  item.commandId === 'export' || 
-                  item.commandId === 'document-export' || 
-                  item.id === 'download-btn' || 
-                  item.id === 'download' || 
-                  item.id === 'export-btn' || 
-                  item.id === 'export' || 
-                  item.id === 'document-export-btn' || 
-                  item.id === 'document-export'
-                );
-                if (isFullscreen) {
+                if (isFullscreenBtn(item)) {
                   fullscreenItem = item;
+                  return false;
                 }
-                if (isDownload) {
+                if (isDownloadBtn(item)) {
                   downloadItem = item;
+                  return false;
                 }
-                return !isFullscreen && !isDownload;
+                return true;
               });
               if (tb.items.length !== originalLength) {
                 modified = true;
@@ -814,12 +1097,60 @@ const Example = () => {
             }
           }
 
+          // 2. Locate and extract fullscreen & download/export buttons from menus
+          if (schema.menus) {
+            for (const menuKey of Object.keys(schema.menus)) {
+              const menu = schema.menus[menuKey];
+              if (menu.items) {
+                const originalLength = menu.items.length;
+                menu.items = menu.items.filter((item: any) => {
+                  if (isFullscreenBtn(item)) {
+                    fullscreenItem = item;
+                    return false;
+                  }
+                  if (isDownloadBtn(item)) {
+                    downloadItem = item;
+                    return false;
+                  }
+                  return true;
+                });
+                if (menu.items.length !== originalLength) {
+                  modified = true;
+                }
+              }
+            }
+          }
+
+          // Fallback/Search in menus: detect which commandIds are used in the application
+          let detectedDownloadId = 'document-export';
+          let detectedFullscreenId = 'fullscreen';
+
+          if (schema.menus) {
+            const findCommandIds = (items: any[]) => {
+              if (!items) return;
+              for (const item of items) {
+                if (item.commandId === 'document-export' || item.commandId === 'export' || item.commandId === 'download') {
+                  detectedDownloadId = item.commandId;
+                }
+                if (item.commandId === 'fullscreen' || item.commandId === 'document-fullscreen') {
+                  detectedFullscreenId = item.commandId;
+                }
+                if (item.items) {
+                  findCommandIds(item.items);
+                }
+              }
+            };
+            for (const menuKey of Object.keys(schema.menus)) {
+              findCommandIds(schema.menus[menuKey].items);
+            }
+          }
+
           // Fallback: create fullscreen button if it wasn't defined
           if (!fullscreenItem) {
             fullscreenItem = {
               type: 'command-button',
-              id: 'fullscreen-btn',
-              commandId: 'fullscreen',
+              id: detectedFullscreenId + '-btn',
+              commandId: detectedFullscreenId,
               variant: 'icon'
             };
           }
@@ -828,14 +1159,20 @@ const Example = () => {
           if (!downloadItem) {
             downloadItem = {
               type: 'command-button',
-              id: 'document-export-btn',
-              commandId: 'document-export',
+              id: detectedDownloadId + '-btn',
+              commandId: detectedDownloadId,
               variant: 'icon'
             };
           }
 
-          // 2. Append to main top toolbar
+          // 3. Find the main top toolbar that contains the search button
           const mainToolbarKey = Object.keys(schema.toolbars).find(key => {
+            const tb = schema.toolbars[key];
+            return tb.items && tb.items.some((item: any) => {
+              const serialized = JSON.stringify(item).toLowerCase();
+              return serialized.includes("search");
+            });
+          }) || Object.keys(schema.toolbars).find(key => {
             const tb = schema.toolbars[key];
             return tb.position && tb.position.placement === 'top';
           }) || Object.keys(schema.toolbars)[0];
@@ -845,19 +1182,66 @@ const Example = () => {
             if (!mainTb.items) {
               mainTb.items = [];
             }
-            const existsFullscreen = mainTb.items.some((item: any) => item.id === fullscreenItem.id || item.commandId === fullscreenItem.commandId);
-            if (!existsFullscreen) {
-              mainTb.items.push(fullscreenItem);
-              modified = true;
-            }
+
+            // Find index of the search button in the toolbar
+            const searchIndex = mainTb.items.findIndex((item: any) => {
+              const serialized = JSON.stringify(item).toLowerCase();
+              return serialized.includes("search");
+            });
+
+            // Insert download button next to the search button
             const existsDownload = mainTb.items.some((item: any) => item.id === downloadItem.id || item.commandId === downloadItem.commandId);
             if (!existsDownload) {
-              mainTb.items.push(downloadItem);
+              if (searchIndex !== -1) {
+                mainTb.items.splice(searchIndex + 1, 0, downloadItem);
+              } else {
+                mainTb.items.push(downloadItem);
+              }
+              modified = true;
+            }
+
+            // Insert fullscreen button next to download button
+            const existsFullscreen = mainTb.items.some((item: any) => item.id === fullscreenItem.id || item.commandId === fullscreenItem.commandId);
+            if (!existsFullscreen) {
+              if (searchIndex !== -1) {
+                mainTb.items.splice(searchIndex + 2, 0, fullscreenItem);
+              } else {
+                mainTb.items.push(fullscreenItem);
+              }
               modified = true;
             }
           }
 
-          // 3. Filter out view-related buttons
+          // 3. Prevent fullscreen & download buttons from being hidden by responsive rules in any toolbar
+          const targetIds = [
+            'fullscreen',
+            'fullscreen-btn',
+            'document-fullscreen',
+            'document-fullscreen-btn',
+            'download',
+            'download-btn',
+            'export',
+            'export-btn',
+            'document-export',
+            'document-export-btn'
+          ];
+          for (const key of Object.keys(schema.toolbars)) {
+            const tb = schema.toolbars[key];
+            if (tb.responsive && tb.responsive.breakpoints) {
+              for (const bpKey of Object.keys(tb.responsive.breakpoints)) {
+                const bp = tb.responsive.breakpoints[bpKey];
+                if (bp.hide) {
+                  const originalHideLength = bp.hide.length;
+                  bp.hide = bp.hide.filter((id: string) => !targetIds.includes(id));
+                  if (bp.hide.length !== originalHideLength) {
+                    modified = true;
+                  }
+                }
+              }
+            }
+          }
+
+          // 4. Filter out view-related buttons
           for (const key of Object.keys(schema.toolbars)) {
             const tb = schema.toolbars[key];
             if (tb.items) {
@@ -921,23 +1305,56 @@ const Example = () => {
     }
   }, [projectPathInput]);
 
+  // ponytail: dynamic style injection tailored for custom shadowRoot styling to avoid selector leaks
+  useEffect(() => {
+    if (!pdfUrl) return;
+    
+    const interval = setInterval(() => {
+      const container = document.querySelector("embedpdf-container");
+      if (container && container.shadowRoot) {
+        let style = container.shadowRoot.querySelector("#custom-toolbar-height-style");
+        if (!style) {
+          style = document.createElement("style");
+          style.id = "custom-toolbar-height-style";
+          style.textContent = `
+            div:has(> [data-epdf-i]),
+            div:has(> [data-epdf-cat]),
+            .epdf-toolbar,
+            .pdf-toolbar {
+              height: 44px !important;
+              min-height: 44px !important;
+              max-height: 44px !important;
+            }
+            div:has(> [data-epdf-i]) {
+              background-color: var(--background) !important;
+              border-bottom: 1px solid var(--border) !important;
+              padding-left: 0.75rem !important;
+              padding-right: 0.75rem !important;
+            }
+            div:has(> [data-epdf-i]) button {
+              color: var(--muted-foreground) !important;
+              border-radius: 6px !important;
+              transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1) !important;
+              cursor: pointer !important;
+            }
+            div:has(> [data-epdf-i]) button:hover {
+              background-color: var(--muted) !important;
+              color: var(--foreground) !important;
+            }
+          `;
+          container.shadowRoot.appendChild(style);
+        }
+        clearInterval(interval);
+      }
+    }, 50);
+
+    return () => clearInterval(interval);
+  }, [pdfUrl]);
+
   const completedTasks = tasks.filter((t) => t.status === "completed");
   const pendingTasks = tasks.filter((t) => t.status !== "completed");
 
-  const renderTreeNodes = (nodes: FileNode[]) => {
-    return nodes.map((node) => {
-      if (node.isDir) {
-        return (
-          <FileTreeFolder key={node.path} name={node.name} path={node.path}>
-            {node.children && renderTreeNodes(node.children)}
-          </FileTreeFolder>
-        );
-      }
-      return (
-        <FileTreeFile key={node.path} name={node.name} path={node.path} />
-      );
-    });
-  };
+
 
   return (
     <div className="relative flex flex-col h-screen w-screen bg-background overflow-hidden">
@@ -958,59 +1375,112 @@ const Example = () => {
             <span className="font-semibold text-foreground bg-muted/40 px-2 py-0.5 rounded text-xs">
               {projectName}
             </span>
+            {selectedPath && (
+              <>
+                <ChevronRight className="size-3.5 text-muted-foreground/50" />
+                <span className="font-mono text-xs text-foreground bg-muted/10 px-2 py-0.5 rounded font-medium">
+                  {selectedPath}
+                </span>
+                <span className="flex items-center gap-1.5 text-[10px] text-muted-foreground px-2 py-0.5 rounded bg-muted/40 font-medium">
+                  {saveStatus === "saving" && (
+                    <>
+                      <Loader2 className="size-3 animate-spin text-amber-500" />
+                      <span className="text-amber-500">Saving...</span>
+                    </>
+                  )}
+                  {saveStatus === "unsaved" && (
+                    <>
+                      <span className="size-1.5 rounded-full bg-amber-500 animate-pulse" />
+                      <span>Unsaved</span>
+                    </>
+                  )}
+                  {(saveStatus === "saved" || saveStatus === "idle") && (
+                    <>
+                      <Check className="size-3 text-emerald-500" />
+                      <span className="text-emerald-500">Saved</span>
+                    </>
+                  )}
+                </span>
+              </>
+            )}
           </nav>
         </div>
 
-        {/* VS Code Style Layout Toggles */}
-        <div className="flex items-center gap-1 border rounded-md p-0.5 bg-muted/20">
-          <button
-            onClick={() => setIsLeftSidebarOpen((prev) => !prev)}
-            className={cn(
-              "p-1.5 rounded-sm hover:bg-muted cursor-pointer transition-colors",
-              isLeftSidebarOpen ? "text-foreground bg-muted/50" : "text-muted-foreground/60 hover:text-foreground"
-            )}
-            title="Toggle Primary Side Bar (Left Sidebar)"
-          >
-            <LayoutIconLeft active={isLeftSidebarOpen} />
-          </button>
-          <button
-            onClick={() => {
-              const panel = terminalPanelRef.current;
-              if (panel) {
-                if (panel.isCollapsed()) {
-                  panel.expand();
-                } else {
-                  panel.collapse();
+        {/* Top Header Right Controls */}
+        <div className="flex items-center gap-3">
+          {/* Compile Button */}
+          {selectedPath && selectedPath.endsWith(".tex") && (
+            <button
+              onClick={handleCompileLatex}
+              disabled={isCompiling}
+              className="rounded-md border bg-muted/20 hover:bg-muted text-muted-foreground/80 hover:text-foreground px-3 h-[36px] text-xs font-semibold cursor-pointer disabled:opacity-50 transition-colors flex items-center gap-1.5 shadow-sm"
+            >
+              {isCompiling ? (
+                <>
+                  <Loader2 className="size-3 animate-spin" />
+                  <span>Compiling...</span>
+                </>
+              ) : (
+                <span>Compile</span>
+              )}
+            </button>
+          )}
+
+          {/* VS Code Style Layout Toggles */}
+          <div className="flex items-center gap-1 border rounded-md p-0.5 bg-muted/20">
+            <button
+              onClick={() => setIsLeftSidebarOpen((prev) => !prev)}
+              className={cn(
+                "p-1.5 rounded-sm hover:bg-muted cursor-pointer transition-colors",
+                isLeftSidebarOpen ? "text-foreground bg-muted/50" : "text-muted-foreground/60 hover:text-foreground"
+              )}
+              title="Toggle Primary Side Bar (Left Sidebar)"
+            >
+              <LayoutIconLeft active={isLeftSidebarOpen} />
+            </button>
+             <button
+              onClick={() => {
+                const panel = terminalPanelRef.current;
+                if (panel) {
+                  setIsAnimatingTerminal(true);
+                  if (panel.isCollapsed()) {
+                    panel.expand();
+                  } else {
+                    panel.collapse();
+                  }
+                  setTimeout(() => setIsAnimatingTerminal(false), 300);
                 }
-              }
-            }}
-            className={cn(
-              "p-1.5 rounded-sm hover:bg-muted cursor-pointer transition-colors",
-              !isTerminalCollapsed ? "text-foreground bg-muted/50" : "text-muted-foreground/60 hover:text-foreground"
-            )}
-            title="Toggle Panel (Bottom Terminal)"
-          >
-            <LayoutIconBottom active={!isTerminalCollapsed} />
-          </button>
-          <button
-            onClick={() => {
-              const panel = pdfPanelRef.current;
-              if (panel) {
-                if (panel.isCollapsed()) {
-                  panel.expand();
-                } else {
-                  panel.collapse();
+              }}
+              className={cn(
+                "p-1.5 rounded-sm hover:bg-muted cursor-pointer transition-colors",
+                !isTerminalCollapsed ? "text-foreground bg-muted/50" : "text-muted-foreground/60 hover:text-foreground"
+              )}
+              title="Toggle Panel (Bottom Terminal)"
+            >
+              <LayoutIconBottom active={!isTerminalCollapsed} />
+            </button>
+            <button
+              onClick={() => {
+                const panel = pdfPanelRef.current;
+                if (panel) {
+                  setIsAnimatingPdf(true);
+                  if (panel.isCollapsed()) {
+                    panel.expand();
+                  } else {
+                    panel.collapse();
+                  }
+                  setTimeout(() => setIsAnimatingPdf(false), 300);
                 }
-              }
-            }}
-            className={cn(
-              "p-1.5 rounded-sm hover:bg-muted cursor-pointer transition-colors",
-              !isPdfCollapsed ? "text-foreground bg-muted/50" : "text-muted-foreground/60 hover:text-foreground"
-            )}
-            title="Toggle PDF Preview (Right Sidebar)"
-          >
-            <LayoutIconRight active={!isPdfCollapsed} />
-          </button>
+              }}
+              className={cn(
+                "p-1.5 rounded-sm hover:bg-muted cursor-pointer transition-colors",
+                !isPdfCollapsed ? "text-foreground bg-muted/50" : "text-muted-foreground/60 hover:text-foreground"
+              )}
+              title="Toggle PDF Preview (Right Sidebar)"
+            >
+              <LayoutIconRight active={!isPdfCollapsed} />
+            </button>
+          </div>
         </div>
       </header>
 
@@ -1032,85 +1502,238 @@ const Example = () => {
         )}
       >
         {/* Tabs header */}
-        <div className="border-b p-2 bg-muted/10 flex items-center justify-around gap-1">
+        <div className="border-b px-2 bg-muted/10 flex items-center justify-around gap-1 h-11">
           <button
             onClick={() => setActiveTab("files")}
             className={cn(
-              "flex-1 flex justify-center items-center gap-2 py-1.5 px-3 rounded text-xs font-semibold cursor-pointer transition-colors",
+              "flex-1 flex justify-center items-center gap-1.5 py-1.5 px-2 rounded text-[11px] font-semibold cursor-pointer transition-colors",
               activeTab === "files"
                 ? "bg-muted text-foreground"
                 : "text-muted-foreground hover:bg-muted/5 hover:text-foreground"
             )}
           >
-            <FolderPlus className="size-4" />
+            <FolderPlus className="size-3.5" />
             <span>Files</span>
           </button>
           <button
             onClick={() => setActiveTab("chat")}
             className={cn(
-              "flex-1 flex justify-center items-center gap-2 py-1.5 px-3 rounded text-xs font-semibold cursor-pointer transition-colors",
+              "flex-1 flex justify-center items-center gap-1.5 py-1.5 px-2 rounded text-[11px] font-semibold cursor-pointer transition-colors",
               activeTab === "chat"
                 ? "bg-muted text-foreground"
                 : "text-muted-foreground hover:bg-muted/5 hover:text-foreground"
             )}
           >
-            <Sparkles className="size-4" />
+            <Sparkles className="size-3.5" />
             <span>AI Assistant</span>
+          </button>
+          <button
+            onClick={() => setActiveTab("settings")}
+            className={cn(
+              "flex-1 flex justify-center items-center gap-1.5 py-1.5 px-2 rounded text-[11px] font-semibold cursor-pointer transition-colors",
+              activeTab === "settings"
+                ? "bg-muted text-foreground"
+                : "text-muted-foreground hover:bg-muted/5 hover:text-foreground"
+            )}
+          >
+            <Settings className="size-3.5" />
+            <span>Settings</span>
           </button>
         </div>
 
-        {activeTab === "files" ? (
-          <div className="flex-1 flex flex-col overflow-hidden">
-            <div className="border-b p-3 bg-muted/10 flex flex-col gap-2.5">
-              {/* Create Resource Form */}
-              <div className="flex flex-col gap-1.5">
-                <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-                  Create Resource
-                </label>
-                <div className="flex gap-1.5 items-center">
-                  <input
-                    type="text"
-                    value={newItemName}
-                    onChange={(e) => setNewItemName(e.target.value)}
-                    placeholder="src/index.js"
-                    className="flex-1 min-w-0 rounded border px-2 py-1 text-xs bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => handleCreateResourceSubmit(false)}
-                    className="p-1.5 rounded border hover:bg-muted cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
-                    title="New File"
+        <div className={cn("flex-1 flex flex-col overflow-hidden", activeTab !== "files" && "hidden")}>
+          <div className="border-b px-3 py-2 bg-muted/10 flex items-center justify-between shrink-0">
+            <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+              Project Files
+            </span>
+            <div className="flex gap-1.5 items-center">
+              <button
+                type="button"
+                onClick={() => handleCreateResourceSubmit(false)}
+                className="p-1 rounded border hover:bg-muted cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
+                title="New File"
+              >
+                <FilePlus className="size-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => handleCreateResourceSubmit(true)}
+                className="p-1 rounded border hover:bg-muted cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
+                title="New Folder"
+              >
+                <FolderPlus className="size-3.5" />
+              </button>
+            </div>
+          </div>
+          <div className="flex-1 overflow-auto p-1">
+            <FileTree
+              className="border-none"
+              data={fileTree}
+              onSelect={handleFileSelect}
+              selectedPath={selectedPath}
+              onMove={handleFileMove}
+              onDelete={handleFileDelete}
+            />
+          </div>
+        </div>
+
+        <div className={cn("flex-1 flex flex-col overflow-hidden bg-background", activeTab !== "chat" && "hidden")}>
+          {/* Header Bar */}
+          <div className="border-b px-3 h-10 flex items-center justify-between bg-muted/5 select-none shrink-0">
+            <button
+              onClick={handleNewChat}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md hover:bg-muted text-xs font-semibold cursor-pointer text-muted-foreground hover:text-foreground transition-all duration-150 border border-transparent hover:border-border"
+              title="Start a fresh conversation"
+            >
+              <Plus className="size-3.5 text-primary" />
+              <span>New Chat</span>
+            </button>
+
+            <button
+              onClick={() => setShowHistory((prev) => !prev)}
+              className={cn(
+                "flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-semibold cursor-pointer transition-all duration-150 border border-transparent",
+                showHistory
+                  ? "bg-primary/10 text-primary border-primary/20"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground hover:border-border"
+              )}
+              title="View saved conversations"
+            >
+              <Clock className="size-3.5" />
+              <span>History</span>
+            </button>
+          </div>
+
+          <div className="flex-1 relative flex flex-col overflow-hidden">
+            {/* Sliding History Drawer */}
+            <div
+              className={cn(
+                "absolute inset-x-0 top-0 z-30 bg-background/95 border-b backdrop-blur-md flex flex-col transition-all duration-200 ease-in-out overflow-hidden shadow-md max-h-[250px]",
+                showHistory ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-2 pointer-events-none max-h-0"
+              )}
+            >
+              <div className="p-2 border-b bg-muted/5 flex items-center justify-between">
+                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider pl-1">Saved Conversations</span>
+                <span className="text-[10px] text-muted-foreground pr-1">{threads.length} chats</span>
+              </div>
+              <div className="flex-1 overflow-y-auto p-1.5 space-y-1">
+                {threads.map((t) => (
+                  <div
+                    key={t.id}
+                    onClick={() => handleSwitchChat(t.id)}
+                    className={cn(
+                      "flex items-center justify-between px-2.5 py-2 rounded-md text-xs cursor-pointer transition-all duration-150 group border",
+                      t.id === activeThreadId
+                        ? "bg-primary/5 border-primary/20 text-primary font-medium"
+                        : "border-transparent hover:bg-muted/40 hover:text-foreground text-muted-foreground"
+                    )}
                   >
-                    <FilePlus className="size-4" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleCreateResourceSubmit(true)}
-                    className="p-1.5 rounded border hover:bg-muted cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
-                    title="New Folder"
-                  >
-                    <FolderPlus className="size-4" />
-                  </button>
-                </div>
+                    <div className="flex items-center gap-2 truncate pr-2">
+                      <Sparkles className={cn("size-3.5 shrink-0", t.id === activeThreadId ? "text-primary" : "text-muted-foreground/50")} />
+                      <span className="truncate">{t.title}</span>
+                    </div>
+                    <button
+                      onClick={(e) => handleDeleteChat(t.id, e)}
+                      className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-destructive/10 hover:text-destructive transition-all duration-150 cursor-pointer"
+                      title="Delete chat history"
+                    >
+                      <Trash2 className="size-3.5" />
+                    </button>
+                  </div>
+                ))}
               </div>
             </div>
-            <div className="flex-1 overflow-auto p-1">
-              <FileTree
-                className="border-none"
-                expanded={expandedPaths}
-                onExpandedChange={setExpandedPaths}
-                onSelect={handleFileSelect}
-                selectedPath={selectedPath}
+
+            {/* Chat thread itself */}
+            {activeThreadId && (
+              <div className="flex-1 flex flex-col overflow-hidden">
+                <EveThread key={activeThreadId} threadId={activeThreadId} />
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className={cn("flex-1 flex flex-col overflow-hidden bg-background", activeTab !== "settings" && "hidden")}>
+          <div className="border-b px-3 h-10 flex items-center justify-between bg-muted/5 select-none shrink-0">
+            <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+              Project Settings
+            </span>
+          </div>
+
+          <div className="flex-1 overflow-auto p-4 space-y-4.5">
+            {/* Main File Selector */}
+            <div className="space-y-1.5 flex flex-col">
+              <label className="text-xs font-semibold text-muted-foreground">
+                Main Entry File
+              </label>
+              <div className="text-[11px] text-muted-foreground leading-relaxed">
+                Choose the main LaTeX document to run when compiling.
+              </div>
+              <Select
+                value={settings.mainFilePath}
+                onValueChange={(val) => saveSettings({ ...settings, mainFilePath: val })}
               >
-                {renderTreeNodes(fileTree)}
-              </FileTree>
+                <SelectTrigger className="w-full text-xs h-8 justify-between bg-background border border-border">
+                  <SelectValue placeholder="Select main file" />
+                </SelectTrigger>
+                <SelectContent className="z-[999]">
+                  {getTexFiles(fileTree).length === 0 ? (
+                    <SelectItem value="none" disabled>No .tex files found</SelectItem>
+                  ) : (
+                    getTexFiles(fileTree).map((path) => (
+                      <SelectItem key={path} value={path}>
+                        {path}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <hr className="border-border/60" />
+
+            {/* Compiler Engine */}
+            <div className="space-y-1.5 flex flex-col">
+              <label className="text-xs font-semibold text-muted-foreground">
+                LaTeX Compiler Engine
+              </label>
+              <div className="text-[11px] text-muted-foreground leading-relaxed">
+                Select the build engine used to compile your documents.
+              </div>
+              <Select
+                value={settings.compilerEngine}
+                onValueChange={(val) => saveSettings({ ...settings, compilerEngine: val })}
+              >
+                <SelectTrigger className="w-full text-xs h-8 justify-between bg-background border border-border">
+                  <SelectValue placeholder="Select compiler engine" />
+                </SelectTrigger>
+                <SelectContent className="z-[999]">
+                  <SelectItem value="tectonic">Tectonic (Auto-selects Engine)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <hr className="border-border/60" />
+
+            {/* Tooltip feature toggle */}
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-0.5">
+                <label className="text-xs font-semibold text-muted-foreground">
+                  Editor Tooltips
+                </label>
+                <div className="text-[11px] text-muted-foreground leading-relaxed">
+                  Toggle hover assistance tooltips in the editor toolbar.
+                </div>
+              </div>
+              <input
+                type="checkbox"
+                checked={settings.tooltipsEnabled}
+                onChange={(e) => saveSettings({ ...settings, tooltipsEnabled: e.target.checked })}
+                className="mt-0.5 size-4 rounded border-border text-primary focus:ring-primary cursor-pointer"
+              />
             </div>
           </div>
-        ) : (
-          <div className="flex-1 flex flex-col overflow-hidden bg-background">
-            <EveThread />
-          </div>
-        )}
+        </div>
       </div>
 
       {/* Center Panel - Code + Terminal */}
@@ -1119,6 +1742,7 @@ const Example = () => {
           <ResizablePanel
             defaultSize={75}
             minSize={30}
+            className={cn(isAnimatingTerminal && "panel-transition")}
           >
             {/* Editor + PDF Split Pane */}
             <ResizablePanelGroup orientation="horizontal">
@@ -1132,55 +1756,19 @@ const Example = () => {
                 onResize={(size) => {
                   setIsCodeCollapsed(size.asPercentage <= 2);
                 }}
+                className={cn(isAnimatingPdf && "panel-transition")}
               >
                 <div className="h-full relative flex flex-col min-w-0">
-                  <div className="flex items-center justify-between border-b px-4 py-2 bg-muted/10">
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => setIsLeftSidebarOpen((prev) => !prev)}
-                        className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer"
-                        title="Toggle Left Sidebar"
-                      >
-                        <PanelLeft className="size-4" />
-                      </button>
-                      <span className="text-xs font-mono font-medium text-foreground">
-                        {selectedPath || "No file selected"}
-                      </span>
-                      {selectedPath && (
-                        <span className="flex items-center gap-1.5 text-[10px] text-muted-foreground px-2 py-0.5 rounded bg-muted/40 font-medium">
-                          {saveStatus === "saving" && (
-                            <>
-                              <Loader2 className="size-3 animate-spin text-amber-500" />
-                              <span className="text-amber-500">Saving...</span>
-                            </>
-                          )}
-                          {saveStatus === "unsaved" && (
-                            <>
-                              <span className="size-1.5 rounded-full bg-amber-500 animate-pulse" />
-                              <span>Unsaved</span>
-                            </>
-                          )}
-                          {(saveStatus === "saved" || saveStatus === "idle") && (
-                            <>
-                              <Check className="size-3 text-emerald-500" />
-                              <span className="text-emerald-500">Saved</span>
-                            </>
-                          )}
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex gap-2 items-center">
-                      {selectedPath && selectedPath.endsWith(".tex") && (
-                        <button
-                          onClick={handleCompileLatex}
-                          disabled={isCompiling}
-                          className="rounded bg-emerald-600 text-white px-2.5 py-1 text-xs font-semibold hover:bg-emerald-700 cursor-pointer disabled:opacity-50"
-                        >
-                          {isCompiling ? "Compiling..." : "Compile"}
-                        </button>
-                      )}
-                    </div>
-                  </div>
+                  {selectedPath && (
+                    <EditorToolbar
+                      onInsert={handleInsertText}
+                      onUndo={handleUndo}
+                      onRedo={handleRedo}
+                      canUndo={canUndo}
+                      canRedo={canRedo}
+                      tooltipsEnabled={settings.tooltipsEnabled}
+                    />
+                  )}
                   <div className="flex-1 relative overflow-auto">
                     {selectedPath ? (
                       <CodeMirror
@@ -1189,6 +1777,10 @@ const Example = () => {
                         theme="dark"
                         extensions={currentLanguage === "latex" ? [latex()] : []}
                         onChange={(value) => setEditedCode(value)}
+                        onCreateEditor={(view) => {
+                          editorViewRef.current = view;
+                        }}
+                        onUpdate={handleUpdate}
                         className="absolute inset-0 w-full h-full text-sm font-mono border-none focus:outline-none"
                       />
                     ) : (
@@ -1203,7 +1795,7 @@ const Example = () => {
               <ResizableHandle
                 onDoubleClick={handlePdfDoubleClick}
                 className={cn(
-                  (isPdfCollapsed || isCodeCollapsed) && "cursor-pointer w-3"
+                  (isPdfCollapsed || isCodeCollapsed) && "cursor-pointer"
                 )}
               />
 
@@ -1211,12 +1803,13 @@ const Example = () => {
               <ResizablePanel
                 panelRef={pdfPanelRef}
                 collapsible
-                collapsedSize={2}
+                collapsedSize={0}
                 defaultSize={50}
                 minSize={20}
                 onResize={(size) => {
                   setIsPdfCollapsed(size.asPercentage <= 2);
                 }}
+                className={cn(isAnimatingPdf && "panel-transition")}
               >
                 <div className="h-full flex flex-col bg-muted/5 min-w-0">
                   <div className="flex-1 bg-muted/10 flex items-center justify-center relative overflow-hidden">
@@ -1259,7 +1852,7 @@ const Example = () => {
           <ResizableHandle
             onDoubleClick={handleTerminalDoubleClick}
             className={cn(
-              isTerminalCollapsed && "cursor-pointer h-3"
+              isTerminalCollapsed && "cursor-pointer"
             )}
           />
 
@@ -1272,6 +1865,7 @@ const Example = () => {
             onResize={(size) => {
               setIsTerminalCollapsed(size.asPercentage <= 2);
             }}
+            className={cn(isAnimatingTerminal && "panel-transition")}
           >
             <Terminal
               className="h-full rounded-none border-0"
