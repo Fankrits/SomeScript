@@ -173,7 +173,7 @@ const server = Bun.serve({
           const projectDir = path.join(workspacesDir, projectId);
 
           const relativeDir = path.relative(workspacesDir, projectDir);
-          if (relativeDir.startsWith("..") || path.isAbsolute(relativeDir)) {
+          if (relativeDir.startsWith("..") || path.isAbsolute(relativeDir) || !relativeDir) {
             return Response.json({ error: "Access denied" }, { status: 403 });
           }
 
@@ -295,6 +295,12 @@ const server = Bun.serve({
 
             // Cache the successful compilation
             if (cacheKey) {
+              if (compilationCache.size >= 100) {
+                const oldestKey = compilationCache.keys().next().value;
+                if (oldestKey !== undefined) {
+                  compilationCache.delete(oldestKey);
+                }
+              }
               compilationCache.set(cacheKey, {
                 pdf: pdfBase64,
                 logs: logs,

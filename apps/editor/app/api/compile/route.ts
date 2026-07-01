@@ -100,7 +100,7 @@ export async function POST(req: NextRequest) {
       const projectTree = await storage.listProjectFiles(projectId);
       const allFiles = await getAllStorageFiles(projectId, projectTree);
 
-      const sortedFiles = [...allFiles].sort((a, b) => a.path.localeCompare(b.path));
+      const sortedFiles = [...allFiles].sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
       const projectHash = createHash("sha256")
         .update(JSON.stringify(sortedFiles.map(f => ({ path: f.path, content: f.content }))))
         .update(isDraft ? "draft" : "final")

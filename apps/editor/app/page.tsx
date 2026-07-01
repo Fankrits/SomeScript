@@ -1779,7 +1779,7 @@ const Example = () => {
 
             <div className="flex items-start justify-between gap-3">
               <div className="space-y-0.5">
-                <label className="text-xs font-semibold text-muted-foreground">
+                <label htmlFor="draft-mode-toggle" className="text-xs font-semibold text-muted-foreground">
                   Draft Mode (Fast Compile)
                 </label>
                 <div className="text-[11px] text-muted-foreground leading-relaxed">
@@ -1787,6 +1787,7 @@ const Example = () => {
                 </div>
               </div>
               <input
+                id="draft-mode-toggle"
                 type="checkbox"
                 checked={settings.draftMode ?? true}
                 onChange={(e) => saveSettings({ ...settings, draftMode: e.target.checked })}
