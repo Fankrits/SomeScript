@@ -2,7 +2,15 @@ import { getProjectPath, getProjectIdFromPath } from "@/lib/project";
 import { storage, FileNode } from "@/lib/storage";
 import { NextRequest } from "next/server";
 import path from "path";
+import { createHash } from "crypto";
 
+// Simple in-memory cache to track file content hashes per project
+const uploadedFilesCache = new Map<string, string>(); // Key: `${projectId}:${filePath}`, Value: contentHash
+
+interface DifferentialFile {
+  path: string;
+  content: string;
+}
 
 // Recursively gather all project files via the unified storage provider
 async function getAllStorageFiles(projectId: string, nodes: FileNode[]): Promise<{ path: string; content: string }[]> {
@@ -42,7 +50,7 @@ async function getAllStorageFiles(projectId: string, nodes: FileNode[]): Promise
 
 export async function POST(req: NextRequest) {
   try {
-    const { path: fileRelativePath } = await req.json();
+    const { path: fileRelativePath, draftMode } = await req.json();
     if (!fileRelativePath) {
       return Response.json({ error: "Path parameter is required" }, { status: 400 });
     }
@@ -64,7 +72,6 @@ export async function POST(req: NextRequest) {
     const compilerMode = process.env.COMPILER_MODE || defaultMode;
 
     if (compilerMode === "local") {
-      // Local mode: Compile using local filesystem path passed directly to compiler
       const response = await fetch(`${compilerUrl}/compile`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -72,6 +79,7 @@ export async function POST(req: NextRequest) {
           mode: "local",
           localProjectPath: projectPath,
           fileRelativePath,
+          draft: draftMode ?? true,
         }),
       });
 
@@ -88,19 +96,84 @@ export async function POST(req: NextRequest) {
         },
       });
     } else {
-      // Remote/Upload mode for cloud hosting
+      // Differential Sync for Remote/Upload Mode
       const projectTree = await storage.listProjectFiles(projectId);
-      const files = await getAllStorageFiles(projectId, projectTree);
+      const allFiles = await getAllStorageFiles(projectId, projectTree);
 
-      const response = await fetch(`${compilerUrl}/compile`, {
+      // Find modified and deleted files compared to our cache
+      const changedFiles: DifferentialFile[] = [];
+      const currentProjectKeys = new Set<string>();
+
+      for (const file of allFiles) {
+        const cacheKey = `${projectId}:${file.path}`;
+        currentProjectKeys.add(cacheKey);
+
+        const contentHash = createHash("sha256").update(file.content).digest("hex");
+        const cachedHash = uploadedFilesCache.get(cacheKey);
+
+        if (cachedHash !== contentHash) {
+          changedFiles.push(file);
+          uploadedFilesCache.set(cacheKey, contentHash);
+        }
+      }
+
+      // Detect deleted files
+      const deletedFiles: string[] = [];
+      for (const cacheKey of uploadedFilesCache.keys()) {
+        if (cacheKey.startsWith(`${projectId}:`) && !currentProjectKeys.has(cacheKey)) {
+          const filePath = cacheKey.substring(projectId.length + 1);
+          deletedFiles.push(filePath);
+          uploadedFilesCache.delete(cacheKey);
+        }
+      }
+
+      // Determine if we need full or differential sync
+      // If cache was completely empty for this project, force a full sync
+      const projectCacheKeys = Array.from(uploadedFilesCache.keys()).filter(k => k.startsWith(`${projectId}:`));
+      const syncType = projectCacheKeys.length === changedFiles.length ? "full" : "differential";
+
+      const compilePayload = {
+        mode: "upload",
+        projectId,
+        fileRelativePath,
+        draft: draftMode ?? true,
+        syncType,
+        files: syncType === "full" ? allFiles : changedFiles,
+        deletedFiles,
+      };
+
+      let response = await fetch(`${compilerUrl}/compile`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          mode: "upload",
-          fileRelativePath,
-          files,
-        }),
+        body: JSON.stringify(compilePayload),
       });
+
+      // Handle full sync retry if compiler says workspace was missing/cleared
+      if (response.status === 409) {
+        const errData = await response.json().catch(() => ({}));
+        if (errData.requireFullSync) {
+          // Clear cache and retry with a full upload
+          projectCacheKeys.forEach(k => uploadedFilesCache.delete(k));
+          allFiles.forEach(file => {
+            const hash = createHash("sha256").update(file.content).digest("hex");
+            uploadedFilesCache.set(`${projectId}:${file.path}`, hash);
+          });
+
+          response = await fetch(`${compilerUrl}/compile`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              mode: "upload",
+              projectId,
+              fileRelativePath,
+              draft: draftMode ?? true,
+              syncType: "full",
+              files: allFiles,
+              deletedFiles: [],
+            }),
+          });
+        }
+      }
 
       if (!response.ok) {
         const errData = await response.json().catch(() => ({ logs: "Failed to parse error response" }));
@@ -110,12 +183,10 @@ export async function POST(req: NextRequest) {
       const result = await response.json();
 
       if (result.success && result.pdf) {
-        // Save the compiled PDF back to the project storage so the frontend can retrieve it
         const pdfRelativePath = fileRelativePath.replace(/\.tex$/, ".pdf");
         await storage.writeFile(projectId, pdfRelativePath, Buffer.from(result.pdf, "base64"));
       }
 
-      // Return logs as plain text to match frontend stream parsing expectations
       return new Response(result.logs || "", {
         headers: {
           "Content-Type": "text/plain; charset=utf-8",
@@ -126,3 +197,4 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: error.message }, { status: 500 });
   }
 }
+
