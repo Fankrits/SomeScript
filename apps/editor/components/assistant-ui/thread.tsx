@@ -143,6 +143,7 @@ const ThreadRoot: FC<{ isEmpty: boolean }> = ({ isEmpty }) => {
             </ThreadPrimitive.Messages>
           </div>
 
+
           <ThreadPrimitive.ViewportFooter
             className={cn(
               "aui-thread-viewport-footer bg-background flex flex-col gap-4 overflow-visible pb-4 md:pb-6",
@@ -174,6 +175,7 @@ const ThreadMessage: FC = () => {
 };
 
 const ThreadScrollToBottom: FC = () => {
+
   return (
     <ThreadPrimitive.ScrollToBottom asChild>
       <TooltipIconButton
@@ -351,11 +353,23 @@ const AssistantMessage: FC = () => {
         className="text-foreground px-2 leading-relaxed wrap-break-word [contain-intrinsic-size:auto_24px] [content-visibility:auto]"
       >
         <MessagePrimitive.GroupedParts
-          groupBy={groupPartByType({
-            reasoning: ["group-chainOfThought", "group-reasoning"],
-            "tool-call": ["group-chainOfThought", "group-tool"],
-            "standalone-tool-call": [],
-          })}
+          groupBy={(part) => {
+            if (
+              part.type === "tool-call" &&
+              (part.toolName === "__hitl__" ||
+                part.toolName === "ask_question" ||
+                part.toolName === "__oauth__" ||
+                part.args?.state === "approval-requested" ||
+                part.args?.state === "approval-responded")
+            ) {
+              return [];
+            }
+            return groupPartByType({
+              reasoning: ["group-chainOfThought", "group-reasoning"],
+              "tool-call": ["group-chainOfThought", "group-tool"],
+              "standalone-tool-call": [],
+            })(part);
+          }}
         >
           {({ part, children }) => {
             switch (part.type) {

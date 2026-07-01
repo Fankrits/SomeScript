@@ -1,9 +1,8 @@
 import { defineTool } from "eve/tools";
 import { always } from "eve/tools/approval";
-import fs from "fs/promises";
-import path from "path";
 import { z } from "zod";
-import { getProjectPath } from "../../lib/project";
+import { getProjectPath, getProjectIdFromPath } from "../../lib/project";
+import { storage } from "../../lib/storage";
 
 export default defineTool({
   description: "Writes or updates the content of a file in the workspace.",
@@ -15,12 +14,12 @@ export default defineTool({
   async execute({ path: filePath, content }) {
     try {
       const projectPath = await getProjectPath();
-      const resolvedPath = path.resolve(projectPath, filePath);
-      await fs.mkdir(path.dirname(resolvedPath), { recursive: true });
-      await fs.writeFile(resolvedPath, content, "utf-8");
+      const projectId = getProjectIdFromPath(projectPath);
+      await storage.writeFile(projectId, filePath, content);
       return `Successfully updated file: ${filePath}`;
     } catch (e: any) {
       return `Error writing file at ${filePath}: ${e.message}`;
     }
   },
 });
+

@@ -130,14 +130,63 @@
   }
 }
 
+/* ponytail: restrict generic attribute selectors to buttons to prevent hiding main viewer layout */
 /* Hide View options/layout dropdown in PDF Viewer */
-[data-epdf-i*="view" i],
-[data-epdf-i*="layout" i],
-[data-epdf-i*="spread" i],
-[data-epdf-i*="rotate" i],
-[data-epdf-cat*="view" i],
-[data-epdf-cat*="layout" i],
-[data-epdf-cat*="spread" i],
-[data-epdf-cat*="rotate" i] {
+button[data-epdf-i*="view" i],
+button[data-epdf-i*="layout" i],
+button[data-epdf-i*="spread" i],
+button[data-epdf-i*="rotate" i],
+button[data-epdf-cat*="view" i],
+button[data-epdf-cat*="layout" i],
+button[data-epdf-cat*="spread" i],
+button[data-epdf-cat*="rotate" i] {
   display: none !important;
+}
+
+/* Align PDF Viewer toolbar height with other toolbars */
+div:has(> [data-epdf-i]),
+div:has(> [data-epdf-cat]),
+.epdf-toolbar,
+.pdf-toolbar {
+  height: 44px !important;
+  min-height: 44px !important;
+  max-height: 44px !important;
+}
+
+/* Brand the PDF Viewer Toolbar Background & Borders */
+div:has(> [data-epdf-i]) {
+  background-color: var(--background) !important;
+  border-bottom: 1px solid var(--border) !important;
+  padding-left: 0.75rem !important;
+  padding-right: 0.75rem !important;
+}
+
+/* Brand the Toolbar Action Buttons */
+div:has(> [data-epdf-i]) button {
+  color: var(--muted-foreground) !important;
+  border-radius: 6px !important;
+  transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1) !important;
+  cursor: pointer !important;
+}
+
+div:has(> [data-epdf-i]) button:hover {
+  background-color: var(--muted) !important;
+  color: var(--foreground) !important;
+}
+
+/* Brand the PDF Viewer Page Workspace Background */
+.dark div:has(> canvas), 
+.dark [class*="viewer-container"] {
+  background-color: var(--background) !important;
+}
+
+/* Clean, modern shadows for PDF pages */
+div:has(> canvas) {
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.25) !important;
+  border-radius: 4px !important;
+}
+
+/* Resizable panel animation when toggling */
+.panel-transition {
+  transition: flex 300ms cubic-bezier(0.4, 0, 0.2, 1), flex-grow 300ms cubic-bezier(0.4, 0, 0.2, 1), flex-basis 300ms cubic-bezier(0.4, 0, 0.2, 1) !important;
 }

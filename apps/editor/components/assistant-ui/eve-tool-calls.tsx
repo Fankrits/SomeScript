@@ -13,6 +13,8 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useEveAgentCtx } from "@/components/chat/eve-agent-context";
+import { makeAssistantToolUI } from "@assistant-ui/react";
+
 
 // ---------------------------------------------------------------------------
 // HITL — Human-in-the-Loop approval + ask_question prompt
@@ -284,17 +286,88 @@ function TodoCard({ args, result }: { args: any; result?: any }) {
   );
 }
 
+function ListFilesCard({ result }: { result?: any }) {
+  return (
+    <div className="rounded-lg border p-3 bg-muted/10 mt-1 space-y-1.5">
+      <div className="flex items-center gap-2 text-xs text-muted-foreground font-medium">
+        <Search className="size-3.5 text-violet-500" />
+        <span>List Files in Project</span>
+      </div>
+      {result && (
+        <pre className="text-[11px] font-mono bg-muted/40 p-2 rounded border max-h-40 overflow-auto whitespace-pre">
+          {typeof result === "string" ? result : JSON.stringify(result, null, 2)}
+        </pre>
+      )}
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
-// Registry — maps tool names to their card components
+// Registry — Tool UI components using standard makeAssistantToolUI
 // ---------------------------------------------------------------------------
-export const EveToolCalls: Record<string, React.ComponentType<any>> = {
-  __hitl__: HitlCard,
-  ask_question: HitlCard,   // alias — shown when Llama calls ask_question before approval state
-  __oauth__: OAuthCard,
-  __subagent__: SubagentCard,
-  web_search: WebSearchCard,
-  bash: BashCard,
-  read_file: ReadFileCard,
-  write_file: WriteFileCard,
-  todo: TodoCard,
-};
+export const HitlToolUI = makeAssistantToolUI({
+  toolName: "__hitl__",
+  render: ({ args }) => <HitlCard args={args} />,
+});
+
+export const AskQuestionToolUI = makeAssistantToolUI({
+  toolName: "ask_question",
+  render: ({ args }) => <HitlCard args={args} />,
+});
+
+export const OauthToolUI = makeAssistantToolUI({
+  toolName: "__oauth__",
+  render: ({ args }) => <OAuthCard args={args} />,
+});
+
+export const SubagentToolUI = makeAssistantToolUI({
+  toolName: "__subagent__",
+  render: ({ args }) => <SubagentCard args={args} />,
+});
+
+export const WebSearchToolUI = makeAssistantToolUI({
+  toolName: "web_search",
+  render: ({ args, result }) => <WebSearchCard args={args} result={result} />,
+});
+
+export const BashToolUI = makeAssistantToolUI({
+  toolName: "bash",
+  render: ({ args, result }) => <BashCard args={args} result={result} />,
+});
+
+export const ReadFileToolUI = makeAssistantToolUI({
+  toolName: "read_file",
+  render: ({ args, result }) => <ReadFileCard args={args} result={result} />,
+});
+
+export const ReadFileDashToolUI = makeAssistantToolUI({
+  toolName: "read-file",
+  render: ({ args, result }) => <ReadFileCard args={args} result={result} />,
+});
+
+export const WriteFileToolUI = makeAssistantToolUI({
+  toolName: "write_file",
+  render: ({ args, result }) => <WriteFileCard args={args} result={result} />,
+});
+
+export const WriteFileDashToolUI = makeAssistantToolUI({
+  toolName: "write-file",
+  render: ({ args, result }) => <WriteFileCard args={args} result={result} />,
+});
+
+export const ListFilesToolUI = makeAssistantToolUI({
+  toolName: "list-files",
+  render: ({ result }) => <ListFilesCard result={result} />,
+});
+
+export const ListFilesSnakeToolUI = makeAssistantToolUI({
+  toolName: "list_files",
+  render: ({ result }) => <ListFilesCard result={result} />,
+});
+
+export const TodoToolUI = makeAssistantToolUI({
+  toolName: "todo",
+  render: ({ args, result }) => <TodoCard args={args} result={result} />,
+});
+
+

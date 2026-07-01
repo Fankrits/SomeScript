@@ -1,304 +1,224 @@
 "use client";
 
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import {
   ChevronRightIcon,
   FileIcon,
   FolderIcon,
   FolderOpenIcon,
+  Edit2Icon,
+  Trash2Icon,
 } from "lucide-react";
-import type { HTMLAttributes, ReactNode } from "react";
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useMemo,
-  useState,
-} from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
+import { Tree } from "react-arborist";
+import type { NodeRendererProps } from "react-arborist";
 
-interface FileTreeContextType {
-  expandedPaths: Set<string>;
-  togglePath: (path: string) => void;
-  selectedPath?: string;
-  onSelect?: (path: string) => void;
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
+
+export interface FileNode {
+  name: string;
+  path: string;
+  isDir: boolean;
+  children?: FileNode[];
 }
 
-// Default noop for context default value
-// oxlint-disable-next-line eslint(no-empty-function)
-const noop = () => {};
-
-const FileTreeContext = createContext<FileTreeContextType>({
-  // oxlint-disable-next-line eslint-plugin-unicorn(no-new-builtin)
-  expandedPaths: new Set(),
-  togglePath: noop,
-});
-
-export type FileTreeProps = Omit<HTMLAttributes<HTMLDivElement>, "onSelect"> & {
-  expanded?: Set<string>;
-  defaultExpanded?: Set<string>;
+export type FileTreeProps = {
+  data: FileNode[];
   selectedPath?: string;
   onSelect?: (path: string) => void;
-  onExpandedChange?: (expanded: Set<string>) => void;
+  onMove?: (oldPath: string, newPath: string) => void;
+  onDelete?: (path: string) => void;
+  className?: string;
 };
+
+// Hook to measure dimensions of the containing element
+function useDimensions<T extends HTMLElement>() {
+  const ref = useRef<T>(null);
+  const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
+
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+
+    const observer = new ResizeObserver((entries) => {
+      if (!entries || entries.length === 0) return;
+      const { width, height } = entries[0].contentRect;
+      setDimensions({ width, height });
+    });
+
+    observer.observe(element);
+    return () => observer.unobserve(element);
+  }, []);
+
+  return [ref, dimensions] as const;
+}
 
 export const FileTree = ({
-  expanded: controlledExpanded,
-  defaultExpanded = new Set(),
+  data,
   selectedPath,
   onSelect,
-  onExpandedChange,
+  onMove,
+  onDelete,
   className,
-  children,
-  ...props
 }: FileTreeProps) => {
-  const [internalExpanded, setInternalExpanded] = useState(defaultExpanded);
-  const expandedPaths = controlledExpanded ?? internalExpanded;
+  const [containerRef, dimensions] = useDimensions<HTMLDivElement>();
 
-  const togglePath = useCallback(
-    (path: string) => {
-      const newExpanded = new Set(expandedPaths);
-      if (newExpanded.has(path)) {
-        newExpanded.delete(path);
+  // Map our tree structure to the react-arborist structure (requires id instead of path)
+  const arboristData = useMemo(() => {
+    const mapNode = (node: FileNode): any => ({
+      id: node.path,
+      name: node.name,
+      isDir: node.isDir,
+      children: node.children ? node.children.map(mapNode) : undefined,
+    });
+    return data.map(mapNode);
+  }, [data]);
+
+  const handleMove = ({ dragIds, parentId }: { dragIds: string[]; parentId: string | null }) => {
+    if (!onMove || dragIds.length === 0) return;
+    const dragId = dragIds[0];
+    const targetParentId = parentId; // null means root level
+    
+    // Construct new path
+    const fileName = dragId.split("/").pop() || "";
+    const newPath = targetParentId ? `${targetParentId}/${fileName}` : fileName;
+    
+    if (dragId !== newPath) {
+      onMove(dragId, newPath);
+    }
+  };
+
+  const handleRename = ({ id, name }: { id: string; name: string }) => {
+    if (!onMove || !name.trim()) return;
+    const parts = id.split("/");
+    parts[parts.length - 1] = name;
+    const newPath = parts.join("/");
+    if (id !== newPath) {
+      onMove(id, newPath);
+    }
+  };
+
+  const NodeRenderer = ({ node, style, dragHandle }: NodeRendererProps<any>) => {
+    const isSelected = selectedPath === node.id;
+    const isFolder = !node.isLeaf;
+
+    const handleClick = (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (node.isEditing) return;
+      if (isFolder) {
+        node.toggle();
       } else {
-        newExpanded.add(path);
+        onSelect?.(node.id);
       }
-      setInternalExpanded(newExpanded);
-      onExpandedChange?.(newExpanded);
-    },
-    [expandedPaths, onExpandedChange]
-  );
+    };
 
-  const contextValue = useMemo(
-    () => ({ expandedPaths, onSelect, selectedPath, togglePath }),
-    [expandedPaths, onSelect, selectedPath, togglePath]
-  );
-
-  return (
-    <FileTreeContext.Provider value={contextValue}>
-      <div
-        className={cn(
-          "rounded-lg border bg-background font-mono text-sm",
-          className
-        )}
-        role="tree"
-        {...props}
-      >
-        <div className="p-2">{children}</div>
-      </div>
-    </FileTreeContext.Provider>
-  );
-};
-
-export type FileTreeIconProps = HTMLAttributes<HTMLSpanElement>;
-
-export const FileTreeIcon = ({
-  className,
-  children,
-  ...props
-}: FileTreeIconProps) => (
-  <span className={cn("shrink-0", className)} {...props}>
-    {children}
-  </span>
-);
-
-export type FileTreeNameProps = HTMLAttributes<HTMLSpanElement>;
-
-export const FileTreeName = ({
-  className,
-  children,
-  ...props
-}: FileTreeNameProps) => (
-  <span className={cn("truncate", className)} {...props}>
-    {children}
-  </span>
-);
-
-interface FileTreeFolderContextType {
-  path: string;
-  name: string;
-  isExpanded: boolean;
-}
-
-const FileTreeFolderContext = createContext<FileTreeFolderContextType>({
-  isExpanded: false,
-  name: "",
-  path: "",
-});
-
-export type FileTreeFolderProps = HTMLAttributes<HTMLDivElement> & {
-  path: string;
-  name: string;
-};
-
-export const FileTreeFolder = ({
-  path,
-  name,
-  className,
-  children,
-  ...props
-}: FileTreeFolderProps) => {
-  const { expandedPaths, togglePath, selectedPath, onSelect } =
-    useContext(FileTreeContext);
-  const isExpanded = expandedPaths.has(path);
-  const isSelected = selectedPath === path;
-
-  const handleOpenChange = useCallback(() => {
-    togglePath(path);
-  }, [togglePath, path]);
-
-  const handleSelect = useCallback(() => {
-    onSelect?.(path);
-  }, [onSelect, path]);
-
-  const folderContextValue = useMemo(
-    () => ({ isExpanded, name, path }),
-    [isExpanded, name, path]
-  );
-
-  return (
-    <FileTreeFolderContext.Provider value={folderContextValue}>
-      <Collapsible onOpenChange={handleOpenChange} open={isExpanded}>
-        <div
-          className={cn("", className)}
-          role="treeitem"
-          tabIndex={0}
-          {...props}
-        >
+    return (
+      <ContextMenu>
+        <ContextMenuTrigger>
           <div
+            style={style}
+            ref={dragHandle}
             className={cn(
-              "flex w-full items-center gap-1 rounded px-2 py-1 text-left transition-colors hover:bg-muted/50",
-              isSelected && "bg-muted"
+              "flex cursor-pointer items-center gap-1 rounded px-2 py-0.5 transition-colors font-mono text-sm group select-none relative",
+              isSelected ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted/40",
+              node.isDragging && "opacity-40",
+              node.willReceiveDrop && "bg-primary/10 border border-primary/30 ring-1 ring-primary/20"
             )}
+            onClick={handleClick}
           >
-            <CollapsibleTrigger asChild>
-              <button
-                className="flex shrink-0 cursor-pointer items-center border-none bg-transparent p-0"
-                type="button"
-              >
-                <ChevronRightIcon
-                  className={cn(
-                    "size-4 shrink-0 text-muted-foreground transition-transform",
-                    isExpanded && "rotate-90"
+            <div className="flex items-center gap-1 min-w-0 flex-1">
+              {isFolder ? (
+                <>
+                  <ChevronRightIcon
+                    className={cn(
+                      "size-4 shrink-0 text-muted-foreground transition-transform",
+                      node.isOpen && "rotate-90"
+                    )}
+                  />
+                  {node.isOpen ? (
+                    <FolderOpenIcon className="size-4 text-blue-500 shrink-0" />
+                  ) : (
+                    <FolderIcon className="size-4 text-blue-500 shrink-0" />
                   )}
+                </>
+              ) : (
+                <>
+                  {/* Spacer matching folder chevron indentation */}
+                  <span className="size-4 shrink-0" />
+                  <FileIcon className="size-4 text-muted-foreground shrink-0" />
+                </>
+              )}
+
+              {node.isEditing ? (
+                <input
+                  type="text"
+                  defaultValue={node.data.name}
+                  autoFocus
+                  onClick={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onBlur={(e) => node.submit(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") node.submit(e.currentTarget.value);
+                    if (e.key === "Escape") node.reset();
+                  }}
+                  className="flex-1 rounded border px-1 text-xs bg-background focus:outline-none focus:ring-1 focus:ring-primary h-5 min-w-0"
                 />
-              </button>
-            </CollapsibleTrigger>
-            <button
-              className="flex min-w-0 flex-1 cursor-pointer items-center gap-1 border-none bg-transparent p-0 text-left"
-              onClick={handleSelect}
-              type="button"
-            >
-              <FileTreeIcon>
-                {isExpanded ? (
-                  <FolderOpenIcon className="size-4 text-blue-500" />
-                ) : (
-                  <FolderIcon className="size-4 text-blue-500" />
-                )}
-              </FileTreeIcon>
-              <FileTreeName>{name}</FileTreeName>
-            </button>
+              ) : (
+                <span className="truncate flex-1">{node.data.name}</span>
+              )}
+            </div>
           </div>
-          <CollapsibleContent>
-            <div className="ml-4 border-l pl-2">{children}</div>
-          </CollapsibleContent>
-        </div>
-      </Collapsible>
-    </FileTreeFolderContext.Provider>
-  );
-};
-
-interface FileTreeFileContextType {
-  path: string;
-  name: string;
-}
-
-const FileTreeFileContext = createContext<FileTreeFileContextType>({
-  name: "",
-  path: "",
-});
-
-export type FileTreeFileProps = HTMLAttributes<HTMLDivElement> & {
-  path: string;
-  name: string;
-  icon?: ReactNode;
-};
-
-export const FileTreeFile = ({
-  path,
-  name,
-  icon,
-  className,
-  children,
-  ...props
-}: FileTreeFileProps) => {
-  const { selectedPath, onSelect } = useContext(FileTreeContext);
-  const isSelected = selectedPath === path;
-
-  const handleClick = useCallback(() => {
-    onSelect?.(path);
-  }, [onSelect, path]);
-
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === "Enter" || e.key === " ") {
-        onSelect?.(path);
-      }
-    },
-    [onSelect, path]
-  );
-
-  const fileContextValue = useMemo(() => ({ name, path }), [name, path]);
+        </ContextMenuTrigger>
+        <ContextMenuContent className="w-40" onCloseAutoFocus={(e) => e.preventDefault()}>
+          <ContextMenuItem onClick={() => setTimeout(() => node.edit(), 50)} className="gap-2">
+            <Edit2Icon className="size-3.5" />
+            <span>Rename</span>
+          </ContextMenuItem>
+          <ContextMenuItem
+            onClick={() => onDelete?.(node.id)}
+            variant="destructive"
+            className="gap-2"
+          >
+            <Trash2Icon className="size-3.5" />
+            <span>Delete</span>
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
+    );
+  };
 
   return (
-    <FileTreeFileContext.Provider value={fileContextValue}>
-      <div
-        className={cn(
-          "flex cursor-pointer items-center gap-1 rounded px-2 py-1 transition-colors hover:bg-muted/50",
-          isSelected && "bg-muted",
-          className
-        )}
-        onClick={handleClick}
-        onKeyDown={handleKeyDown}
-        role="treeitem"
-        tabIndex={0}
-        {...props}
-      >
-        {children ?? (
-          <>
-            {/* Spacer for alignment */}
-            <span className="size-4 shrink-0" />
-            <FileTreeIcon>
-              {icon ?? <FileIcon className="size-4 text-muted-foreground" />}
-            </FileTreeIcon>
-            <FileTreeName>{name}</FileTreeName>
-          </>
-        )}
-      </div>
-    </FileTreeFileContext.Provider>
+    <div
+      ref={containerRef}
+      className={cn(
+        "bg-background font-mono text-sm w-full h-full min-h-[400px]",
+        className
+      )}
+      role="tree"
+    >
+      {dimensions.height > 0 && dimensions.width > 0 && (
+        <Tree
+          data={arboristData}
+          onMove={handleMove}
+          onRename={handleRename}
+          width={dimensions.width}
+          height={dimensions.height}
+          indent={16}
+          rowHeight={28}
+          openByDefault={false}
+        >
+          {NodeRenderer}
+        </Tree>
+      )}
+    </div>
   );
 };
 
-export type FileTreeActionsProps = HTMLAttributes<HTMLDivElement>;
-
-const stopPropagation = (e: React.SyntheticEvent) => e.stopPropagation();
-
-export const FileTreeActions = ({
-  className,
-  children,
-  ...props
-}: FileTreeActionsProps) => (
-  <div
-    className={cn("ml-auto flex items-center gap-1", className)}
-    onClick={stopPropagation}
-    onKeyDown={stopPropagation}
-    role="group"
-    {...props}
-  >
-    {children}
-  </div>
-);
+// Keep placeholder components so we don't break imports if they are present elsewhere
+export const FileTreeFile = () => null;
+export const FileTreeFolder = () => null;
