@@ -100,6 +100,13 @@ export async function POST(req: NextRequest) {
       const projectTree = await storage.listProjectFiles(projectId);
       const allFiles = await getAllStorageFiles(projectId, projectTree);
 
+      const sortedFiles = [...allFiles].sort((a, b) => a.path.localeCompare(b.path));
+      const projectHash = createHash("sha256")
+        .update(JSON.stringify(sortedFiles.map(f => ({ path: f.path, content: f.content }))))
+        .update(draftMode ? "draft" : "final")
+        .update(fileRelativePath)
+        .digest("hex");
+
       // Find modified and deleted files compared to our cache
       const changedFiles: DifferentialFile[] = [];
       const currentProjectKeys = new Set<string>();
@@ -142,6 +149,7 @@ export async function POST(req: NextRequest) {
         syncType,
         files: syncType === "full" ? allFiles : changedFiles,
         deletedFiles,
+        projectHash,
       };
 
       let response = await fetch(`${compilerUrl}/compile`, {
@@ -175,6 +183,7 @@ export async function POST(req: NextRequest) {
               syncType: "full",
               files: allFiles,
               deletedFiles: [],
+              projectHash,
             }),
           });
         }

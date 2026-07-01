@@ -30,7 +30,8 @@ async function writeFiles(baseDir: string, files: { path: string; content: strin
   for (const file of files) {
     const filePath = path.join(baseDir, file.path);
     const resolvedPath = path.resolve(filePath);
-    if (!resolvedPath.startsWith(path.resolve(baseDir))) {
+    const relative = path.relative(baseDir, resolvedPath);
+    if (relative.startsWith("..") || path.isAbsolute(relative)) {
       throw new Error(`Invalid file path: ${file.path}`);
     }
     await fs.mkdir(path.dirname(resolvedPath), { recursive: true });
@@ -77,13 +78,13 @@ const server = Bun.serve({
       try {
         const bodyText = await req.text();
         const body = JSON.parse(bodyText);
-        const { mode, localProjectPath, fileRelativePath, files, deletedFiles, projectId, syncType, draft } = body;
+        const { mode, localProjectPath, fileRelativePath, files, deletedFiles, projectId, syncType, draft, projectHash } = body;
 
         // 1. Output Cache Verification (For remote/upload compilation)
-        let payloadHash = "";
+        let cacheKey = "";
         if (mode === "upload" && projectId) {
-          payloadHash = crypto.createHash("sha256").update(bodyText).digest("hex");
-          const cached = compilationCache.get(payloadHash);
+          cacheKey = projectHash || crypto.createHash("sha256").update(bodyText).digest("hex");
+          const cached = compilationCache.get(cacheKey);
           if (cached) {
             console.log(`[Cache HIT] Serving cached PDF for project: ${projectId}`);
             return Response.json({
@@ -100,7 +101,8 @@ const server = Bun.serve({
           }
 
           const resolvedTexPath = path.resolve(localProjectPath, fileRelativePath);
-          if (!resolvedTexPath.startsWith(path.resolve(localProjectPath))) {
+          const relative = path.relative(localProjectPath, resolvedTexPath);
+          if (relative.startsWith("..") || path.isAbsolute(relative)) {
             return Response.json({ error: "Access denied" }, { status: 403 });
           }
 
@@ -197,13 +199,20 @@ const server = Bun.serve({
           // Create workspace if missing
           await fs.mkdir(projectDir, { recursive: true });
 
+          try {
+            const now = new Date();
+            await fs.utimes(projectDir, now, now);
+          } catch {}
+
           // Apply deletions
           if (deletedFiles && Array.isArray(deletedFiles)) {
             for (const relPath of deletedFiles) {
-              const target = path.join(projectDir, relPath);
-              if (target.startsWith(projectDir)) {
-                await fs.rm(target, { recursive: true, force: true });
+              const target = path.resolve(projectDir, relPath);
+              const relative = path.relative(projectDir, target);
+              if (relative.startsWith("..") || path.isAbsolute(relative)) {
+                throw new Error(`Invalid file path: ${relPath}`);
               }
+              await fs.rm(target, { recursive: true, force: true });
             }
           }
 
@@ -269,8 +278,8 @@ const server = Bun.serve({
             };
 
             // Cache the successful compilation
-            if (payloadHash) {
-              compilationCache.set(payloadHash, {
+            if (cacheKey) {
+              compilationCache.set(cacheKey, {
                 pdf: pdfBase64,
                 logs: logs,
                 createdAt: Date.now(),
