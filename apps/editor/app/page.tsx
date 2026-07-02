@@ -50,12 +50,13 @@ import {
 } from "@/components/ai-elements/task";
 import { Terminal, TerminalContent } from "@/components/ai-elements/terminal";
 import { cn } from "@/lib/utils";
-import { CheckCircle2Icon, ListTodoIcon, FilePlus, FolderPlus, PanelLeft, PanelRight, Sparkles, Loader2, Check, Home, ChevronRight, ArrowLeft, Clock, Trash2, Plus, Settings } from "lucide-react";
+import { CheckCircle2Icon, ListTodoIcon, FilePlus, FolderPlus, PanelLeft, PanelRight, Sparkles, Loader2, Check, Home, ChevronRight, ArrowLeft, Clock, Trash2, Plus, Settings, Search } from "lucide-react";
 import { nanoid } from "nanoid";
 import { useCallback, useEffect, useInsertionEffect, useRef, useState } from "react";
 import type { PanelImperativeHandle } from "react-resizable-panels";
 import { useEveAgent } from "eve/react";
 import { EveThread } from "@/components/chat/eve-thread";
+import { SearchPanel, SearchPanelHandle } from "@/components/editor/search-panel";
 
 // Custom VS Code style Layout Toggle Icons
 const LayoutIconLeft = ({ active }: { active: boolean }) => (
@@ -408,7 +409,11 @@ const Example = () => {
 
   // Sidebar states
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState<boolean>(true);
-  const [activeTab, setActiveTab] = useState<"files" | "chat" | "settings">("files");
+  const [activeTab, setActiveTab] = useState<"files" | "search" | "chat" | "settings">("files");
+
+  // Search Panel Refs and States
+  const searchPanelRef = useRef<SearchPanelHandle>(null);
+  const [pendingLineJump, setPendingLineJump] = useState<{ path: string; line: number } | null>(null);
 
   // Settings State
   const [settings, setSettings] = useState<{
@@ -422,6 +427,45 @@ const Example = () => {
     tooltipsEnabled: true,
     draftMode: true,
   });
+
+  useEffect(() => {
+    if (pendingLineJump && selectedPath === pendingLineJump.path && editorViewRef.current) {
+      const view = editorViewRef.current;
+      const line = pendingLineJump.line;
+      const timer = setTimeout(() => {
+        try {
+          if (view.state.doc.length > 0) {
+            const lineObj = view.state.doc.line(Math.min(line, view.state.doc.lines));
+            view.dispatch({
+              selection: { anchor: lineObj.from, head: lineObj.from },
+              scrollIntoView: true,
+            });
+            setPendingLineJump(null);
+          }
+        } catch (e) {
+          console.error("Error jumping to line:", e);
+        }
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [pendingLineJump, selectedPath, editedCode]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        setActiveTab("search");
+        if (!isLeftSidebarOpen) {
+          setIsLeftSidebarOpen(true);
+        }
+        setTimeout(() => {
+          searchPanelRef.current?.focusSearch();
+        }, 50);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isLeftSidebarOpen]);
 
   // Load Settings from LocalStorage when projectPathInput changes
   useEffect(() => {
@@ -728,6 +772,41 @@ const Example = () => {
       console.error("Failed to load file tree", err);
     }
   }, []);
+
+  const handleSelectMatch = useCallback((filePath: string, line: number) => {
+    setPendingLineJump({ path: filePath, line });
+    handleFileSelect(filePath);
+  }, [handleFileSelect]);
+
+  const handleReplaceAll = useCallback(async (replaceText: string, searchState: { query: string; options: any }) => {
+    try {
+      const res = await fetch("/api/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          query: searchState.query,
+          replaceText,
+          matchCase: searchState.options.matchCase,
+          matchWholeWord: searchState.options.matchWholeWord,
+          useRegex: searchState.options.useRegex,
+          scope: searchState.options.scope,
+          selectedPath: selectedPath || "",
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        // Reload workspace tree
+        refreshWorkspace();
+        // If selected file was updated, reload its content in the editor
+        if (selectedPath && data.modifiedFiles.includes(selectedPath)) {
+          // Trigger file select reload
+          handleFileSelect(selectedPath);
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  }, [selectedPath, refreshWorkspace, handleFileSelect]);
 
   const handleUpdateProject = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1556,6 +1635,18 @@ const Example = () => {
             <span>AI Assistant</span>
           </button>
           <button
+            onClick={() => setActiveTab("search")}
+            className={cn(
+              "flex-1 flex justify-center items-center gap-1.5 py-1.5 px-2 rounded text-[11px] font-semibold cursor-pointer transition-colors",
+              activeTab === "search"
+                ? "bg-muted text-foreground"
+                : "text-muted-foreground hover:bg-muted/5 hover:text-foreground"
+            )}
+          >
+            <Search className="size-3.5" />
+            <span>Search</span>
+          </button>
+          <button
             onClick={() => setActiveTab("settings")}
             className={cn(
               "flex-1 flex justify-center items-center gap-1.5 py-1.5 px-2 rounded text-[11px] font-semibold cursor-pointer transition-colors",
@@ -1603,6 +1694,15 @@ const Example = () => {
               onDelete={handleFileDelete}
             />
           </div>
+        </div>
+
+        <div className={cn("flex-1 flex flex-col overflow-hidden bg-background", activeTab !== "search" && "hidden")}>
+          <SearchPanel
+            ref={searchPanelRef}
+            selectedPath={selectedPath}
+            onSelectMatch={handleSelectMatch}
+            onReplaceAll={handleReplaceAll}
+          />
         </div>
 
         <div className={cn("flex-1 flex flex-col overflow-hidden bg-background", activeTab !== "chat" && "hidden")}>
