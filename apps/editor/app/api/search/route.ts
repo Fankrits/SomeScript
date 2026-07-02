@@ -66,8 +66,8 @@ export async function GET(req: NextRequest) {
             lines.forEach((lineText, idx) => {
               const lineNum = idx + 1;
               if (scope === "current") {
-                if (startLine !== null && lineNum < startLine) return;
-                if (endLine !== null && lineNum > endLine) return;
+                if (startLine !== null && !isNaN(startLine) && lineNum < startLine) return;
+                if (endLine !== null && !isNaN(endLine) && lineNum > endLine) return;
               }
 
               if (useRegex) {
@@ -194,7 +194,7 @@ export async function POST(req: NextRequest) {
             const content = await storage.readFile(projectId, node.path);
             const matches = content.match(pattern);
             if (matches && matches.length > 0) {
-              const newContent = content.replace(pattern, replaceText);
+              const newContent = content.replace(pattern, () => replaceText);
               await storage.writeFile(projectId, node.path, newContent);
               count += matches.length;
               modifiedFiles.push(node.path);

@@ -74,6 +74,8 @@ export const SearchPanel = forwardRef<SearchPanelHandle, SearchPanelProps>(
       },
     }));
 
+    const activeRequestRef = useRef<number>(0);
+
     const fetchResults = async () => {
       if (!query) {
         setResults([]);
@@ -81,6 +83,7 @@ export const SearchPanel = forwardRef<SearchPanelHandle, SearchPanelProps>(
         return;
       }
       setIsLoading(true);
+      const requestId = ++activeRequestRef.current;
       try {
         const params = new URLSearchParams({
           query,
@@ -94,14 +97,16 @@ export const SearchPanel = forwardRef<SearchPanelHandle, SearchPanelProps>(
         });
         const res = await fetch(`/api/search?${params.toString()}`);
         const data = await res.json();
-        if (data.results) {
+        if (requestId === activeRequestRef.current && data.results) {
           setResults(data.results);
           setResultsByFile(data.resultsByFile || {});
         }
       } catch (err) {
         console.error(err);
       } finally {
-        setIsLoading(false);
+        if (requestId === activeRequestRef.current) {
+          setIsLoading(false);
+        }
       }
     };
 
