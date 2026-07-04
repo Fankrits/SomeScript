@@ -1,7 +1,6 @@
 import { spawn } from "child_process";
 import fs from "fs/promises";
 import path from "path";
-import { Bun } from "bun";
 import crypto from "crypto";
 
 const PORT = process.env.PORT || 3001;
