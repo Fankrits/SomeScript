@@ -4,8 +4,10 @@ import { cn } from "@/lib/utils";
 import {
   ChevronRightIcon,
   FileIcon,
+  FileText,
   FolderIcon,
   FolderOpenIcon,
+  ImageIcon,
   Edit2Icon,
   Trash2Icon,
 } from "lucide-react";
@@ -103,6 +105,17 @@ export const FileTree = ({
     }
   };
 
+  const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "svg", "webp"]);
+
+  const getFileIcon = (name: string) => {
+    const ext = name.includes(".") ? name.split(".").pop()!.toLowerCase() : "";
+    if (IMAGE_EXTS.has(ext))
+      return <ImageIcon className="size-4 text-blue-400 shrink-0" />;
+    if (ext === "pdf")
+      return <FileText className="size-4 text-red-400 shrink-0" />;
+    return <FileIcon className="size-4 text-muted-foreground shrink-0" />;
+  };
+
   const NodeRenderer = ({ node, style, dragHandle }: NodeRendererProps<any>) => {
     const isSelected = selectedPath === node.id;
     const isFolder = !node.isLeaf;
@@ -150,7 +163,7 @@ export const FileTree = ({
                 <>
                   {/* Spacer matching folder chevron indentation */}
                   <span className="size-4 shrink-0" />
-                  <FileIcon className="size-4 text-muted-foreground shrink-0" />
+                  {getFileIcon(node.data.name)}
                 </>
               )}
 
