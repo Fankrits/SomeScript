@@ -85,6 +85,7 @@ const LayoutIconRight = ({ active }: { active: boolean }) => (
 import CodeMirror, { EditorView } from "@uiw/react-codemirror";
 import { undo, redo, undoDepth, redoDepth } from "@codemirror/commands";
 import { EditorToolbar } from "@/components/editor/editor-toolbar";
+import { ImageViewer } from "@/components/editor/image-viewer";
 import { latex } from "codemirror-lang-latex";
 import dynamic from "next/dynamic";
 
@@ -392,6 +393,8 @@ const Example = () => {
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [isCompiling, setIsCompiling] = useState<boolean>(false);
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "unsaved" | "idle">("idle");
+  // View mode: "code" for text | "image" for images | "pdf-standalone" for PDFs opened from tree
+  const [viewMode, setViewMode] = useState<"code" | "image" | "pdf-standalone">("code");
 
   // Terminal state
   const [terminalOutput, setTerminalOutput] = useState<string>("");
@@ -711,6 +714,14 @@ const Example = () => {
     }
   };
 
+  const getViewMode = (filePath: string): "code" | "image" | "pdf-standalone" => {
+    const ext = filePath.includes(".") ? filePath.split(".").pop()!.toLowerCase() : "";
+    const imageExts = ["png", "jpg", "jpeg", "gif", "svg", "webp"];
+    if (imageExts.includes(ext)) return "image";
+    if (ext === "pdf") return "pdf-standalone";
+    return "code";
+  };
+
   // Handle file selection
   const handleFileSelect = useCallback(async (path: string) => {
     if (selectedPath && editedCode !== currentCode) {
@@ -726,6 +737,32 @@ const Example = () => {
     }
 
     setSelectedPath(path);
+
+    const mode = getViewMode(path);
+    setViewMode(mode);
+
+    if (mode === "image") {
+      // Image files: no text to load, clear the PDF pane
+      setPdfUrl(null);
+      setCurrentCode("");
+      setEditedCode("");
+      return;
+    }
+
+    if (mode === "pdf-standalone") {
+      // Show the PDF in the right PDF pane (same mechanism as compiled PDFs)
+      const url = `${window.location.origin}/api/files?path=${encodeURIComponent(path)}&t=${Date.now()}`;
+      setPdfUrl(url);
+      setCurrentCode("");
+      setEditedCode("");
+      // Expand PDF pane if it was collapsed
+      if (pdfPanelRef.current?.isCollapsed()) {
+        pdfPanelRef.current.expand();
+      }
+      return;
+    }
+
+    // mode === "code" — existing .tex and text file logic
     if (path.endsWith(".tex")) {
       const pdfPath = path.replace(/\.tex$/, ".pdf");
       const findPdf = (nodes: any[]): boolean => {
@@ -743,6 +780,7 @@ const Example = () => {
     } else {
       setPdfUrl(null);
     }
+
     try {
       const res = await fetch(`/api/files?path=${encodeURIComponent(path)}`);
       const data = await res.json();
@@ -1907,7 +1945,7 @@ const Example = () => {
                 className={cn(isAnimatingPdf && "panel-transition")}
               >
                 <div className="h-full relative flex flex-col min-w-0">
-                  {selectedPath && (
+                  {selectedPath && viewMode === "code" && (
                     <EditorToolbar
                       onInsert={handleInsertText}
                       onUndo={handleUndo}
@@ -1918,7 +1956,13 @@ const Example = () => {
                     />
                   )}
                   <div className="flex-1 relative overflow-auto">
-                    {selectedPath ? (
+                    {selectedPath && viewMode === "image" ? (
+                      <ImageViewer path={selectedPath} />
+                    ) : selectedPath && viewMode === "pdf-standalone" ? (
+                      <div className="flex items-center justify-center h-full text-muted-foreground text-sm font-mono bg-background">
+                        <span className="opacity-60">PDF displayed in preview pane →</span>
+                      </div>
+                    ) : selectedPath && viewMode === "code" ? (
                       <CodeMirror
                         value={editedCode}
                         height="100%"
