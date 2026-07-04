@@ -73,3 +73,6 @@ This version has breaking changes — APIs, conventions, and file structure may 
 <!-- END:nextjs-agent-rules -->
 
 - Always validate type safety using `bun x tsc --noEmit` inside `apps/editor/` when editing Next.js page or component files.
+- **Next.js 16 File Convention**: `middleware.ts` is deprecated/renamed to `proxy.ts`. Ensure any middleware logic (e.g., Clerk Middleware) is defined in `proxy.ts` (or `proxy.js`) instead of `middleware.ts`.
+- **Clerk Middleware in Next.js 16**: When using `clerkMiddleware()` inside `proxy.ts`, always ensure the configuration matcher array includes `'/__clerk/(.*)'` so that frontend sync requests are correctly intercepted and authenticated by the middleware. Otherwise, Clerk will fall into a login loop in development.
+
