@@ -17,6 +17,18 @@ export async function GET(req: NextRequest) {
 
     if (filePath) {
       console.log("[FILES API] Reading file:", filePath);
+
+      const IMAGE_MIME: Record<string, string> = {
+        ".png":  "image/png",
+        ".jpg":  "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".gif":  "image/gif",
+        ".svg":  "image/svg+xml",
+        ".webp": "image/webp",
+      };
+      const ext = filePath.includes(".") ? `.${filePath.split(".").pop()!.toLowerCase()}` : "";
+      const imageMime = IMAGE_MIME[ext];
+
       if (filePath.endsWith(".pdf")) {
         const buffer = await storage.readBinaryFile(projectId, filePath);
         return new Response(new Uint8Array(buffer), {
@@ -24,6 +36,17 @@ export async function GET(req: NextRequest) {
             "Content-Type": "application/pdf",
             "Content-Length": buffer.length.toString(),
             "Accept-Ranges": "bytes",
+          },
+        });
+      }
+
+      if (imageMime) {
+        const buffer = await storage.readBinaryFile(projectId, filePath);
+        return new Response(new Uint8Array(buffer), {
+          headers: {
+            "Content-Type": imageMime,
+            "Content-Length": buffer.length.toString(),
+            "Cache-Control": "no-store",
           },
         });
       }
