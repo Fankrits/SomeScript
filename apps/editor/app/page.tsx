@@ -874,6 +874,10 @@ const Example = () => {
     }
   }, [selectedPath, refreshWorkspace, handleFileSelect]);
 
+  const handleSearchChange = useCallback((query: string, options: { matchCase: boolean; matchWholeWord: boolean; useRegex: boolean }) => {
+    setSearchState({ query, options });
+  }, []);
+
   const handleUpdateProject = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -1771,7 +1775,7 @@ const Example = () => {
             selectedPath={selectedPath}
             onSelectMatch={handleSelectMatch}
             onReplaceAll={handleReplaceAll}
-            onSearchChange={(query, options) => setSearchState({ query, options })}
+            onSearchChange={handleSearchChange}
           />
         </div>
 
