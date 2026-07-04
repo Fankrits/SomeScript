@@ -3,6 +3,14 @@ import { storage } from "@/lib/storage";
 import { NextRequest } from "next/server";
 import path from "path";
 
+const IMAGE_MIME: Record<string, string> = {
+  ".png":  "image/png",
+  ".jpg":  "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif":  "image/gif",
+  ".svg":  "image/svg+xml",
+  ".webp": "image/webp",
+};
 
 export async function GET(req: NextRequest) {
   console.log("[FILES API] GET request received");
@@ -18,14 +26,7 @@ export async function GET(req: NextRequest) {
     if (filePath) {
       console.log("[FILES API] Reading file:", filePath);
 
-      const IMAGE_MIME: Record<string, string> = {
-        ".png":  "image/png",
-        ".jpg":  "image/jpeg",
-        ".jpeg": "image/jpeg",
-        ".gif":  "image/gif",
-        ".svg":  "image/svg+xml",
-        ".webp": "image/webp",
-      };
+
       const ext = filePath.includes(".") ? `.${filePath.split(".").pop()!.toLowerCase()}` : "";
       const imageMime = IMAGE_MIME[ext];
 
