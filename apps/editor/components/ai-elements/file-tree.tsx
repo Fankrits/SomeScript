@@ -60,6 +60,17 @@ function useDimensions<T extends HTMLElement>() {
   return [ref, dimensions] as const;
 }
 
+const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "svg", "webp"]);
+
+const getFileIcon = (name: string) => {
+  const ext = name.includes(".") ? name.split(".").pop()!.toLowerCase() : "";
+  if (IMAGE_EXTS.has(ext))
+    return <ImageIcon className="size-4 text-blue-400 shrink-0" />;
+  if (ext === "pdf")
+    return <FileText className="size-4 text-red-400 shrink-0" />;
+  return <FileIcon className="size-4 text-muted-foreground shrink-0" />;
+};
+
 export const FileTree = ({
   data,
   selectedPath,
@@ -103,17 +114,6 @@ export const FileTree = ({
     if (id !== newPath) {
       onMove(id, newPath);
     }
-  };
-
-  const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "svg", "webp"]);
-
-  const getFileIcon = (name: string) => {
-    const ext = name.includes(".") ? name.split(".").pop()!.toLowerCase() : "";
-    if (IMAGE_EXTS.has(ext))
-      return <ImageIcon className="size-4 text-blue-400 shrink-0" />;
-    if (ext === "pdf")
-      return <FileText className="size-4 text-red-400 shrink-0" />;
-    return <FileIcon className="size-4 text-muted-foreground shrink-0" />;
   };
 
   const NodeRenderer = ({ node, style, dragHandle }: NodeRendererProps<any>) => {
