@@ -139,13 +139,29 @@ button[data-epdf-i*="rotate" i],
 button[data-epdf-cat*="view" i],
 button[data-epdf-cat*="layout" i],
 button[data-epdf-cat*="spread" i],
-button[data-epdf-cat*="rotate" i] {
+button[data-epdf-cat*="rotate" i],
+button[data-epdf-i*="print" i],
+button[data-epdf-i*="download" i],
+button[data-epdf-i*="export" i],
+button[data-epdf-i*="fullscreen" i],
+button[data-epdf-i*="security" i],
+button[data-epdf-i*="screenshot" i],
+button[data-epdf-i*="capture" i],
+button[data-epdf-i*="comment" i],
+button[data-epdf-cat*="print" i],
+button[data-epdf-cat*="download" i],
+button[data-epdf-cat*="export" i],
+button[data-epdf-cat*="fullscreen" i],
+button[data-epdf-cat*="security" i],
+button[data-epdf-cat*="screenshot" i],
+button[data-epdf-cat*="capture" i],
+button[data-epdf-cat*="comment" i] {
   display: none !important;
 }
 
 /* Align PDF Viewer toolbar height with other toolbars */
-div:has(> [data-epdf-i]),
-div:has(> [data-epdf-cat]),
+div:has(> button[data-epdf-i]),
+div:has(> button[data-epdf-cat]),
 .epdf-toolbar,
 .pdf-toolbar {
   height: 44px !important;
@@ -154,7 +170,7 @@ div:has(> [data-epdf-cat]),
 }
 
 /* Brand the PDF Viewer Toolbar Background & Borders */
-div:has(> [data-epdf-i]) {
+div:has(> button[data-epdf-i]) {
   background-color: var(--background) !important;
   border-bottom: 1px solid var(--border) !important;
   padding-left: 0.75rem !important;
@@ -162,26 +178,26 @@ div:has(> [data-epdf-i]) {
 }
 
 /* Brand the Toolbar Action Buttons */
-div:has(> [data-epdf-i]) button {
+div:has(> button[data-epdf-i]) button {
   color: var(--muted-foreground) !important;
   border-radius: 6px !important;
   transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1) !important;
   cursor: pointer !important;
 }
 
-div:has(> [data-epdf-i]) button:hover {
+div:has(> button[data-epdf-i]) button:hover {
   background-color: var(--muted) !important;
   color: var(--foreground) !important;
 }
 
 /* Brand the PDF Viewer Page Workspace Background */
-.dark div:has(> canvas), 
-.dark [class*="viewer-container"] {
+.dark .pdf-viewer-workspace div:has(> canvas), 
+.dark .pdf-viewer-workspace [class*="viewer-container"] {
   background-color: var(--background) !important;
 }
 
 /* Clean, modern shadows for PDF pages */
-div:has(> canvas) {
+.pdf-viewer-workspace div:has(> canvas) {
   box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.25) !important;
   border-radius: 4px !important;
 }

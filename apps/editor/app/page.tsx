@@ -50,7 +50,7 @@ import {
 } from "@/components/ai-elements/task";
 import { Terminal, TerminalContent } from "@/components/ai-elements/terminal";
 import { cn } from "@/lib/utils";
-import { CheckCircle2Icon, ListTodoIcon, FilePlus, FolderPlus, PanelLeft, PanelRight, Sparkles, Loader2, Check, Home, ChevronRight, ArrowLeft, Clock, Trash2, Plus, Settings, Search } from "lucide-react";
+import { CheckCircle2Icon, ListTodoIcon, FilePlus, FolderPlus, PanelLeft, PanelRight, Sparkles, Loader2, Check, Home, ChevronRight, ArrowLeft, Clock, Trash2, Plus, Settings, Search, Download } from "lucide-react";
 import { nanoid } from "nanoid";
 import { useCallback, useEffect, useInsertionEffect, useRef, useState } from "react";
 import type { PanelImperativeHandle } from "react-resizable-panels";
@@ -1012,6 +1012,16 @@ const Example = () => {
     return () => clearTimeout(timer);
   }, [selectedPath, editedCode, currentCode]);
 
+  const handleDownloadPdf = useCallback(() => {
+    if (!pdfUrl) return;
+    const link = document.createElement("a");
+    link.href = pdfUrl;
+    link.download = "document.pdf";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }, [pdfUrl]);
+
   const handleCompileLatex = useCallback(async () => {
     const compilePath = settings.mainFilePath || selectedPath;
     if (!compilePath || !compilePath.endsWith(".tex")) {
@@ -1231,214 +1241,34 @@ const Example = () => {
         const schema = ui.getSchema();
         if (schema && schema.toolbars) {
           let modified = false;
-          let fullscreenItem: any = null;
-          let downloadItem: any = null;
 
-          const isFullscreenBtn = (item: any) => (
-            item.commandId === 'fullscreen' || 
-            item.commandId === 'document-fullscreen' || 
-            item.id === 'fullscreen-btn' || 
-            item.id === 'fullscreen' ||
-            item.id === 'document-fullscreen' ||
-            item.id === 'document-fullscreen-btn'
-          );
+          const isAllowedItem = (item: any) => {
+            const serialized = JSON.stringify(item).toLowerCase();
+            return (
+              serialized.includes("zoom") ||
+              serialized.includes("pan") ||
+              serialized.includes("select") ||
+              serialized.includes("pointer") ||
+              serialized.includes("search") ||
+              item.type === "spacer" ||
+              item.type === "divider"
+            );
+          };
 
-          const isDownloadBtn = (item: any) => (
-            item.commandId === 'download' || 
-            item.commandId === 'export' || 
-            item.commandId === 'document-export' || 
-            item.id === 'download-btn' || 
-            item.id === 'download' || 
-            item.id === 'export-btn' || 
-            item.id === 'export' || 
-            item.id === 'document-export-btn' || 
-            item.id === 'document-export'
-          );
-
-          // 1. Locate and extract any existing fullscreen & download/export buttons from toolbars
-          for (const key of Object.keys(schema.toolbars)) {
-            const tb = schema.toolbars[key];
-            if (tb.items) {
-              const originalLength = tb.items.length;
-              tb.items = tb.items.filter((item: any) => {
-                if (isFullscreenBtn(item)) {
-                  fullscreenItem = item;
-                  return false;
-                }
-                if (isDownloadBtn(item)) {
-                  downloadItem = item;
-                  return false;
-                }
-                return true;
-              });
-              if (tb.items.length !== originalLength) {
-                modified = true;
-              }
-            }
-          }
-
-          // 2. Locate and extract fullscreen & download/export buttons from menus
-          if (schema.menus) {
-            for (const menuKey of Object.keys(schema.menus)) {
-              const menu = schema.menus[menuKey];
-              if (menu.items) {
-                const originalLength = menu.items.length;
-                menu.items = menu.items.filter((item: any) => {
-                  if (isFullscreenBtn(item)) {
-                    fullscreenItem = item;
-                    return false;
-                  }
-                  if (isDownloadBtn(item)) {
-                    downloadItem = item;
-                    return false;
-                  }
-                  return true;
-                });
-                if (menu.items.length !== originalLength) {
-                  modified = true;
-                }
-              }
-            }
-          }
-
-          // Fallback/Search in menus: detect which commandIds are used in the application
-          let detectedDownloadId = 'document-export';
-          let detectedFullscreenId = 'fullscreen';
-
-          if (schema.menus) {
-            const findCommandIds = (items: any[]) => {
-              if (!items) return;
-              for (const item of items) {
-                if (item.commandId === 'document-export' || item.commandId === 'export' || item.commandId === 'download') {
-                  detectedDownloadId = item.commandId;
-                }
-                if (item.commandId === 'fullscreen' || item.commandId === 'document-fullscreen') {
-                  detectedFullscreenId = item.commandId;
-                }
-                if (item.items) {
-                  findCommandIds(item.items);
-                }
-              }
-            };
-            for (const menuKey of Object.keys(schema.menus)) {
-              findCommandIds(schema.menus[menuKey].items);
-            }
-          }
-
-          // Fallback: create fullscreen button if it wasn't defined
-          if (!fullscreenItem) {
-            fullscreenItem = {
-              type: 'command-button',
-              id: detectedFullscreenId + '-btn',
-              commandId: detectedFullscreenId,
-              variant: 'icon'
-            };
-          }
-
-          // Fallback: create download button if it wasn't defined
-          if (!downloadItem) {
-            downloadItem = {
-              type: 'command-button',
-              id: detectedDownloadId + '-btn',
-              commandId: detectedDownloadId,
-              variant: 'icon'
-            };
-          }
-
-          // 3. Find the main top toolbar that contains the search button
-          const mainToolbarKey = Object.keys(schema.toolbars).find(key => {
-            const tb = schema.toolbars[key];
-            return tb.items && tb.items.some((item: any) => {
-              const serialized = JSON.stringify(item).toLowerCase();
-              return serialized.includes("search");
-            });
-          }) || Object.keys(schema.toolbars).find(key => {
-            const tb = schema.toolbars[key];
-            return tb.position && tb.position.placement === 'top';
-          }) || Object.keys(schema.toolbars)[0];
-
-          if (mainToolbarKey) {
-            const mainTb = schema.toolbars[mainToolbarKey];
-            if (!mainTb.items) {
-              mainTb.items = [];
-            }
-
-            // Find index of the search button in the toolbar
-            const searchIndex = mainTb.items.findIndex((item: any) => {
-              const serialized = JSON.stringify(item).toLowerCase();
-              return serialized.includes("search");
-            });
-
-            // Insert download button next to the search button
-            const existsDownload = mainTb.items.some((item: any) => item.id === downloadItem.id || item.commandId === downloadItem.commandId);
-            if (!existsDownload) {
-              if (searchIndex !== -1) {
-                mainTb.items.splice(searchIndex + 1, 0, downloadItem);
-              } else {
-                mainTb.items.push(downloadItem);
-              }
-              modified = true;
-            }
-
-            // Insert fullscreen button next to download button
-            const existsFullscreen = mainTb.items.some((item: any) => item.id === fullscreenItem.id || item.commandId === fullscreenItem.commandId);
-            if (!existsFullscreen) {
-              if (searchIndex !== -1) {
-                mainTb.items.splice(searchIndex + 2, 0, fullscreenItem);
-              } else {
-                mainTb.items.push(fullscreenItem);
-              }
-              modified = true;
-            }
-          }
-
-          // 3. Prevent fullscreen & download buttons from being hidden by responsive rules in any toolbar
-          const targetIds = [
-            'fullscreen',
-            'fullscreen-btn',
-            'document-fullscreen',
-            'document-fullscreen-btn',
-            'download',
-            'download-btn',
-            'export',
-            'export-btn',
-            'document-export',
-            'document-export-btn'
-          ];
-          for (const key of Object.keys(schema.toolbars)) {
-            const tb = schema.toolbars[key];
-            if (tb.responsive && tb.responsive.breakpoints) {
-              for (const bpKey of Object.keys(tb.responsive.breakpoints)) {
-                const bp = tb.responsive.breakpoints[bpKey];
-                if (bp.hide) {
-                  const originalHideLength = bp.hide.length;
-                  bp.hide = bp.hide.filter((id: string) => !targetIds.includes(id));
-                  if (bp.hide.length !== originalHideLength) {
-                    modified = true;
-                  }
-                }
-              }
-            }
-          }
-
-          // 4. Filter out view-related buttons
           for (const key of Object.keys(schema.toolbars)) {
             const tb = schema.toolbars[key];
             if (tb.items) {
               const originalCount = tb.items.length;
-              tb.items = tb.items.filter((item: any) => {
-                const serialized = JSON.stringify(item).toLowerCase();
-                const isViewRelated = 
-                  serialized.includes("view") || 
-                  serialized.includes("spread") || 
-                  serialized.includes("layout") || 
-                  serialized.includes("rotate");
-                return !isViewRelated;
-              });
+              tb.items = tb.items.filter(isAllowedItem);
               if (tb.items.length !== originalCount) {
                 modified = true;
               }
             }
+          }
+
+          if (schema.menus) {
+            schema.menus = {};
+            modified = true;
           }
 
           if (modified && typeof ui.mergeSchema === 'function') {
@@ -1497,27 +1327,45 @@ const Example = () => {
           style = document.createElement("style");
           style.id = "custom-toolbar-height-style";
           style.textContent = `
-            div:has(> [data-epdf-i]),
-            div:has(> [data-epdf-cat]),
+            button[data-epdf-i*="print" i],
+            button[data-epdf-i*="download" i],
+            button[data-epdf-i*="export" i],
+            button[data-epdf-i*="fullscreen" i],
+            button[data-epdf-i*="security" i],
+            button[data-epdf-i*="screenshot" i],
+            button[data-epdf-i*="capture" i],
+            button[data-epdf-i*="comment" i],
+            button[data-epdf-cat*="print" i],
+            button[data-epdf-cat*="download" i],
+            button[data-epdf-cat*="export" i],
+            button[data-epdf-cat*="fullscreen" i],
+            button[data-epdf-cat*="security" i],
+            button[data-epdf-cat*="screenshot" i],
+            button[data-epdf-cat*="capture" i],
+            button[data-epdf-cat*="comment" i] {
+              display: none !important;
+            }
+            div:has(> button[data-epdf-i]),
+            div:has(> button[data-epdf-cat]),
             .epdf-toolbar,
             .pdf-toolbar {
               height: 44px !important;
               min-height: 44px !important;
               max-height: 44px !important;
             }
-            div:has(> [data-epdf-i]) {
+            div:has(> button[data-epdf-i]) {
               background-color: var(--background) !important;
               border-bottom: 1px solid var(--border) !important;
               padding-left: 0.75rem !important;
               padding-right: 0.75rem !important;
             }
-            div:has(> [data-epdf-i]) button {
+            div:has(> button[data-epdf-i]) button {
               color: var(--muted-foreground) !important;
               border-radius: 6px !important;
               transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1) !important;
               cursor: pointer !important;
             }
-            div:has(> [data-epdf-i]) button:hover {
+            div:has(> button[data-epdf-i]) button:hover {
               background-color: var(--muted) !important;
               color: var(--foreground) !important;
             }
@@ -1603,6 +1451,18 @@ const Example = () => {
               ) : (
                 <span>Compile</span>
               )}
+            </button>
+          )}
+
+          {/* Download PDF Button */}
+          {pdfUrl && (
+            <button
+              onClick={handleDownloadPdf}
+              className="rounded-md border bg-emerald-500/10 border-emerald-500/20 hover:bg-emerald-500/25 text-emerald-600 dark:text-emerald-400 px-3 h-[36px] text-xs font-semibold cursor-pointer transition-colors flex items-center gap-1.5 shadow-sm"
+              title="Download compiled PDF"
+            >
+              <Download className="size-3.5" />
+              <span>Download PDF</span>
             </button>
           )}
 
@@ -2039,7 +1899,7 @@ const Example = () => {
                 }}
                 className={cn(isAnimatingPdf && "panel-transition")}
               >
-                <div className="h-full flex flex-col bg-muted/5 min-w-0">
+                <div className="h-full flex flex-col bg-muted/5 min-w-0 pdf-viewer-workspace">
                   <div className="flex-1 bg-muted/10 flex items-center justify-center relative overflow-hidden">
                     {pdfUrl ? (
                       <div className="absolute inset-0 overflow-hidden">
@@ -2051,14 +1911,14 @@ const Example = () => {
                               preference: "light",
                             },
                             disabledCategories: [
-                              'document-open',
-                              'document-close',
-                              'page',
+                              'document',
                               'annotation',
-                              'redaction',
                               'form',
-                              'tools',
-                              'insert'
+                              'shape',
+                              'redaction',
+                              'insert',
+                              'page',
+                              'panel-comment'
                             ],
                             export: {}
                           }}
