@@ -54,3 +54,8 @@ projects/
 *.pdf
 
 
+.postman/
+.tmp-agents.md
+apps/editor/.output/
+openwiki/
+postman/
