@@ -57,6 +57,7 @@ import type { PanelImperativeHandle } from "react-resizable-panels";
 import { useEveAgent } from "eve/react";
 import { EveThread } from "@/components/chat/eve-thread";
 import { SearchPanel, SearchPanelHandle } from "@/components/editor/search-panel";
+import { search as searchExtension, SearchQuery, setSearchQuery } from "@codemirror/search";
 
 // Custom VS Code style Layout Toggle Icons
 const LayoutIconLeft = ({ active }: { active: boolean }) => (
@@ -417,6 +418,13 @@ const Example = () => {
   // Search Panel Refs and States
   const searchPanelRef = useRef<SearchPanelHandle>(null);
   const [pendingLineJump, setPendingLineJump] = useState<{ path: string; line: number } | null>(null);
+  const [searchState, setSearchState] = useState<{
+    query: string;
+    options: { matchCase: boolean; matchWholeWord: boolean; useRegex: boolean };
+  }>({
+    query: "",
+    options: { matchCase: false, matchWholeWord: false, useRegex: false },
+  });
 
   // Settings State
   const [settings, setSettings] = useState<{
@@ -469,6 +477,26 @@ const Example = () => {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isLeftSidebarOpen]);
+
+  useEffect(() => {
+    if (editorViewRef.current) {
+      try {
+        editorViewRef.current.dispatch({
+          effects: setSearchQuery.of(
+            new SearchQuery({
+              search: searchState.query,
+              caseSensitive: searchState.options.matchCase,
+              literal: !searchState.options.useRegex,
+              regexp: searchState.options.useRegex,
+              wholeWord: searchState.options.matchWholeWord,
+            })
+          ),
+        });
+      } catch (e) {
+        console.error("Error dispatching search query to CodeMirror:", e);
+      }
+    }
+  }, [searchState, currentCode]);
 
   // Load Settings from LocalStorage when projectPathInput changes
   useEffect(() => {
@@ -1059,6 +1087,9 @@ const Example = () => {
   // Reload current file content
   const refreshCurrentFile = useCallback(async () => {
     if (!selectedPath) return;
+    // Skip binary files — PDFs and images are served as raw bytes, not JSON
+    const mode = getViewMode(selectedPath);
+    if (mode === "pdf-standalone" || mode === "image") return;
     try {
       const res = await fetch(`/api/files?path=${encodeURIComponent(selectedPath)}`);
       const data = await res.json();
@@ -1740,6 +1771,7 @@ const Example = () => {
             selectedPath={selectedPath}
             onSelectMatch={handleSelectMatch}
             onReplaceAll={handleReplaceAll}
+            onSearchChange={(query, options) => setSearchState({ query, options })}
           />
         </div>
 
@@ -1967,7 +1999,7 @@ const Example = () => {
                         value={editedCode}
                         height="100%"
                         theme="dark"
-                        extensions={currentLanguage === "latex" ? [latex(), EditorView.lineWrapping] : [EditorView.lineWrapping]}
+                        extensions={currentLanguage === "latex" ? [latex(), EditorView.lineWrapping, searchExtension()] : [EditorView.lineWrapping, searchExtension()]}
                         onChange={(value) => setEditedCode(value)}
                         onCreateEditor={(view) => {
                           editorViewRef.current = view;
@@ -2006,7 +2038,7 @@ const Example = () => {
                 <div className="h-full flex flex-col bg-muted/5 min-w-0">
                   <div className="flex-1 bg-muted/10 flex items-center justify-center relative overflow-hidden">
                     {pdfUrl ? (
-                      <div className="relative w-full h-full overflow-hidden">
+                      <div className="absolute inset-0 overflow-hidden">
                         <PDFViewer
                           key={pdfUrl}
                           config={{
@@ -2027,7 +2059,7 @@ const Example = () => {
                             export: {}
                           }}
                           onReady={handleRegistryReady}
-                          style={{ position: 'absolute', inset: 0 }}
+                          style={{ height: '100%', width: '100%' }}
                         />
                       </div>
                     ) : (

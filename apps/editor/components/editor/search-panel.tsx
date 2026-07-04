@@ -35,6 +35,7 @@ interface SearchPanelProps {
   selectedPath: string | null;
   onSelectMatch: (filePath: string, line: number) => void;
   onReplaceAll: (replaceText: string, searchState: { query: string; options: any }) => void;
+  onSearchChange?: (query: string, options: { matchCase: boolean; matchWholeWord: boolean; useRegex: boolean }) => void;
 }
 
 export interface SearchPanelHandle {
@@ -43,7 +44,7 @@ export interface SearchPanelHandle {
 }
 
 export const SearchPanel = forwardRef<SearchPanelHandle, SearchPanelProps>(
-  ({ selectedPath, onSelectMatch, onReplaceAll }, ref) => {
+  ({ selectedPath, onSelectMatch, onReplaceAll, onSearchChange }, ref) => {
     const [query, setQuery] = useState("");
     const [replaceText, setReplaceText] = useState("");
     const searchInputRef = useRef<HTMLInputElement>(null);
@@ -117,6 +118,10 @@ export const SearchPanel = forwardRef<SearchPanelHandle, SearchPanelProps>(
       }, 300);
       return () => clearTimeout(timer);
     }, [query, matchCase, matchWholeWord, useRegex, searchScope, selectedPath, startLine, endLine]);
+
+    useEffect(() => {
+      onSearchChange?.(query, { matchCase, matchWholeWord, useRegex });
+    }, [query, matchCase, matchWholeWord, useRegex, onSearchChange]);
 
     const toggleFileExpand = (fileId: string) => {
       setExpandedFiles((prev) => ({ ...prev, [fileId]: !prev[fileId] }));
