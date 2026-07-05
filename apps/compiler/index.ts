@@ -124,7 +124,7 @@ const server = Bun.serve({
           (async () => {
             try {
               // Compile flags
-              const flags = ["-C"];
+              const flags = ["-C", "--synctex"];
               if (draft) {
                 flags.push("-r", "0");
               }
@@ -133,7 +133,7 @@ const server = Bun.serve({
               let code = await runTectonic(flags);
               if (code !== 0) {
                 writer.write(encoder.encode(`\n[INFO] Cached compilation failed. Retrying with remote package fetching...\n`));
-                const fallbackFlags = [];
+                const fallbackFlags = ["--synctex"];
                 if (draft) {
                   fallbackFlags.push("-r", "0");
                 }
@@ -251,7 +251,7 @@ const server = Bun.serve({
           };
 
           // Compile flags
-          const flags = ["-C"];
+          const flags = ["-C", "--synctex"];
           if (draft) {
             flags.push("-r", "0");
           }
@@ -260,7 +260,7 @@ const server = Bun.serve({
           let code = await runTectonicUpload(flags);
           if (code !== 0) {
             logs += `\n[INFO] Cached compilation failed or package missing. Retrying with remote package fetching...\n`;
-            const fallbackFlags = [];
+            const fallbackFlags = ["--synctex"];
             if (draft) {
               fallbackFlags.push("-r", "0");
             }
