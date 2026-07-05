@@ -89,6 +89,7 @@ import { undo, redo, undoDepth, redoDepth } from "@codemirror/commands";
 import { EditorToolbar } from "@/components/editor/editor-toolbar";
 import { ImageViewer } from "@/components/editor/image-viewer";
 import { latex } from "codemirror-lang-latex";
+import { useCodeMirrorExtensions } from "@/hooks/use-codemirror-extensions";
 import { createPluginRegistration } from "@embedpdf/core";
 import { EmbedPDF } from "@embedpdf/core/react";
 import { usePdfiumEngine } from "@embedpdf/engines/react";
@@ -481,6 +482,8 @@ const Example = () => {
     autocompleteEnabled: true,
     bracketMatchingEnabled: true,
   });
+
+  const extensions = useCodeMirrorExtensions(settings, currentLanguage);
 
   useEffect(() => {
     if (pendingLineJump && selectedPath === pendingLineJump.path && editorViewRef.current) {
@@ -1886,7 +1889,7 @@ const Example = () => {
                         value={editedCode}
                         height="100%"
                         theme="dark"
-                        extensions={currentLanguage === "latex" ? [latex({ enableTooltips: settings.tooltipsEnabled }), EditorView.lineWrapping, searchExtension()] : [EditorView.lineWrapping, searchExtension()]}
+                        extensions={extensions}
                         onChange={(value) => setEditedCode(value)}
                         onCreateEditor={(view) => {
                           editorViewRef.current = view;
