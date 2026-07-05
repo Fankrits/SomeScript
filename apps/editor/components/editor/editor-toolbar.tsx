@@ -27,6 +27,11 @@ import {
 import { memo, useEffect, useRef, useState, createContext, useContext } from "react"
 import { createPortal } from "react-dom"
 import { cn } from "@/lib/utils"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 
 const ToolbarContext = createContext({ tooltipsEnabled: true })
 
@@ -93,23 +98,35 @@ const ToolDropdown = memo(
       }
     }, [isOpen])
 
+    const button = (
+      <button
+        type="button"
+        ref={buttonRef}
+        onClick={() => setIsOpen(!isOpen)}
+        className={cn(
+          "flex items-center gap-0.5 p-1.5 rounded-md transition-colors cursor-pointer text-xs font-medium",
+          isOpen
+            ? "bg-muted text-foreground"
+            : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
+        )}
+      >
+        <Icon className="size-3.5" />
+        <ChevronDown className="size-3" />
+      </button>
+    )
+
     return (
       <div className="relative shrink-0">
-        <button
-          type="button"
-          ref={buttonRef}
-          onClick={() => setIsOpen(!isOpen)}
-          className={cn(
-            "flex items-center gap-0.5 p-1.5 rounded-md transition-colors cursor-pointer text-xs font-medium",
-            isOpen
-              ? "bg-muted text-foreground"
-              : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
-          )}
-          title={tooltipsEnabled ? label : undefined}
-        >
-          <Icon className="size-3.5" />
-          <ChevronDown className="size-3" />
-        </button>
+        {tooltipsEnabled ? (
+          <Tooltip>
+            <TooltipTrigger asChild>{button}</TooltipTrigger>
+            <TooltipContent side="bottom" align="center" className="text-xs">
+              {label}
+            </TooltipContent>
+          </Tooltip>
+        ) : (
+          button
+        )}
 
         {isOpen &&
           createPortal(
@@ -175,15 +192,25 @@ const ToolButton = memo(
     onInsert: (text: string, cursorOffset?: number) => void
   }) => {
     const { tooltipsEnabled } = useContext(ToolbarContext)
-    return (
+    const button = (
       <button
         type="button"
         onClick={() => onInsert(text, cursorOffset)}
         className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-md transition-colors shrink-0 cursor-pointer"
-        title={tooltipsEnabled ? (shortcut ? `${label} (${shortcut})` : label) : undefined}
       >
         <Icon className="size-3.5" />
       </button>
+    )
+
+    return tooltipsEnabled ? (
+      <Tooltip>
+        <TooltipTrigger asChild>{button}</TooltipTrigger>
+        <TooltipContent side="bottom" align="center" className="text-xs">
+          {shortcut ? `${label} (${shortcut})` : label}
+        </TooltipContent>
+      </Tooltip>
+    ) : (
+      button
     )
   },
 )
@@ -340,34 +367,79 @@ export const EditorToolbar = memo(
         <div className="relative z-20 flex flex-nowrap overflow-x-auto scrollbar-hide items-center gap-0.5 px-2 border-b bg-muted/10 h-11 w-full select-none">
           {/* Undo/Redo */}
           <div className="flex items-center">
-            <button
-              type="button"
-              onClick={onUndo}
-              disabled={!canUndo}
-              className={cn(
-                "p-1.5 rounded-md transition-colors cursor-pointer",
-                canUndo
-                  ? "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                  : "text-muted-foreground/30 cursor-not-allowed",
-              )}
-              title={tooltipsEnabled ? "Undo (Ctrl+Z)" : undefined}
-            >
-              <Undo2 className="size-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={onRedo}
-              disabled={!canRedo}
-              className={cn(
-                "p-1.5 rounded-md transition-colors cursor-pointer",
-                canRedo
-                  ? "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                  : "text-muted-foreground/30 cursor-not-allowed",
-              )}
-              title={tooltipsEnabled ? "Redo (Ctrl+Y)" : undefined}
-            >
-            <Redo2 className="size-3.5" />
-          </button>
+            {tooltipsEnabled ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={onUndo}
+                    disabled={!canUndo}
+                    className={cn(
+                      "p-1.5 rounded-md transition-colors cursor-pointer",
+                      canUndo
+                        ? "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                        : "text-muted-foreground/30 cursor-not-allowed",
+                    )}
+                  >
+                    <Undo2 className="size-3.5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" align="center" className="text-xs">
+                  Undo (Ctrl+Z)
+                </TooltipContent>
+              </Tooltip>
+            ) : (
+              <button
+                type="button"
+                onClick={onUndo}
+                disabled={!canUndo}
+                className={cn(
+                  "p-1.5 rounded-md transition-colors cursor-pointer",
+                  canUndo
+                    ? "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                    : "text-muted-foreground/30 cursor-not-allowed",
+                )}
+              >
+                <Undo2 className="size-3.5" />
+              </button>
+            )}
+
+            {tooltipsEnabled ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={onRedo}
+                    disabled={!canRedo}
+                    className={cn(
+                      "p-1.5 rounded-md transition-colors cursor-pointer",
+                      canRedo
+                        ? "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                        : "text-muted-foreground/30 cursor-not-allowed",
+                    )}
+                  >
+                    <Redo2 className="size-3.5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" align="center" className="text-xs">
+                  Redo (Ctrl+Y)
+                </TooltipContent>
+              </Tooltip>
+            ) : (
+              <button
+                type="button"
+                onClick={onRedo}
+                disabled={!canRedo}
+                className={cn(
+                  "p-1.5 rounded-md transition-colors cursor-pointer",
+                  canRedo
+                    ? "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                    : "text-muted-foreground/30 cursor-not-allowed",
+                )}
+              >
+                <Redo2 className="size-3.5" />
+              </button>
+            )}
         </div>
 
         <ToolDivider />

@@ -1711,7 +1711,7 @@ const Example = () => {
                   Editor Tooltips
                 </label>
                 <div className="text-[11px] text-muted-foreground leading-relaxed">
-                  Toggle hover assistance tooltips in the editor toolbar.
+                  Toggle hover assistance tooltips for LaTeX commands in the code editor.
                 </div>
               </div>
               <input
@@ -1775,7 +1775,7 @@ const Example = () => {
                       onRedo={handleRedo}
                       canUndo={canUndo}
                       canRedo={canRedo}
-                      tooltipsEnabled={settings.tooltipsEnabled}
+                      tooltipsEnabled={true}
                     />
                   )}
                   <div className="flex-1 relative overflow-auto">
@@ -1790,7 +1790,7 @@ const Example = () => {
                         value={editedCode}
                         height="100%"
                         theme="dark"
-                        extensions={currentLanguage === "latex" ? [latex(), EditorView.lineWrapping, searchExtension()] : [EditorView.lineWrapping, searchExtension()]}
+                        extensions={currentLanguage === "latex" ? [latex({ enableTooltips: settings.tooltipsEnabled }), EditorView.lineWrapping, searchExtension()] : [EditorView.lineWrapping, searchExtension()]}
                         onChange={(value) => setEditedCode(value)}
                         onCreateEditor={(view) => {
                           editorViewRef.current = view;

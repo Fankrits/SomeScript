@@ -206,3 +206,27 @@ div:has(> button[data-epdf-i]) button:hover {
 .panel-transition {
   transition: flex 300ms cubic-bezier(0.4, 0, 0.2, 1), flex-grow 300ms cubic-bezier(0.4, 0, 0.2, 1), flex-basis 300ms cubic-bezier(0.4, 0, 0.2, 1) !important;
 }
+
+/* CodeMirror Tooltip styled to match Shadcn UI Tooltip style */
+.cm-tooltip {
+  background-color: var(--popover) !important;
+  color: var(--popover-foreground) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius-md) !important;
+  box-shadow: var(--shadow-md, 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)) !important;
+  font-family: var(--font-sans) !important;
+  font-size: 0.75rem !important; /* text-xs */
+  padding: 0.375rem 0.625rem !important; /* px-2.5 py-1.5 */
+  line-height: 1.25rem !important;
+  max-width: 24rem !important;
+}
+
+.cm-tooltip-arrow:before {
+  border-top-color: var(--border) !important;
+  border-bottom-color: var(--border) !important;
+}
+
+.cm-tooltip-arrow:after {
+  border-top-color: var(--popover) !important;
+  border-bottom-color: var(--popover) !important;
+}
