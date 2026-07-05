@@ -1757,6 +1757,86 @@ const Example = () => {
                 className="mt-0.5 size-4 rounded border-border text-primary focus:ring-primary cursor-pointer"
               />
             </div>
+
+            <hr className="border-border/60" />
+
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-0.5">
+                <label htmlFor="vim-mode-toggle" className="text-xs font-semibold text-muted-foreground">
+                  Vim Keybindings
+                </label>
+                <div className="text-[11px] text-muted-foreground leading-relaxed">
+                  Enable Vim keybindings and modal editing in the code editor.
+                </div>
+              </div>
+              <input
+                id="vim-mode-toggle"
+                type="checkbox"
+                checked={settings.vimModeEnabled}
+                onChange={(e) => saveSettings({ ...settings, vimModeEnabled: e.target.checked })}
+                className="mt-0.5 size-4 rounded border-border text-primary focus:ring-primary cursor-pointer"
+              />
+            </div>
+
+            <hr className="border-border/60" />
+
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-0.5">
+                <label htmlFor="folding-toggle" className="text-xs font-semibold text-muted-foreground">
+                  Code Folding
+                </label>
+                <div className="text-[11px] text-muted-foreground leading-relaxed">
+                  Enable code folding gutters to collapse sections and blocks.
+                </div>
+              </div>
+              <input
+                id="folding-toggle"
+                type="checkbox"
+                checked={settings.foldingEnabled}
+                onChange={(e) => saveSettings({ ...settings, foldingEnabled: e.target.checked })}
+                className="mt-0.5 size-4 rounded border-border text-primary focus:ring-primary cursor-pointer"
+              />
+            </div>
+
+            <hr className="border-border/60" />
+
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-0.5">
+                <label htmlFor="autocomplete-toggle" className="text-xs font-semibold text-muted-foreground">
+                  Autocompletion
+                </label>
+                <div className="text-[11px] text-muted-foreground leading-relaxed">
+                  Enable automatic code completion and suggestions.
+                </div>
+              </div>
+              <input
+                id="autocomplete-toggle"
+                type="checkbox"
+                checked={settings.autocompleteEnabled}
+                onChange={(e) => saveSettings({ ...settings, autocompleteEnabled: e.target.checked })}
+                className="mt-0.5 size-4 rounded border-border text-primary focus:ring-primary cursor-pointer"
+              />
+            </div>
+
+            <hr className="border-border/60" />
+
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-0.5">
+                <label htmlFor="bracket-matching-toggle" className="text-xs font-semibold text-muted-foreground">
+                  Bracket Matching
+                </label>
+                <div className="text-[11px] text-muted-foreground leading-relaxed">
+                  Enable highlighting of matching brackets, parentheses, and braces.
+                </div>
+              </div>
+              <input
+                id="bracket-matching-toggle"
+                type="checkbox"
+                checked={settings.bracketMatchingEnabled}
+                onChange={(e) => saveSettings({ ...settings, bracketMatchingEnabled: e.target.checked })}
+                className="mt-0.5 size-4 rounded border-border text-primary focus:ring-primary cursor-pointer"
+              />
+            </div>
           </div>
         </div>
       </div>
