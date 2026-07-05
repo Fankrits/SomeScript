@@ -1974,6 +1974,7 @@ const Example = () => {
                               synctexData={synctexData}
                               selectedPath={selectedPath}
                               currentLineNumber={currentLineNumber}
+                              onSelectLine={handleSelectMatch}
                             />
                           </EmbedPDF>
                         </div>
@@ -2031,6 +2032,7 @@ interface HeadlessPdfViewerProps {
   synctexData: any;
   selectedPath: string;
   currentLineNumber: number;
+  onSelectLine: (filePath: string, line: number) => void;
 }
 
 const HeadlessPdfViewer = ({
@@ -2038,6 +2040,7 @@ const HeadlessPdfViewer = ({
   synctexData,
   selectedPath,
   currentLineNumber,
+  onSelectLine,
 }: HeadlessPdfViewerProps) => {
   const docManagerCap = useDocumentManagerCapability();
   const { activeDocumentId, activeDocument } = useActiveDocument();
@@ -2085,6 +2088,7 @@ const HeadlessPdfViewer = ({
       synctexData={synctexData}
       selectedPath={selectedPath}
       currentLineNumber={currentLineNumber}
+      onSelectLine={onSelectLine}
     />
   );
 };
@@ -2095,6 +2099,7 @@ interface HeadlessPdfViewerInnerProps {
   synctexData: any;
   selectedPath: string;
   currentLineNumber: number;
+  onSelectLine: (filePath: string, line: number) => void;
 }
 
 const HeadlessPdfViewerInner = ({
@@ -2103,6 +2108,7 @@ const HeadlessPdfViewerInner = ({
   synctexData,
   selectedPath,
   currentLineNumber,
+  onSelectLine,
 }: HeadlessPdfViewerInnerProps) => {
   const scrollHook = useScroll(documentId);
   const zoomHook = useZoom(documentId);
@@ -2439,110 +2445,201 @@ const HeadlessPdfViewerInner = ({
             <ZoomGestureWrapper documentId={documentId} className="w-full min-h-full">
               <Scroller
                 documentId={documentId}
-                renderPage={({ pageIndex, width, height }) => (
-                  <div
-                    key={pageIndex}
-                    style={{ width: "100%", display: "flex", justifyContent: "center", paddingTop: pageIndex === 0 ? "16px" : "8px", paddingBottom: "8px" }}
-                  >
-                    <PagePointerProvider
-                      documentId={documentId}
-                      pageIndex={pageIndex}
-                      style={{ width, height, position: "relative", display: "block", flexShrink: 0 }}
-                      className="shadow-md bg-background border border-border/40 rounded-sm overflow-hidden"
+                renderPage={({ pageIndex, width, height }) => {
+                  const handleDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+                    if (!synctexData) return;
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const clickX = e.clientX - rect.left;
+                    const clickY = e.clientY - rect.top;
+                    
+                    // Convert display coordinates to TeX points (72 DPI)
+                    // The PDF standard uses 72 points per inch.
+                    // Map display coordinates relative to width/height to TeX coordinates.
+                    // According to compile data or SyncTeX, records have page, x, y coordinates.
+                    // SyncTeX coordinates on pages are usually measured from the top-left (or bottom-left depending on convention, but let's check).
+                    // Actually, SyncTeX coordinates are 72 DPI, and they are usually defined relative to page dimensions:
+                    // x_tex = (clickX / rect.width) * page_width_in_tex_points
+                    // y_tex = (clickY / rect.height) * page_height_in_tex_points
+                    // Let's find the page dimensions in TeX points or match records by page and relative distance.
+                    
+                    const pageNumber = pageIndex + 1;
+                    const pageRecords = synctexData.records.filter((r: any) => r.page === pageNumber);
+                    if (pageRecords.length === 0) return;
+
+                    // Calculate distance in normalized coordinate space or TeX point space.
+                    // Since we don't have page width/height in TeX points explicitly, we can compute normalized distance:
+                    // Let's assume the SyncTeX record coordinates (x, y) are in TeX points.
+                    // Standard TeX pages are 8.5x11 inches (Letter = 612x792 pt) or A4 (595x842 pt).
+                    // In either case, we can find the maximum x and y of the records on the page to estimate the page width/height in TeX points,
+                    // or use standard fallback (e.g. A4/Letter size approximation), or calculate the closest record using normalized coords.
+                    // Even simpler: since both the click coordinate (clickX / rect.width) and SyncTeX records can be normalized,
+                    // let's estimate the bounds of SyncTeX records. Or, we can just use the fact that SyncTeX y is measured from top-left or bottom-left.
+                    // Usually, PDF y increases upwards, but SyncTeX/UI y increases downwards.
+                    // Let's calculate the page width/height in TeX points. We can get it from the records:
+                    const maxX = Math.max(...pageRecords.map((r: any) => r.x), 612);
+                    const maxY = Math.max(...pageRecords.map((r: any) => r.y), 792);
+                    
+                    // A better way is to estimate the page size in TeX points using standard 72 DPI mapping.
+                    // But actually, we don't know the exact TeX page width/height, but we can approximate it or use the max coords.
+                    // Let's map click coords directly:
+                    // Standard PDF points are 72 points/inch.
+                    // Let's assume standard A4/Letter dimensions if bounds are within standard range.
+                    // Let's find the record with the minimum distance:
+                    let closestRecord: any = null;
+                    let minDistance = Infinity;
+
+                    // Click coordinates scaled to TeX point space (assuming the PDF is rendered at standard aspect ratio).
+                    // If we normalize the distance:
+                    // dx = (r.x / page_width_in_tex) - (clickX / rect.width)
+                    // dy = (r.y / page_height_in_tex) - (clickY / rect.height)
+                    // Since we don't know page_width_in_tex and page_height_in_tex exactly, we can estimate them.
+                    // Let's estimate them based on the maximum coordinates in the page records, or use standard defaults if records are sparse.
+                    // For Letter: 612 x 792. For A4: 595 x 842.
+                    // We can estimate:
+                    let estimatedWidth = 612;
+                    let estimatedHeight = 792;
+                    
+                    // If we have records, we can refine the estimation.
+                    // Or we can just calculate distance in TeX points directly by mapping click coords to TeX points using a standard page size first:
+                    // let's use:
+                    const texX = (clickX / rect.width) * estimatedWidth;
+                    const texY = (clickY / rect.height) * estimatedHeight;
+
+                    for (const r of pageRecords) {
+                      // SyncTeX records might use a different height/width.
+                      // Let's calculate the Euclidean distance
+                      const dx = r.x - (clickX / rect.width) * (r.pageWidth || estimatedWidth);
+                      const dy = r.y - (clickY / rect.height) * (r.pageHeight || estimatedHeight);
+                      // In case pageWidth/pageHeight are not in the record, we can look at the record's max coords to scale dynamically:
+                      // But SyncTeX records don't store page size, we can assume a typical page size of ~612 x ~792.
+                      // Let's check if the records have coordinates in points. Yes, SyncTeX is 72 DPI.
+                      // If we just use the relative coordinates:
+                      const rxRelative = r.x / estimatedWidth;
+                      const ryRelative = r.y / estimatedHeight;
+                      const clickXRelative = clickX / rect.width;
+                      const clickYRelative = clickY / rect.height;
+                      
+                      const dist = Math.pow(rxRelative - clickXRelative, 2) + Math.pow(ryRelative - clickYRelative, 2);
+                      if (dist < minDistance) {
+                        minDistance = dist;
+                        closestRecord = r;
+                      }
+                    }
+
+                    if (closestRecord) {
+                      const fileRelativePath = synctexData.files[closestRecord.fileId];
+                      if (fileRelativePath) {
+                        onSelectLine(fileRelativePath, closestRecord.line);
+                      }
+                    }
+                  };
+
+                  return (
+                    <div
+                      key={pageIndex}
+                      style={{ width: "100%", display: "flex", justifyContent: "center", paddingTop: pageIndex === 0 ? "16px" : "8px", paddingBottom: "8px" }}
                     >
-                      <RenderLayer
+                      <PagePointerProvider
                         documentId={documentId}
                         pageIndex={pageIndex}
-                        style={{ width: "100%", height: "100%", display: "block", userSelect: "none", pointerEvents: "none" }}
-                        draggable={false}
-                      />
-                      <SearchLayer
-                        documentId={documentId}
-                        pageIndex={pageIndex}
-                        style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
-                      />
-                      {!isPanning && (
-                        <SelectionLayer
+                        style={{ width, height, position: "relative", display: "block", flexShrink: 0 }}
+                        className="shadow-md bg-background border border-border/40 rounded-sm overflow-hidden"
+                        onDoubleClick={handleDoubleClick}
+                      >
+                        <RenderLayer
                           documentId={documentId}
                           pageIndex={pageIndex}
-                          textStyle={{ background: "rgba(59, 130, 246, 0.35)" }}
-                          selectionMenu={((({ menuWrapperProps, placement }: any) => {
-                            return (
-                              <div
-                                {...menuWrapperProps}
-                                className="z-50"
-                                style={{
-                                  ...menuWrapperProps.style,
-                                  pointerEvents: "auto",
-                                }}
-                              >
+                          style={{ width: "100%", height: "100%", display: "block", userSelect: "none", pointerEvents: "none" }}
+                          draggable={false}
+                        />
+                        <SearchLayer
+                          documentId={documentId}
+                          pageIndex={pageIndex}
+                          style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
+                        />
+                        {!isPanning && (
+                          <SelectionLayer
+                            documentId={documentId}
+                            pageIndex={pageIndex}
+                            textStyle={{ background: "rgba(59, 130, 246, 0.35)" }}
+                            selectionMenu={((({ menuWrapperProps, placement }: any) => {
+                              return (
                                 <div
-                                  className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center shrink-0"
+                                  {...menuWrapperProps}
+                                  className="z-50"
                                   style={{
-                                    ...(placement.suggestTop
-                                      ? { bottom: "100%", marginBottom: "6px" }
-                                      : { top: "100%", marginTop: "6px" }),
+                                    ...menuWrapperProps.style,
+                                    pointerEvents: "auto",
                                   }}
                                 >
-                                  <button
-                                    className={cn(
-                                      "flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium bg-popover text-popover-foreground border border-border rounded-md shadow-md hover:bg-accent transition-colors",
-                                      isCopied && "border-green-500/30 bg-green-500/10 text-green-600 dark:text-green-400"
-                                    )}
-                                    onClick={(e) => {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                      if (!isCopied) handleCopy();
+                                  <div
+                                    className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center shrink-0"
+                                    style={{
+                                      ...(placement.suggestTop
+                                        ? { bottom: "100%", marginBottom: "6px" }
+                                        : { top: "100%", marginTop: "6px" }),
                                     }}
                                   >
-                                    {isCopied ? (
-                                      <>
-                                        <svg
-                                          xmlns="http://www.w3.org/2000/svg"
-                                          width="11"
-                                          height="11"
-                                          viewBox="0 0 24 24"
-                                          fill="none"
-                                          stroke="currentColor"
-                                          strokeWidth="3"
-                                          strokeLinecap="round"
-                                          strokeLinejoin="round"
-                                          className="size-3 text-green-500"
-                                        >
-                                          <polyline points="20 6 9 17 4 12" />
-                                        </svg>
-                                        Copied!
-                                      </>
-                                    ) : (
-                                      <>
-                                        <svg
-                                          xmlns="http://www.w3.org/2000/svg"
-                                          width="11"
-                                          height="11"
-                                          viewBox="0 0 24 24"
-                                          fill="none"
-                                          stroke="currentColor"
-                                          strokeWidth="2.5"
-                                          strokeLinecap="round"
-                                          strokeLinejoin="round"
-                                          className="size-3"
-                                        >
-                                          <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
-                                          <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
-                                        </svg>
-                                        Copy
-                                      </>
-                                    )}
-                                  </button>
+                                    <button
+                                      className={cn(
+                                        "flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium bg-popover text-popover-foreground border border-border rounded-md shadow-md hover:bg-accent transition-colors",
+                                        isCopied && "border-green-500/30 bg-green-500/10 text-green-600 dark:text-green-400"
+                                      )}
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        if (!isCopied) handleCopy();
+                                      }}
+                                    >
+                                      {isCopied ? (
+                                        <>
+                                          <svg
+                                            xmlns="http://www.w3.org/2000/svg"
+                                            width="11"
+                                            height="11"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            strokeWidth="3"
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            className="size-3 text-green-500"
+                                          >
+                                            <polyline points="20 6 9 17 4 12" />
+                                          </svg>
+                                          Copied!
+                                        </>
+                                      ) : (
+                                        <>
+                                          <svg
+                                            xmlns="http://www.w3.org/2000/svg"
+                                            width="11"
+                                            height="11"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            strokeWidth="2.5"
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            className="size-3"
+                                          >
+                                            <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
+                                            <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+                                          </svg>
+                                          Copy
+                                        </>
+                                      )}
+                                    </button>
+                                  </div>
                                 </div>
-                              </div>
-                            );
-                          }) as any)}
-                        />
-                      )}
-                    </PagePointerProvider>
-                  </div>
-                )}
+                              );
+                            }) as any)}
+                          />
+                        )}
+                      </PagePointerProvider>
+                    </div>
+                  );
+                }}
               />
             </ZoomGestureWrapper>
           </GlobalPointerProvider>
