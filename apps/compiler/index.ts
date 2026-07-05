@@ -315,7 +315,7 @@ const server = Bun.serve({
               }
               compilationCache.set(cacheKey, {
                 pdf: pdfBase64,
-                logs: logs,
+                logs: logs + `\n[SUCCESS] ${pdfRelativePath}\n`,
                 createdAt: Date.now(),
               });
             }
