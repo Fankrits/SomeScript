@@ -1903,14 +1903,6 @@ const HeadlessPdfViewer = ({ pdfUrl }: HeadlessPdfViewerProps) => {
       lastLoadedUrlRef.current = pdfUrl;
       const newDocId = `doc-${Date.now()}`;
       
-      if (currentDocIdRef.current) {
-        try {
-          docManagerCap.provides.closeDocument(currentDocIdRef.current);
-        } catch (e) {
-          console.warn("Failed to close old document", e);
-        }
-      }
-      
       currentDocIdRef.current = newDocId;
       setCurrentDocId(newDocId);
       docManagerCap.provides.openDocumentUrl({
