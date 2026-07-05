@@ -6,6 +6,7 @@ import { search as searchExtension } from "@codemirror/search";
 import { vim } from "@replit/codemirror-vim";
 import { foldGutter, foldKeymap, bracketMatching } from "@codemirror/language";
 import { keymap } from "@codemirror/view";
+import { autocompletion } from "@codemirror/autocomplete";
 
 export interface EditorSettings {
   mainFilePath: string;
@@ -40,6 +41,10 @@ export function useCodeMirrorExtensions(
 
     if (settings.bracketMatchingEnabled) {
       extensions.push(bracketMatching());
+    }
+
+    if (settings.autocompleteEnabled) {
+      extensions.push(autocompletion());
     }
 
     return extensions;
