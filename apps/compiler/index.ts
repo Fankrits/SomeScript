@@ -230,20 +230,8 @@ const server = Bun.serve({
             await writeFiles(projectDir, files);
           }
 
-          // Output Cache Verification (For remote/upload compilation)
+          // Output Cache Verification disabled to enforce fresh compilations
           let cacheKey = "";
-          if (projectId) {
-            cacheKey = `${projectId}:${projectHash || crypto.createHash("sha256").update(bodyText).digest("hex")}`;
-            const cached = compilationCache.get(cacheKey);
-            if (cached) {
-              console.log(`[Cache HIT] Serving cached PDF for project: ${projectId}`);
-              return Response.json({
-                success: true,
-                logs: cached.logs + `\n[CACHE HIT] Loaded compiled PDF from memory\n`,
-                pdf: cached.pdf,
-              });
-            }
-          }
 
           const resolvedTexPath = path.resolve(projectDir, fileRelativePath);
           const relativePathCheck = path.relative(projectDir, resolvedTexPath);
