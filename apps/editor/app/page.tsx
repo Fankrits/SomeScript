@@ -2510,14 +2510,17 @@ const HeadlessPdfViewerInner = ({
                       key={pageIndex}
                       style={{ width: "100%", display: "flex", justifyContent: "center", paddingTop: pageIndex === 0 ? "16px" : "8px", paddingBottom: "8px" }}
                     >
-                      <PagePointerProvider
-                        documentId={documentId}
-                        pageIndex={pageIndex}
+                      <div
                         style={{ width, height, position: "relative", display: "block", flexShrink: 0 }}
                         className="shadow-md bg-background border border-border/40 rounded-sm overflow-hidden"
                         onDoubleClick={handleDoubleClick}
                       >
-                        <RenderLayer
+                        <PagePointerProvider
+                          documentId={documentId}
+                          pageIndex={pageIndex}
+                          style={{ width: "100%", height: "100%", position: "relative", display: "block", flexShrink: 0 }}
+                        >
+                          <RenderLayer
                           documentId={documentId}
                           pageIndex={pageIndex}
                           style={{ width: "100%", height: "100%", display: "block", userSelect: "none", pointerEvents: "none" }}
@@ -2608,6 +2611,7 @@ const HeadlessPdfViewerInner = ({
                           />
                         )}
                       </PagePointerProvider>
+                      </div>
                     </div>
                   );
                 }}
