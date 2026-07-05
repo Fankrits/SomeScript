@@ -80,7 +80,6 @@ export async function POST(req: NextRequest) {
           localProjectPath: projectPath,
           fileRelativePath,
           draft: isDraft,
-          outdir: ".preview-cache",
         }),
       });
 

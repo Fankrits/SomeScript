@@ -123,17 +123,8 @@ const server = Bun.serve({
 
           (async () => {
             try {
-              const outdir = body.outdir ?? ".preview-cache";
-              if (outdir) {
-                const fullOutdir = path.resolve(localProjectPath, outdir);
-                await fs.mkdir(fullOutdir, { recursive: true });
-              }
-
               // Compile flags
               const flags = ["-C"];
-              if (outdir) {
-                flags.push("-o", outdir);
-              }
               if (draft) {
                 flags.push("-r", "0");
               }
@@ -143,9 +134,6 @@ const server = Bun.serve({
               if (code !== 0) {
                 writer.write(encoder.encode(`\n[INFO] Cached compilation failed. Retrying with remote package fetching...\n`));
                 const fallbackFlags = [];
-                if (outdir) {
-                  fallbackFlags.push("-o", outdir);
-                }
                 if (draft) {
                   fallbackFlags.push("-r", "0");
                 }
@@ -155,8 +143,7 @@ const server = Bun.serve({
 
               if (code === 0) {
                 const relativePdfPath = fileRelativePath.replace(/\.tex$/, ".pdf");
-                const outdirPrefix = outdir ? `${outdir}/` : "";
-                writer.write(encoder.encode(`\n[SUCCESS] ${outdirPrefix}${relativePdfPath}\n`));
+                writer.write(encoder.encode(`\n[SUCCESS] ${relativePdfPath}\n`));
               } else {
                 writer.write(encoder.encode(`\n[ERROR] Tectonic exited with code ${code}\n`));
               }
