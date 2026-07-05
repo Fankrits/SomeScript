@@ -1112,13 +1112,18 @@ const Example = () => {
         setTerminalOutput(logBuffer);
 
         // Check if stream finished with success
-        if (logBuffer.includes("[SUCCESS]")) {
+        if (logBuffer.includes("[SUCCESS]") || logBuffer.includes("[CACHE HIT]")) {
+          let pdfPath = ".preview-cache/main.pdf";
           const match = logBuffer.match(/\[SUCCESS\]\s+(.*)/);
           if (match && match[1]) {
             const rawPdfPath = match[1].trim();
-            const pdfPath = rawPdfPath.startsWith(".preview-cache/") ? rawPdfPath : `.preview-cache/${rawPdfPath}`;
-            setPdfUrl(`${window.location.origin}/api/files?path=${encodeURIComponent(pdfPath)}&t=${Date.now()}`);
+            pdfPath = rawPdfPath.startsWith(".preview-cache/") ? rawPdfPath : `.preview-cache/${rawPdfPath}`;
+          } else if (selectedPath) {
+            // Derive PDF filename from current selected .tex file path
+            const derivedPdf = selectedPath.replace(/\.tex$/, ".pdf");
+            pdfPath = `.preview-cache/${derivedPdf}`;
           }
+          setPdfUrl(`${window.location.origin}/api/files?path=${encodeURIComponent(pdfPath)}&t=${Date.now()}`);
         }
       }
     } catch (err: any) {
