@@ -407,7 +407,7 @@ const pdfPlugins = [
   createPluginRegistration(ScrollPluginPackage),
   createPluginRegistration(RenderPluginPackage),
   createPluginRegistration(InteractionManagerPluginPackage),
-  createPluginRegistration(ZoomPluginPackage, { defaultZoomLevel: ZoomMode.FitWidth }),
+  createPluginRegistration(ZoomPluginPackage, { defaultZoomLevel: 1 }),
   createPluginRegistration(PanPluginPackage),
   createPluginRegistration(SearchPluginPackage),
   createPluginRegistration(SelectionPluginPackage),
