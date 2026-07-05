@@ -467,11 +467,19 @@ const Example = () => {
     compilerEngine: string;
     tooltipsEnabled: boolean;
     draftMode: boolean;
+    vimModeEnabled: boolean;
+    foldingEnabled: boolean;
+    autocompleteEnabled: boolean;
+    bracketMatchingEnabled: boolean;
   }>({
     mainFilePath: "main.tex",
     compilerEngine: "tectonic",
     tooltipsEnabled: true,
     draftMode: true,
+    vimModeEnabled: false,
+    foldingEnabled: true,
+    autocompleteEnabled: true,
+    bracketMatchingEnabled: true,
   });
 
   useEffect(() => {
@@ -533,10 +541,10 @@ const Example = () => {
     }
   }, [searchState, currentCode]);
 
-  // Load Settings from LocalStorage when projectPathInput changes
+  // Load Settings from LocalStorage on mount
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const stored = localStorage.getItem(`somescript-settings-${projectPathInput}`);
+    const stored = localStorage.getItem("somescript-user-settings");
     if (stored) {
       try {
         const parsed = JSON.parse(stored);
@@ -545,6 +553,10 @@ const Example = () => {
           compilerEngine: parsed.compilerEngine ?? "tectonic",
           tooltipsEnabled: parsed.tooltipsEnabled ?? (typeof parsed.tooltipsEnabled === "boolean" ? parsed.tooltipsEnabled : true),
           draftMode: parsed.draftMode ?? true,
+          vimModeEnabled: parsed.vimModeEnabled ?? false,
+          foldingEnabled: parsed.foldingEnabled ?? true,
+          autocompleteEnabled: parsed.autocompleteEnabled ?? true,
+          bracketMatchingEnabled: parsed.bracketMatchingEnabled ?? true,
         });
       } catch (e) {
         console.error("Failed to parse settings", e);
@@ -555,16 +567,20 @@ const Example = () => {
         compilerEngine: "tectonic",
         tooltipsEnabled: true,
         draftMode: true,
+        vimModeEnabled: false,
+        foldingEnabled: true,
+        autocompleteEnabled: true,
+        bracketMatchingEnabled: true,
       });
     }
-  }, [projectPathInput]);
+  }, []);
 
   const saveSettings = useCallback((newSettings: typeof settings) => {
     setSettings(newSettings);
     if (typeof window !== "undefined") {
-      localStorage.setItem(`somescript-settings-${projectPathInput}`, JSON.stringify(newSettings));
+      localStorage.setItem("somescript-user-settings", JSON.stringify(newSettings));
     }
-  }, [projectPathInput]);
+  }, []);
 
   // Recursively collect all .tex files in project
   const getTexFiles = useCallback((nodes: FileNode[]): string[] => {
