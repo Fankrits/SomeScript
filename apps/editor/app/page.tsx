@@ -2475,44 +2475,15 @@ const HeadlessPdfViewerInner = ({
                     // Even simpler: since both the click coordinate (clickX / rect.width) and SyncTeX records can be normalized,
                     // let's estimate the bounds of SyncTeX records. Or, we can just use the fact that SyncTeX y is measured from top-left or bottom-left.
                     // Usually, PDF y increases upwards, but SyncTeX/UI y increases downwards.
-                    // Let's calculate the page width/height in TeX points. We can get it from the records:
-                    const maxX = Math.max(...pageRecords.map((r: any) => r.x), 612);
-                    const maxY = Math.max(...pageRecords.map((r: any) => r.y), 792);
+                    // Estimate standard page dimensions in TeX points (72 DPI)
+                    // For Letter: 612 x 792. For A4: 595 x 842.
+                    const estimatedWidth = 612;
+                    const estimatedHeight = 792;
                     
-                    // A better way is to estimate the page size in TeX points using standard 72 DPI mapping.
-                    // But actually, we don't know the exact TeX page width/height, but we can approximate it or use the max coords.
-                    // Let's map click coords directly:
-                    // Standard PDF points are 72 points/inch.
-                    // Let's assume standard A4/Letter dimensions if bounds are within standard range.
-                    // Let's find the record with the minimum distance:
                     let closestRecord: any = null;
                     let minDistance = Infinity;
 
-                    // Click coordinates scaled to TeX point space (assuming the PDF is rendered at standard aspect ratio).
-                    // If we normalize the distance:
-                    // dx = (r.x / page_width_in_tex) - (clickX / rect.width)
-                    // dy = (r.y / page_height_in_tex) - (clickY / rect.height)
-                    // Since we don't know page_width_in_tex and page_height_in_tex exactly, we can estimate them.
-                    // Let's estimate them based on the maximum coordinates in the page records, or use standard defaults if records are sparse.
-                    // For Letter: 612 x 792. For A4: 595 x 842.
-                    // We can estimate:
-                    let estimatedWidth = 612;
-                    let estimatedHeight = 792;
-                    
-                    // If we have records, we can refine the estimation.
-                    // Or we can just calculate distance in TeX points directly by mapping click coords to TeX points using a standard page size first:
-                    // let's use:
-                    const texX = (clickX / rect.width) * estimatedWidth;
-                    const texY = (clickY / rect.height) * estimatedHeight;
-
                     for (const r of pageRecords) {
-                      // SyncTeX records might use a different height/width.
-                      // Let's calculate the Euclidean distance
-                      const dx = r.x - (clickX / rect.width) * (r.pageWidth || estimatedWidth);
-                      const dy = r.y - (clickY / rect.height) * (r.pageHeight || estimatedHeight);
-                      // In case pageWidth/pageHeight are not in the record, we can look at the record's max coords to scale dynamically:
-                      // But SyncTeX records don't store page size, we can assume a typical page size of ~612 x ~792.
-                      // Let's check if the records have coordinates in points. Yes, SyncTeX is 72 DPI.
                       // If we just use the relative coordinates:
                       const rxRelative = r.x / estimatedWidth;
                       const ryRelative = r.y / estimatedHeight;
