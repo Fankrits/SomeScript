@@ -1950,6 +1950,21 @@ const HeadlessPdfViewerInner = ({ pdfUrl, documentId }: HeadlessPdfViewerInnerPr
 
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
 
+  // Initialize zoom to 100% when a new document ID is loaded to trigger layout calculation
+  useEffect(() => {
+    const provides = zoomHook?.provides;
+    if (provides) {
+      const t = setTimeout(() => {
+        try {
+          provides.requestZoom(1);
+        } catch (e) {
+          console.warn("Failed to initialize zoom level:", e);
+        }
+      }, 80);
+      return () => clearTimeout(t);
+    }
+  }, [documentId, zoomHook?.provides]);
+
   const [isCopied, setIsCopied] = useState(false);
 
   const handleCopy = useCallback(() => {
