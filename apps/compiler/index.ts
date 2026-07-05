@@ -68,6 +68,63 @@ async function cleanupStaleWorkspaces() {
 setInterval(cleanupStaleWorkspaces, 3600000); // run hourly
 cleanupStaleWorkspaces();
 
+interface SyncTexData {
+  files: Record<string, string>;
+  records: Array<{
+    fileId: number;
+    line: number;
+    page: number;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+  }>;
+}
+
+function parseSyncTex(rawText: string): SyncTexData {
+  const files: Record<string, string> = {};
+  const records: SyncTexData["records"] = [];
+  let currentPage = 1;
+
+  const lines = rawText.split(/\r?\n/);
+  for (const line of lines) {
+    if (line.startsWith("Input:")) {
+      const parts = line.split(":");
+      if (parts.length >= 3) {
+        files[parts[1]] = parts.slice(2).join(":");
+      }
+    } else if (line.startsWith("{")) {
+      currentPage = parseInt(line.substring(1), 10);
+    } else if (line.startsWith("h") || line.startsWith("v") || line.startsWith("[")) {
+      const content = line.substring(1);
+      const parts = content.replace(/:/g, ",").split(",");
+      if (parts.length >= 6) {
+        const fileId = parseInt(parts[0], 10);
+        const lineNum = parseInt(parts[1], 10);
+        const x = parseFloat(parts[2]);
+        const y = parseFloat(parts[3]);
+        const w = parseFloat(parts[4]);
+        const h = parseFloat(parts[5]);
+        
+        if (!isNaN(fileId) && !isNaN(lineNum)) {
+          records.push({ fileId, line: lineNum, page: currentPage, x, y, w, h });
+        }
+      }
+    }
+  }
+
+  // ponytail: Deduplicate line records to keep payload small
+  const seen = new Set<string>();
+  const uniqueRecords = records.filter(r => {
+    const key = `${r.fileId}:${r.line}:${r.page}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  return { files, records: uniqueRecords };
+}
+
 const server = Bun.serve({
   port: PORT,
   async fetch(req) {
@@ -75,6 +132,30 @@ const server = Bun.serve({
 
     if (url.pathname === "/health") {
       return new Response("OK", { status: 200 });
+    }
+
+    if (url.pathname === "/synctex" && req.method === "POST") {
+      try {
+        const body = await req.json();
+        const { mode, localProjectPath, projectId, fileRelativePath } = body;
+        
+        let synctexPath = "";
+        if (mode === "local") {
+          synctexPath = path.resolve(localProjectPath, fileRelativePath.replace(/\.tex$/, ".synctex.gz"));
+        } else {
+          const workspacesDir = path.resolve(process.cwd(), "workspaces");
+          synctexPath = path.resolve(workspacesDir, projectId, fileRelativePath.replace(/\.tex$/, ".synctex.gz"));
+        }
+
+        const fileBuffer = await fs.readFile(synctexPath);
+        const decompressed = Bun.gunzipSync(fileBuffer);
+        const text = new TextDecoder().decode(decompressed);
+        const parsedData = parseSyncTex(text);
+
+        return Response.json(parsedData);
+      } catch (err: any) {
+        return Response.json({ error: err.message }, { status: 500 });
+      }
     }
 
     if (url.pathname === "/compile" && req.method === "POST") {
