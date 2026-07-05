@@ -825,21 +825,18 @@ const Example = () => {
       return;
     }
 
-    // mode === "code" — existing .tex and text file logic
     if (path.endsWith(".tex")) {
       const pdfPath = path.replace(/\.tex$/, ".pdf");
-      const findPdf = (nodes: any[]): boolean => {
-        for (const n of nodes) {
-          if (n.path === pdfPath) return true;
-          if (n.children && findPdf(n.children)) return true;
-        }
-        return false;
-      };
-      if (findPdf(fileTree)) {
-        setPdfUrl(`${window.location.origin}/api/files?path=${encodeURIComponent(pdfPath)}&t=${Date.now()}`);
-      } else {
-        setPdfUrl(null);
-      }
+      const previewPath = `.preview-cache/${pdfPath}`;
+      fetch(`/api/files?path=${encodeURIComponent(previewPath)}`)
+        .then((res) => {
+          if (res.ok) {
+            setPdfUrl(`${window.location.origin}/api/files?path=${encodeURIComponent(previewPath)}&t=${Date.now()}`);
+          } else {
+            setPdfUrl(null);
+          }
+        })
+        .catch(() => setPdfUrl(null));
     } else {
       setPdfUrl(null);
     }
@@ -1118,7 +1115,8 @@ const Example = () => {
         if (logBuffer.includes("[SUCCESS]")) {
           const match = logBuffer.match(/\[SUCCESS\]\s+(.*)/);
           if (match && match[1]) {
-            const pdfPath = match[1].trim();
+            const rawPdfPath = match[1].trim();
+            const pdfPath = rawPdfPath.startsWith(".preview-cache/") ? rawPdfPath : `.preview-cache/${rawPdfPath}`;
             setPdfUrl(`${window.location.origin}/api/files?path=${encodeURIComponent(pdfPath)}&t=${Date.now()}`);
           }
         }

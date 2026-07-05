@@ -80,6 +80,7 @@ export async function POST(req: NextRequest) {
           localProjectPath: projectPath,
           fileRelativePath,
           draft: isDraft,
+          outdir: ".preview-cache",
         }),
       });
 
@@ -212,7 +213,7 @@ export async function POST(req: NextRequest) {
 
       if (result.success && result.pdf) {
         const pdfRelativePath = fileRelativePath.replace(/\.tex$/, ".pdf");
-        await storage.writeFile(projectId, pdfRelativePath, Buffer.from(result.pdf, "base64"));
+        await storage.writeFile(projectId, `.preview-cache/${pdfRelativePath}`, Buffer.from(result.pdf, "base64"));
       }
 
       return new Response(result.logs || "", {

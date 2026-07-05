@@ -84,7 +84,7 @@ class LocalStorageProvider implements StorageProvider {
       // Ignored
     }
 
-    const EXCLUDED = new Set(["node_modules", ".git", ".next", ".eve", ".workflow-data"]);
+    const EXCLUDED = new Set(["node_modules", ".git", ".next", ".eve", ".workflow-data", ".preview-cache"]);
 
     const scan = async (dir: string, relativeRoot = ""): Promise<FileNode[]> => {
       const entries = await fs.readdir(dir, { withFileTypes: true });
@@ -308,7 +308,7 @@ class S3StorageProvider implements StorageProvider {
       
       // Get path relative to the project folder prefix
       const relativePath = object.Key.substring(prefix.length);
-      if (!relativePath || relativePath === ".keep") continue;
+      if (!relativePath || relativePath === ".keep" || relativePath.startsWith(".preview-cache/")) continue;
 
       const parts = relativePath.split("/");
       let currentPath = "";
