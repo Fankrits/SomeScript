@@ -1886,7 +1886,6 @@ const Example = () => {
   );
 };
 
-// Headless PDF Viewer Component
 interface HeadlessPdfViewerProps {
   pdfUrl: string | null;
 }
@@ -1895,15 +1894,29 @@ const HeadlessPdfViewer = ({ pdfUrl }: HeadlessPdfViewerProps) => {
   const docManagerCap = useDocumentManagerCapability();
   const { activeDocumentId, activeDocument } = useActiveDocument();
   const lastLoadedUrlRef = useRef<string | null>(null);
+  const currentDocIdRef = useRef<string>("");
+  const [currentDocId, setCurrentDocId] = useState<string>("");
 
   // Load document once pdfUrl is available
   useEffect(() => {
     if (pdfUrl && docManagerCap && docManagerCap.provides && lastLoadedUrlRef.current !== pdfUrl) {
       lastLoadedUrlRef.current = pdfUrl;
+      const newDocId = `doc-${Date.now()}`;
+      
+      if (currentDocIdRef.current) {
+        try {
+          docManagerCap.provides.closeDocument(currentDocIdRef.current);
+        } catch (e) {
+          console.warn("Failed to close old document", e);
+        }
+      }
+      
+      currentDocIdRef.current = newDocId;
+      setCurrentDocId(newDocId);
       docManagerCap.provides.openDocumentUrl({
         url: pdfUrl,
         autoActivate: true,
-        documentId: "tectonic-doc",
+        documentId: newDocId,
       });
     }
   }, [pdfUrl, docManagerCap]);
@@ -1916,7 +1929,7 @@ const HeadlessPdfViewer = ({ pdfUrl }: HeadlessPdfViewerProps) => {
     );
   }
 
-  if (!activeDocumentId || !activeDocument || activeDocument.status !== "loaded") {
+  if (!activeDocumentId || activeDocumentId !== currentDocId || !activeDocument || activeDocument.status !== "loaded") {
     return (
       <div className="flex-1 flex items-center justify-center text-xs font-mono text-muted-foreground p-4 text-center gap-2">
         <Loader2 className="size-4 animate-spin text-primary" />
