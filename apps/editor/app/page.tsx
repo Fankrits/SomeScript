@@ -1890,6 +1890,11 @@ const Example = () => {
                         height="100%"
                         theme="dark"
                         extensions={extensions}
+                        basicSetup={{
+                          foldGutter: false,
+                          bracketMatching: false,
+                          autocompletion: false,
+                        }}
                         onChange={(value) => setEditedCode(value)}
                         onCreateEditor={(view) => {
                           editorViewRef.current = view;
