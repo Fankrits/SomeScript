@@ -2214,12 +2214,12 @@ const HeadlessPdfViewerInner = ({ pdfUrl, documentId }: HeadlessPdfViewerInnerPr
             </button>
           </div>
         )}
-        <ZoomGestureWrapper documentId={documentId} className="absolute inset-0 w-full h-full">
+        <Viewport
+          documentId={documentId}
+          className="w-full h-full overflow-auto"
+        >
           <GlobalPointerProvider documentId={documentId} className="w-full h-full">
-            <Viewport
-              documentId={documentId}
-              className="w-full h-full overflow-auto"
-            >
+            <ZoomGestureWrapper documentId={documentId} className="w-full min-h-full">
               <Scroller
                 documentId={documentId}
                 renderPage={({ pageIndex, width, height }) => (
@@ -2327,9 +2327,9 @@ const HeadlessPdfViewerInner = ({ pdfUrl, documentId }: HeadlessPdfViewerInnerPr
                   </div>
                 )}
               />
-            </Viewport>
+            </ZoomGestureWrapper>
           </GlobalPointerProvider>
-        </ZoomGestureWrapper>
+        </Viewport>
       </div>
     </div>
   );
