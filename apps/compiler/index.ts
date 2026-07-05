@@ -123,9 +123,14 @@ const server = Bun.serve({
 
           (async () => {
             try {
+              const outdir = body.outdir ?? ".preview-cache";
+              if (outdir) {
+                const fullOutdir = path.resolve(localProjectPath, outdir);
+                await fs.mkdir(fullOutdir, { recursive: true });
+              }
+
               // Compile flags
               const flags = ["-C"];
-              const outdir = body.outdir ?? ".preview-cache";
               if (outdir) {
                 flags.push("-o", outdir);
               }

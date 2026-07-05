@@ -65,6 +65,9 @@ export async function GET(req: NextRequest) {
     return Response.json({ tree, projectPath: relativePath });
   } catch (error: any) {
     console.error("[FILES API] Error in GET:", error.message);
+    if (error.code === "ENOENT" || error.message?.includes("ENOENT")) {
+      return Response.json({ error: "File not found" }, { status: 404 });
+    }
     return Response.json({ error: error.message }, { status: 500 });
   }
 }
