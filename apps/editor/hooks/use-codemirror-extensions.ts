@@ -48,5 +48,12 @@ export function useCodeMirrorExtensions(
     }
 
     return extensions;
-  }, [settings, currentLanguage]);
+  }, [
+    settings.tooltipsEnabled,
+    settings.vimModeEnabled,
+    settings.foldingEnabled,
+    settings.bracketMatchingEnabled,
+    settings.autocompleteEnabled,
+    currentLanguage,
+  ]);
 }
