@@ -428,6 +428,11 @@ const Example = () => {
   const [editedCode, setEditedCode] = useState<string>("");
   const [newItemName, setNewItemName] = useState<string>("");
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [synctexData, setSynctexData] = useState<{
+    files: Record<string, string>;
+    records: Array<{ fileId: number; line: number; page: number; x: number; y: number; w: number; h: number; }>;
+  } | null>(null);
+  const [currentLineNumber, setCurrentLineNumber] = useState<number>(1);
   const [isCompiling, setIsCompiling] = useState<boolean>(false);
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "unsaved" | "idle">("idle");
   // View mode: "code" for text | "image" for images | "pdf-standalone" for PDFs opened from tree
@@ -601,6 +606,22 @@ const Example = () => {
     return files;
   }, []);
 
+  const fetchSyncTex = useCallback(async (compilePath: string) => {
+    try {
+      const res = await fetch("/api/synctex", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: compilePath }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSynctexData(data);
+      }
+    } catch (err) {
+      console.warn("Failed to fetch SyncTeX map:", err);
+    }
+  }, []);
+
   // Chat History / Multi-thread states
   const [threads, setThreads] = useState<Array<{ id: string; title: string; createdAt: number }>>([]);
   const [activeThreadId, setActiveThreadId] = useState<string>("");
@@ -705,6 +726,12 @@ const Example = () => {
       if (view) {
         setCanUndo(undoDepth(view.state) > 0);
         setCanRedo(redoDepth(view.state) > 0);
+      }
+      try {
+        const line = update.state.doc.lineAt(update.state.selection.main.head).number;
+        setCurrentLineNumber(line);
+      } catch (e) {
+        // ignore
       }
     }
   }, []);
@@ -1143,6 +1170,7 @@ const Example = () => {
             pdfPath = `.preview-cache/${derivedPdf}`;
           }
           setPdfUrl(`${window.location.origin}/api/files?path=${encodeURIComponent(pdfPath)}&t=${Date.now()}`);
+          fetchSyncTex(compilePath);
         }
       }
     } catch (err: any) {
@@ -1153,7 +1181,7 @@ const Example = () => {
       setIsCompiling(false);
       setIsTerminalStreaming(false);
     }
-  }, [selectedPath, editedCode, settings]);
+  }, [selectedPath, editedCode, settings, fetchSyncTex]);
 
   // Reload current file content
   const refreshCurrentFile = useCallback(async () => {
@@ -1941,7 +1969,12 @@ const Example = () => {
                             engine={pdfEngine}
                             config={{}}
                           >
-                            <HeadlessPdfViewer pdfUrl={pdfUrl} />
+                            <HeadlessPdfViewer
+                              pdfUrl={pdfUrl}
+                              synctexData={synctexData}
+                              selectedPath={selectedPath}
+                              currentLineNumber={currentLineNumber}
+                            />
                           </EmbedPDF>
                         </div>
                       ) : (
@@ -1995,9 +2028,17 @@ const Example = () => {
 
 interface HeadlessPdfViewerProps {
   pdfUrl: string | null;
+  synctexData: any;
+  selectedPath: string;
+  currentLineNumber: number;
 }
 
-const HeadlessPdfViewer = ({ pdfUrl }: HeadlessPdfViewerProps) => {
+const HeadlessPdfViewer = ({
+  pdfUrl,
+  synctexData,
+  selectedPath,
+  currentLineNumber,
+}: HeadlessPdfViewerProps) => {
   const docManagerCap = useDocumentManagerCapability();
   const { activeDocumentId, activeDocument } = useActiveDocument();
   const lastLoadedUrlRef = useRef<string | null>(null);
@@ -2037,20 +2078,69 @@ const HeadlessPdfViewer = ({ pdfUrl }: HeadlessPdfViewerProps) => {
     );
   }
 
-  return <HeadlessPdfViewerInner pdfUrl={pdfUrl} documentId={activeDocumentId} />;
+  return (
+    <HeadlessPdfViewerInner
+      pdfUrl={pdfUrl}
+      documentId={activeDocumentId}
+      synctexData={synctexData}
+      selectedPath={selectedPath}
+      currentLineNumber={currentLineNumber}
+    />
+  );
 };
 
 interface HeadlessPdfViewerInnerProps {
   pdfUrl: string;
   documentId: string;
+  synctexData: any;
+  selectedPath: string;
+  currentLineNumber: number;
 }
 
-const HeadlessPdfViewerInner = ({ pdfUrl, documentId }: HeadlessPdfViewerInnerProps) => {
+const HeadlessPdfViewerInner = ({
+  pdfUrl,
+  documentId,
+  synctexData,
+  selectedPath,
+  currentLineNumber,
+}: HeadlessPdfViewerInnerProps) => {
   const scrollHook = useScroll(documentId);
   const zoomHook = useZoom(documentId);
   const panHook = usePan(documentId);
   const searchHook = useSearch(documentId);
   const selectionCap = useSelectionCapability();
+
+  // Cursor synchronization hook
+  useEffect(() => {
+    if (!synctexData || !selectedPath || !scrollHook?.provides) return;
+
+    // Find fileId
+    const fileIdStr = Object.keys(synctexData.files).find(
+      (key: string) => synctexData.files[key].endsWith(selectedPath)
+    );
+    if (!fileIdStr) return;
+    const fileId = parseInt(fileIdStr, 10);
+
+    // Look up record matching fileId and closest line
+    let match = synctexData.records.find((r: any) => r.fileId === fileId && r.line === currentLineNumber);
+    if (!match) {
+      // Find the closest line match
+      const fileRecords = synctexData.records.filter((r: any) => r.fileId === fileId);
+      if (fileRecords.length > 0) {
+        match = fileRecords.reduce((prev: any, curr: any) => {
+          return Math.abs(curr.line - currentLineNumber) < Math.abs(prev.line - currentLineNumber) ? curr : prev;
+        });
+      }
+    }
+
+    if (match) {
+      try {
+        scrollHook.provides.scrollToPage({ pageNumber: match.page });
+      } catch (e) {
+        console.warn("Failed to scroll to page:", e);
+      }
+    }
+  }, [currentLineNumber, selectedPath, synctexData, scrollHook?.provides]);
 
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
 
