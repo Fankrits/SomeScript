@@ -1,9 +1,11 @@
+import { fileURLToPath } from 'node:url'
+
 const defaultSiteUrl = process.env.NUXT_PUBLIC_SITE_URL || 'http://localhost:3003'
 
 export default defineNuxtConfig({
   extends: ['docus'],
   alias: {
-    'docus/server/utils/content': '/Users/fankrits/dev/SomeScript-adv/apps/docs/lib/docus-content.ts',
+    'docus/server/utils/content': fileURLToPath(new URL('./lib/docus-content.ts', import.meta.url)),
   },
   mcp: {
     enabled: false,
