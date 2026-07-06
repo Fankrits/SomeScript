@@ -19,6 +19,18 @@
       "skillPath": "assistant-ui/skills/copilots/SKILL.md",
       "computedHash": "60036a154b62e09cf6fb9d55a22696b42cc3396b63e1a21dfa65bfaf70b63f4f"
     },
+    "create-docs": {
+      "source": "nuxt-content/docus",
+      "sourceType": "github",
+      "skillPath": "docs/skills/create-docs/SKILL.md",
+      "computedHash": "3c6d7d6f6084ff5ebbd59fe8b348f99bced0d303da45cd61069a0f6dac8199f6"
+    },
+    "docus-playground": {
+      "source": "nuxt-content/docus",
+      "sourceType": "github",
+      "skillPath": "playground/skills/docus-playground/SKILL.md",
+      "computedHash": "49783d3cd2f0d71b7e299e5e380b1f8e00fa3ea033cb5e6b589e5a146ce0083f"
+    },
     "eve": {
       "source": "vercel/eve",
       "sourceType": "github",
@@ -48,6 +60,12 @@
       "sourceType": "github",
       "skillPath": "assistant-ui/skills/react-mcp/SKILL.md",
       "computedHash": "a667989e5907f5a01bc8b2a4a6f21828560629a900fe2da9c41b96674e472418"
+    },
+    "review-docs": {
+      "source": "nuxt-content/docus",
+      "sourceType": "github",
+      "skillPath": "docs/skills/review-docs/SKILL.md",
+      "computedHash": "016eca30a60e4d1ec38cf162753d47e52dbb543a931f77f8050d4bc4f6bc5e6b"
     },
     "runtime": {
       "source": "assistant-ui/skills",
