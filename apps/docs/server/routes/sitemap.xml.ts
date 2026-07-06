@@ -1,26 +1,4 @@
-function getAvailableLocales(config) {
-  if (config.docus?.filteredLocales) {
-    return config.docus.filteredLocales.map(locale => locale.code)
-  }
-
-  return config.i18n?.locales
-    ? config.i18n.locales.map(locale => typeof locale === 'string' ? locale : locale.code)
-    : []
-}
-
-function getCollectionsToQuery(locale, availableLocales) {
-  if (locale && availableLocales.includes(locale)) {
-    return [`docs_${locale}`]
-  }
-
-  return availableLocales.length > 0
-    ? availableLocales.map(l => `docs_${l}`)
-    : ['docs']
-}
-
-function isNavigationPath(path) {
-  return path.endsWith('.navigation') || path.includes('/.navigation/')
-}
+import { getAvailableLocales, getCollectionsToQuery, isNavigationPath } from '../../lib/docus-content'
 
 function inferSiteURL() {
   const url = (
