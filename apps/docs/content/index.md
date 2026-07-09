@@ -9,14 +9,14 @@ seo:
 LaTeX Guide
 
 #description
-A comprehensive guide to the LaTeX typesetting system, adapted from the Wikibooks LaTeX book. Learn from basics to advanced topics.
+A comprehensive, topic-based guide to the LaTeX typesetting system. Find exactly what you need, from first document to advanced programming.
 
 #links
   :::u-button
   ---
   color: neutral
   size: xl
-  to: /latex-getting-started/introduction
+  to: /getting-started/introduction
   trailing-icon: i-lucide-arrow-right
   ---
   Get started
@@ -50,7 +50,7 @@ What you'll learn
   :::u-page-feature
   ---
   icon: i-lucide-play
-  to: /latex-getting-started/introduction
+  to: /getting-started/introduction
   ---
   #title
   Getting Started
@@ -61,61 +61,97 @@ What you'll learn
 
   :::u-page-feature
   ---
-  icon: i-lucide-layers
-  to: /latex-common-elements/document-structure
+  icon: i-lucide-file-text
+  to: /document-fundamentals/document-structure
   ---
   #title
-  Common Elements
+  Document Fundamentals
   
   #description
-  Fonts, layout, colors, lists, figures, tables, and more.
+  Text formatting, fonts, colors, lists, and special characters.
+  :::
+
+  :::u-page-feature
+  ---
+  icon: i-lucide-layout
+  to: /page-design/page-layout
+  ---
+  #title
+  Page Design
+  
+  #description
+  Layout, headers, footers, titles, and footnotes.
+  :::
+
+  :::u-page-feature
+  ---
+  icon: i-lucide-table
+  to: /tables-and-graphics/tables
+  ---
+  #title
+  Tables and Graphics
+  
+  #description
+  Tables, figures, TikZ, PSTricks, and procedural graphics.
   :::
 
   :::u-page-feature
   ---
   icon: i-lucide-flask-conical
-  to: /latex-special-documents/scientific-reports
+  to: /technical-writing/mathematics
   ---
   #title
-  Technical Text
+  Technical Writing
   
   #description
-  Mathematics, algorithms, chemical graphics, and source code listings.
+  Mathematics, algorithms, chemical graphics, bibliographies, and code listings.
   :::
 
   :::u-page-feature
   ---
-  icon: i-lucide-pen-tool
-  to: /latex-creating-graphics/introducing-procedural-graphics
+  icon: i-lucide-link
+  to: /cross-references/labels-and-cross-referencing
   ---
   #title
-  Creating Graphics
+  Cross-References
   
   #description
-  Procedural graphics, TikZ, PSTricks, and more.
+  Labels, cross-references, hyperlinks, and PDF navigation.
+  :::
+
+  :::u-page-feature
+  ---
+  icon: i-lucide-file-badge
+  to: /specialized-documents/scientific-reports
+  ---
+  #title
+  Specialized Documents
+  
+  #description
+  Scientific reports, letters, presentations, CVs, and academic journals.
   :::
 
   :::u-page-feature
   ---
   icon: i-lucide-code
-  to: /latex-programming/macros
+  to: /programming/macros
   ---
   #title
-  Programming
+  Programming LaTeX
   
   #description
-  Macros, packages, and themes.
+  Macros, packages, themes, modular documents, and collaboration.
   :::
 
   :::u-page-feature
   ---
-  icon: i-lucide-help-circle
-  to: /latex-help-and-recommendations/faq
+  icon: i-lucide-book-open
+  to: /reference/faq
   ---
   #title
-  Help & FAQ
+  Reference and Help
   
   #description
-  Common pitfalls, tips, tricks, and frequently asked questions.
+  FAQ, tips, errors, lengths, counters, boxes, and command glossary.
   :::
 ::
