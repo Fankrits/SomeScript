@@ -86,7 +86,8 @@ const ModeWrapper = memo(function ModeWrapper({
 function Lens({ modeProps, ...p }) {
   return (
     <ModeWrapper
-      geometry={<dodecahedronGeometry args={[1.2, 1]} />}
+      geometry={<cylinderGeometry args={[1.2, 1.2, 0.4, 64]} />}
+      rotation-x={Math.PI / 2}
       followPointer
       modeProps={modeProps}
       {...p}
@@ -108,7 +109,8 @@ function Cube({ modeProps, ...p }) {
 function Bar({ modeProps = {}, ...p }) {
   return (
     <ModeWrapper
-      geometry={<torusKnotGeometry args={[0.7, 0.22, 120, 16]} />}
+      geometry={<capsuleGeometry args={[0.4, 2.4, 8, 32]} />}
+      rotation-z={Math.PI / 2}
       followPointer
       modeProps={modeProps}
       {...p}
