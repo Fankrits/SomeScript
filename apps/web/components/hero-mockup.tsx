@@ -2,12 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { Loader2, CheckCircle2, FileText, Settings, Search } from "lucide-react";
-import dynamic from "next/dynamic";
-
-const FluidGlass = dynamic(
-  () => import("./FluidGlass"),
-  { ssr: false }
-);
+import { LiquidGlassCard } from "./kokonutui/liquid-glass-card";
 
 const FORMULA = "  \\int_{a}^{b} f(x) \\, dx = F(b) - F(a)";
 
@@ -125,11 +120,8 @@ export default function HeroMockup({ overlay }: HeroMockupProps) {
         </div>
       </div>
 
-      {/* Window 1: Code Editor (Bottom-Left / Foreground) - Style as Fluid Glass */}
-      <div className="order-2 w-full bg-[#0e161b]/65 backdrop-blur-xl border border-white/20 rounded-xl shadow-2xl p-3 sm:p-4 transition-all duration-500 hover:-translate-y-1 hover:shadow-3xl lg:absolute lg:bottom-0 lg:left-0 lg:z-20 lg:w-[42%] lg:aspect-[4/3] lg:rotate-y-[10deg] lg:rotate-x-[-2deg] font-mono text-[9px] sm:text-[11px] leading-relaxed overflow-hidden">
-
-        {/* Embed the interactive FluidGlass canvas in the background */}
-        <FluidGlass mode="bar" />
+      {/* Window 1: Code Editor (Bottom-Left / Foreground) - Liquid Glass surface */}
+      <LiquidGlassCard glassSize="sm" className="order-2 w-full bg-[#0e161b]/50 border border-white/20 rounded-xl shadow-2xl p-3 sm:p-4 transition-all duration-500 hover:-translate-y-1 hover:shadow-3xl lg:absolute lg:bottom-0 lg:left-0 lg:z-20 lg:w-[42%] lg:aspect-[4/3] lg:rotate-y-[10deg] lg:rotate-x-[-2deg] font-mono text-[9px] sm:text-[11px] leading-relaxed">
 
         {/* Header Bar */}
         <div className="flex items-center justify-between border-b border-white/10 pb-1.5 mb-2 select-none relative z-10">
@@ -247,7 +239,7 @@ export default function HeroMockup({ overlay }: HeroMockupProps) {
             )}
           </div>
         </div>
-      </div>
+      </LiquidGlassCard>
 
     </div>
   );
