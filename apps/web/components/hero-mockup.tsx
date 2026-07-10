@@ -53,7 +53,7 @@ export default function HeroMockup({ overlay }: HeroMockupProps) {
   }, [phase, charIndex]);
 
   return (
-    <div className="relative mx-auto w-full max-w-6xl flex flex-col gap-6 lg:block lg:h-[780px] xl:h-[860px]" style={{ perspective: "1000px" }}>
+    <div className="relative mx-auto w-full max-w-6xl flex flex-col gap-6 lg:block lg:h-[min(720px,70vh)] xl:h-[min(780px,72vh)]" style={{ perspective: "1000px" }}>
       {overlay && (
         <div className="order-0 lg:absolute lg:inset-0 lg:z-30 lg:flex lg:items-center lg:justify-center">
           {overlay}
@@ -61,26 +61,26 @@ export default function HeroMockup({ overlay }: HeroMockupProps) {
       )}
 
       {/* Window 2: PDF Preview (Top-Right / Background) */}
-      <div className={`order-1 w-full bg-white border border-[#e5dacd] rounded-xl shadow-2xl p-4 sm:p-6 transition-all duration-700 font-sans lg:absolute lg:top-0 lg:right-0 lg:z-10 lg:w-[54%] ${
-        phase === "success" 
-          ? "translate-x-1 -translate-y-1 scale-[1.02] ring-2 ring-emerald-500/20 border-emerald-300" 
+      <div className={`order-1 w-full bg-white border border-[#e5dacd] rounded-xl shadow-2xl p-3 sm:p-4 transition-all duration-700 font-sans overflow-hidden lg:absolute lg:top-0 lg:right-0 lg:z-10 lg:w-[34%] lg:aspect-[3/4] lg:-rotate-y-[10deg] lg:rotate-x-[2deg] ${
+        phase === "success"
+          ? "translate-x-1 -translate-y-1 scale-[1.02] ring-2 ring-emerald-500/20 border-emerald-300"
           : "translate-x-0 translate-y-0 scale-100 opacity-90"
       }`}>
         {/* Header section */}
-        <div className="border-b border-[#e5dacd]/60 pb-2 sm:pb-3 mb-3 sm:mb-4 text-center">
+        <div className="border-b border-[#e5dacd]/60 pb-1.5 sm:pb-2 mb-2 sm:mb-2.5 text-center">
           <h4 className="text-[9px] sm:text-[11px] font-semibold text-[#0f4c5c] uppercase tracking-wider">
             main.pdf
           </h4>
-          <h2 className="text-[12px] sm:text-[14px] font-bold text-[#1c2e36] mt-1.5 sm:mt-2 font-serif">
+          <h2 className="text-[12px] sm:text-[14px] font-bold text-[#1c2e36] mt-1 sm:mt-1.5 font-serif">
             Fundamental Theorem of Calculus
           </h2>
-          <p className="text-[7px] sm:text-[8px] text-[#5a737e] mt-0.5 sm:mt-1 italic">
+          <p className="text-[7px] sm:text-[8px] text-[#5a737e] mt-0.5 italic">
             A. Researcher &bull; SomeScript Academy
           </p>
         </div>
 
         {/* Abstract layout */}
-        <div className="flex flex-col gap-1.5 sm:gap-2">
+        <div className="flex flex-col gap-1 sm:gap-1.5">
           <div className="flex items-center gap-1.5">
             <span className="text-[7px] sm:text-[8px] font-bold text-[#1c2e36]">Abstract</span>
             <div className="h-0.5 bg-[#efe7dd] rounded-full flex-1" />
@@ -91,7 +91,7 @@ export default function HeroMockup({ overlay }: HeroMockupProps) {
         </div>
 
         {/* Core math expression */}
-        <div className="my-4 sm:my-6 p-3 sm:p-4 bg-[#FBF6F0] border border-[#e5dacd]/50 rounded-lg flex flex-col items-center justify-center min-h-[50px] sm:min-h-[70px] transition-all duration-500 relative overflow-hidden">
+        <div className="my-2.5 sm:my-3.5 p-2.5 sm:p-3 bg-[#FBF6F0] border border-[#e5dacd]/50 rounded-lg flex flex-col items-center justify-center min-h-[40px] sm:min-h-[54px] transition-all duration-500 relative overflow-hidden">
           <div className="absolute top-1.5 left-1.5 text-[6px] sm:text-[8px] font-mono text-[#5a737e]/60">
             [Equation 1]
           </div>
@@ -126,13 +126,13 @@ export default function HeroMockup({ overlay }: HeroMockupProps) {
       </div>
 
       {/* Window 1: Code Editor (Bottom-Left / Foreground) - Style as Fluid Glass */}
-      <div className="order-2 w-full bg-[#0e161b]/65 backdrop-blur-xl border border-white/20 rounded-xl shadow-2xl p-3 sm:p-4 transition-all duration-500 hover:-translate-y-1 hover:shadow-3xl lg:absolute lg:bottom-0 lg:left-0 lg:z-20 lg:w-[58%] font-mono text-[9px] sm:text-[11px] leading-relaxed overflow-hidden">
+      <div className="order-2 w-full bg-[#0e161b]/65 backdrop-blur-xl border border-white/20 rounded-xl shadow-2xl p-3 sm:p-4 transition-all duration-500 hover:-translate-y-1 hover:shadow-3xl lg:absolute lg:bottom-0 lg:left-0 lg:z-20 lg:w-[42%] lg:aspect-[4/3] lg:rotate-y-[10deg] lg:rotate-x-[-2deg] font-mono text-[9px] sm:text-[11px] leading-relaxed overflow-hidden">
 
         {/* Embed the interactive FluidGlass canvas in the background */}
         <FluidGlass mode="bar" />
 
         {/* Header Bar */}
-        <div className="flex items-center justify-between border-b border-white/10 pb-2 mb-2.5 select-none relative z-10">
+        <div className="flex items-center justify-between border-b border-white/10 pb-1.5 mb-2 select-none relative z-10">
           {/* macOS Buttons */}
           <div className="flex items-center gap-1.5">
             <span className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-[#ff5f56]" />
@@ -170,7 +170,6 @@ export default function HeroMockup({ overlay }: HeroMockupProps) {
             <span>7</span>
             <span>8</span>
             <span>9</span>
-            <span>10</span>
           </div>
 
           {/* Code Lines Body */}
@@ -220,7 +219,7 @@ export default function HeroMockup({ overlay }: HeroMockupProps) {
         </div>
 
         {/* Editor Status Bar */}
-        <div className="mt-3.5 pt-2 border-t border-white/10 flex items-center justify-between text-[8px] sm:text-[9px] text-white/50 select-none relative z-10">
+        <div className="mt-2.5 pt-1.5 border-t border-white/10 flex items-center justify-between text-[8px] sm:text-[9px] text-white/50 select-none relative z-10">
           <div className="flex items-center gap-2 sm:gap-3">
             <span>LaTeX</span>
             <span>UTF-8</span>
