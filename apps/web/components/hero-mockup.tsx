@@ -5,7 +5,7 @@ import { Loader2, CheckCircle2, FileText, Settings, Search } from "lucide-react"
 
 const FORMULA = "  \\int_{a}^{b} f(x) \\, dx = F(b) - F(a)";
 
-type Phase = "typing" | "compiling" | "success" | "reset";
+type Phase = "typing" | "compiling" | "success";
 
 export default function HeroMockup() {
   const [phase, setPhase] = useState<Phase>("typing");
@@ -36,19 +36,17 @@ export default function HeroMockup() {
     } else if (phase === "success") {
       // Display result for 5 seconds before reset
       timer = setTimeout(() => {
-        setPhase("reset");
+        setTypedText("");
+        setCharIndex(0);
+        setPhase("typing");
       }, 5000);
-    } else if (phase === "reset") {
-      setTypedText("");
-      setCharIndex(0);
-      setPhase("typing");
     }
 
     return () => clearTimeout(timer);
   }, [phase, charIndex]);
 
   return (
-    <div className="relative w-full aspect-video md:aspect-[4/3] max-w-2xl mx-auto flex items-center justify-center p-4 lg:p-8 select-none" style={{ perspective: "1000px" }}>
+    <div className="relative w-full h-[320px] sm:h-auto sm:aspect-[4/3] max-w-2xl mx-auto flex items-center justify-center p-2 sm:p-4 lg:p-8 select-none" style={{ perspective: "1000px" }}>
       
       {/* Window 2: PDF Preview (Background Layer) */}
       <div className={`absolute top-0 right-4 w-[60%] bg-white border border-[#e5dacd] rounded-xl shadow-2xl p-6 transition-all duration-700 font-sans z-10 ${
@@ -95,7 +93,7 @@ export default function HeroMockup() {
                 <text x="18" y="44" fontSize="10" fontStyle="italic" fontFamily="serif">a</text>
                 <text x="34" y="32" fontSize="15" fontStyle="italic" fontFamily="serif">f(x) dx</text>
                 <text x="88" y="32" fontSize="15" fontFamily="serif">=</text>
-                <text x="110" y="32" fontSize="15" fontStyle="italic" fontFamily="serif">F(b) — F(a)</text>
+                <text x="110" y="32" fontSize="15" fontStyle="italic" fontFamily="serif">F(b) - F(a)</text>
               </svg>
             </div>
           ) : (
