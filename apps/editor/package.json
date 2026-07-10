@@ -54,6 +54,7 @@
     "embla-carousel-react": "^8.6.0",
     "eve": "^0.16.2",
     "input-otp": "^1.4.2",
+    "jszip": "^3.10.1",
     "lucide-react": "^1.23.0",
     "media-chrome": "^4.19.2",
     "motion": "^12.42.2",
@@ -85,6 +86,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.2",
+    "@types/jszip": "^3.4.1",
     "@types/node": "^20.19.43",
     "@types/pg": "^8.20.0",
     "@types/react": "^19.2.17",

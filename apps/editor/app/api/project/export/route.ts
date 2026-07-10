@@ -1,0 +1,66 @@
+import { NextRequest } from "next/server";
+import { storage } from "@/lib/storage";
+import JSZip from "jszip";
+
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const projectId = searchParams.get("projectId");
+  const type = searchParams.get("type"); // "pdf" | "zip"
+
+  if (!projectId) {
+    return Response.json({ error: "Missing projectId" }, { status: 400 });
+  }
+
+  try {
+    if (type === "pdf") {
+      try {
+        const buffer = await storage.readBinaryFile(projectId, ".preview-cache/main.pdf");
+        return new Response(new Uint8Array(buffer), {
+          headers: {
+            "Content-Type": "application/pdf",
+            "Content-Disposition": `attachment; filename="project-${projectId}.pdf"`,
+            "Content-Length": buffer.length.toString(),
+          },
+        });
+      } catch (err: any) {
+        return Response.json({ error: "PDF preview file not found. Please compile the project first in the editor." }, { status: 404 });
+      }
+    }
+
+    if (type === "zip") {
+      const tree = await storage.listProjectFiles(projectId);
+      const zip = new JSZip();
+
+      const addFilesToZip = async (zipInstance: JSZip, nodes: any[]) => {
+        for (const node of nodes) {
+          if (node.isDir && node.children) {
+            const folder = zipInstance.folder(node.name);
+            if (folder) {
+              await addFilesToZip(folder, node.children);
+            }
+          } else if (!node.isDir) {
+            if (node.name === ".keep") continue;
+            const buffer = await storage.readBinaryFile(projectId, node.path);
+            zipInstance.file(node.name, buffer);
+          }
+        }
+      };
+
+      await addFilesToZip(zip, tree);
+      const content = await zip.generateAsync({ type: "nodebuffer" });
+
+      return new Response(new Uint8Array(content), {
+        headers: {
+          "Content-Type": "application/zip",
+          "Content-Disposition": `attachment; filename="project-${projectId}.zip"`,
+          "Content-Length": content.length.toString(),
+        },
+      });
+    }
+
+    return Response.json({ error: "Invalid type parameter" }, { status: 400 });
+  } catch (error: any) {
+    console.error("Export error:", error);
+    return Response.json({ error: error.message }, { status: 500 });
+  }
+}

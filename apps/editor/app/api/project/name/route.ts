@@ -1,4 +1,15 @@
 import { NextRequest } from "next/server";
+import { Pool } from "pg";
+
+let pool: Pool | null = null;
+function getPool() {
+  if (!pool && process.env.DATABASE_URL) {
+    pool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+    });
+  }
+  return pool;
+}
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -8,8 +19,29 @@ export async function GET(req: NextRequest) {
     return Response.json({ error: "Missing projectId" }, { status: 400 });
   }
 
+  // 1. Try to query database directly
+  const dbPool = getPool();
+  if (dbPool) {
+    try {
+      const client = await dbPool.connect();
+      try {
+        const result = await client.query(
+          "SELECT name FROM projects WHERE id = $1",
+          [projectId]
+        );
+        if (result.rows.length > 0) {
+          return Response.json({ name: result.rows[0].name });
+        }
+      } finally {
+        client.release();
+      }
+    } catch (dbError) {
+      console.error("Direct database query failed, falling back to fetch:", dbError);
+    }
+  }
+
+  // 2. Fallback to HTTP fetch from web service
   try {
-    // Dynamically build the web API URL based on request hostname/environment
     const host = req.headers.get("host") || "localhost:3002";
     const hostname = host.split(":")[0];
     
@@ -20,13 +52,16 @@ export async function GET(req: NextRequest) {
       : `https://${hostname}`;
 
     const res = await fetch(`${webUrl}/api/project-info?projectId=${projectId}`);
-    if (!res.ok) {
-      return Response.json({ error: "Failed to fetch project name from web service" }, { status: res.status });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.name) {
+        return Response.json(data);
+      }
     }
-    const data = await res.json();
-    return Response.json(data);
   } catch (error: any) {
     console.error("Error fetching project name from web service:", error);
-    return Response.json({ error: error.message }, { status: 500 });
   }
+
+  return Response.json({ error: "Project not found" }, { status: 404 });
 }
+
