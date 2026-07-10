@@ -7,6 +7,7 @@ export default defineNuxtConfig({
   alias: {
     'docus/server/utils/content': fileURLToPath(new URL('./lib/docus-content.ts', import.meta.url)),
   },
+  css: ['katex/dist/katex.min.css', '~/assets/css/katex-preview.css'],
   mcp: {
     enabled: false,
   },
