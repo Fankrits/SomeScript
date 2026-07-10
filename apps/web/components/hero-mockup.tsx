@@ -48,12 +48,12 @@ export default function HeroMockup() {
   }, [phase, charIndex]);
 
   return (
-    <div className="relative w-full aspect-video md:aspect-[4/3] max-w-2xl mx-auto flex items-center justify-center p-4 lg:p-8 select-none perspective-1000">
+    <div className="relative w-full aspect-video md:aspect-[4/3] max-w-2xl mx-auto flex items-center justify-center p-4 lg:p-8 select-none" style={{ perspective: "1000px" }}>
       
       {/* Window 2: PDF Preview (Background Layer) */}
       <div className={`absolute top-0 right-4 w-[60%] bg-white border border-[#e5dacd] rounded-xl shadow-2xl p-6 transition-all duration-700 font-sans z-10 ${
         phase === "success" 
-          ? "translate-x-1 -translate-y-1 scale-102 ring-2 ring-emerald-500/20 border-emerald-300" 
+          ? "translate-x-1 -translate-y-1 scale-[1.02] ring-2 ring-emerald-500/20 border-emerald-300" 
           : "translate-x-0 translate-y-0 scale-100 opacity-90"
       }`}>
         {/* Header section representing standard LaTeX document preview */}
