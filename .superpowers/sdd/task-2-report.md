@@ -59,6 +59,30 @@ The repository-wide required command `cd apps/web && bun x tsc --noEmit` remains
 - Confirmed animation state and dynamic `FluidGlass` import were retained.
 - Confirmed whitespace check passes and no unrelated files are included in the intended commit.
 
+## P1 re-review: track FluidGlass dependency
+
+The dynamically imported `apps/web/components/FluidGlass.jsx` module was present locally but untracked, which meant a clean checkout could not resolve `import("./FluidGlass")` from `HeroMockup`. This re-review commit adds that existing component to version control without changing its implementation.
+
+Scoped implementation review confirms the component uses only local Three.js JSX geometries (`planeGeometry`, `dodecahedronGeometry`, `boxGeometry`, and `torusKnotGeometry`). It has no GLB asset imports, GLTF loader usage, or network `fetch` calls.
+
+### Re-review verification
+
+Executed from `apps/web`:
+
+```sh
+bun test components/hero-mockup.test.ts
+bun x tsc --noEmit
+bun x eslint components/hero-mockup.tsx components/hero-mockup.test.ts
+```
+
+All commands exited with status `0`.
+
+- Hero mockup contract: `2 pass`, `0 fail`.
+- TypeScript: no diagnostics.
+- ESLint: no diagnostics.
+
+This supersedes the earlier note about missing `bun:test` types: the full web TypeScript check now passes in the current workspace.
+
 ## Task 2 validation blocker fix
 
 The repository-wide TypeScript validation blocker was fixed by excluding Bun test files from the Next.js TypeScript project:
