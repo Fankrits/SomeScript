@@ -23,14 +23,14 @@ export interface StorageProvider {
 // -------------------------------------------------------------
 // 1. Local File System Storage Provider
 // -------------------------------------------------------------
-class LocalStorageProvider implements StorageProvider {
+export class LocalStorageProvider implements StorageProvider {
   private getLocalPath(projectId: string, fileRelativePath: string): string {
     // Standard workspace path resolution (e.g. apps/editor/projects/UUID)
     const baseDir = projectId === "default" || !projectId
       ? path.join(process.cwd(), "my-new-project")
       : path.join(process.cwd(), "projects", projectId);
     const resolved = path.resolve(baseDir, fileRelativePath);
-    if (!resolved.startsWith(baseDir)) {
+    if (resolved !== baseDir && !resolved.startsWith(baseDir + path.sep)) {
       throw new Error("Directory traversal attempt detected");
     }
     return resolved;
@@ -372,75 +372,12 @@ class S3StorageProvider implements StorageProvider {
 }
 
 // -------------------------------------------------------------
-// 3. Hybrid / Fallback Storage Provider
-// -------------------------------------------------------------
-class HybridStorageProvider implements StorageProvider {
-  private s3: S3StorageProvider;
-  private local: LocalStorageProvider;
-  private useLocalFallback = false;
-
-  constructor() {
-    this.s3 = new S3StorageProvider();
-    this.local = new LocalStorageProvider();
-  }
-
-  private async execute<T>(projectId: string, operation: (provider: StorageProvider) => Promise<T>): Promise<T> {
-    if (this.useLocalFallback) {
-      return operation(this.local);
-    }
-    try {
-      return await operation(this.s3);
-    } catch (error: any) {
-      const isConnectionError = 
-        error.code === "ENOTFOUND" || 
-        error.code === "ECONNREFUSED" || 
-        error.message?.includes("fetch failed") || 
-        error.message?.includes("Network Error") || 
-        error.name === "ConnectTimeoutError";
-        
-      if (isConnectionError) {
-        console.warn("[STORAGE] S3 endpoint unreachable. Falling back to local storage.", error.message);
-        this.useLocalFallback = true;
-        return operation(this.local);
-      }
-      throw error;
-    }
-  }
-
-  async readFile(projectId: string, fileRelativePath: string): Promise<string> {
-    return this.execute(projectId, (p) => p.readFile(projectId, fileRelativePath));
-  }
-
-  async readBinaryFile(projectId: string, fileRelativePath: string): Promise<Buffer> {
-    return this.execute(projectId, (p) => p.readBinaryFile(projectId, fileRelativePath));
-  }
-
-  async writeFile(projectId: string, fileRelativePath: string, content: string | Buffer): Promise<void> {
-    return this.execute(projectId, (p) => p.writeFile(projectId, fileRelativePath, content));
-  }
-
-  async createDirectory(projectId: string, dirRelativePath: string): Promise<void> {
-    return this.execute(projectId, (p) => p.createDirectory(projectId, dirRelativePath));
-  }
-
-  async listProjectFiles(projectId: string): Promise<FileNode[]> {
-    return this.execute(projectId, (p) => p.listProjectFiles(projectId));
-  }
-
-  async move(projectId: string, oldPath: string, newPath: string): Promise<void> {
-    return this.execute(projectId, (p) => p.move(projectId, oldPath, newPath));
-  }
-
-  async delete(projectId: string, fileRelativePath: string): Promise<void> {
-    return this.execute(projectId, (p) => p.delete(projectId, fileRelativePath));
-  }
-}
-
-// -------------------------------------------------------------
 // Singleton Instance Selection based on environment variables
 // -------------------------------------------------------------
+// S3 errors now propagate to callers — a storage failure must fail the request,
+// never silently write to ephemeral local disk.
 export const storage: StorageProvider =
   process.env.STORAGE_PROVIDER === "s3"
-    ? new HybridStorageProvider()
+    ? new S3StorageProvider()
     : new LocalStorageProvider();
 
