@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { storage } from "@/lib/storage";
-import { getProjectPath, getProjectIdFromPath } from "@/lib/project";
+import { requireProject, apiError } from "@/lib/authz";
+import { buildSearchPattern } from "@/lib/search-pattern";
 import path from "path";
 
 export interface SearchResult {
@@ -23,10 +24,9 @@ function isTextFile(filename: string): boolean {
 
 export async function GET(req: NextRequest) {
   try {
-    const projectPath = await getProjectPath();
-    const projectId = getProjectIdFromPath(projectPath);
-    
     const { searchParams } = new URL(req.url);
+    const projectId = await requireProject(searchParams.get("projectId"));
+    
     const query = searchParams.get("query") || "";
     const matchCase = searchParams.get("matchCase") === "true";
     const matchWholeWord = searchParams.get("matchWholeWord") === "true";
@@ -43,11 +43,14 @@ export async function GET(req: NextRequest) {
     const startLine = startLineStr ? parseInt(startLineStr, 10) : null;
     const endLine = endLineStr ? parseInt(endLineStr, 10) : null;
 
-    const files = await storage.listProjectFiles(projectId);
+    const pattern = buildSearchPattern(query, { matchCase, matchWholeWord, useRegex });
+    const MAX_RESULTS = 2000;
     const results: SearchResult[] = [];
+    const files = await storage.listProjectFiles(projectId);
 
     const traverse = async (nodes: any[]) => {
       for (const node of nodes) {
+        if (results.length >= MAX_RESULTS) return;
         if (node.isDir) {
           if (node.children) await traverse(node.children);
         } else {
@@ -70,52 +73,18 @@ export async function GET(req: NextRequest) {
                 if (endLine !== null && !isNaN(endLine) && lineNum > endLine) return;
               }
 
-              if (useRegex) {
-                try {
-                  const flags = matchCase ? "g" : "gi";
-                  const re = new RegExp(query, flags);
-                  let match = re.exec(lineText);
-                  while (match !== null) {
-                    results.push({
-                      fileId: node.path,
-                      fileName: node.name,
-                      line: lineNum,
-                      text: lineText,
-                      matchIndex: match.index,
-                    });
-                    if (match[0].length === 0) {
-                      re.lastIndex++;
-                    }
-                    match = re.exec(lineText);
-                  }
-                } catch {
-                  // Invalid Regex
-                }
-              } else {
-                const q = matchCase ? query : query.toLowerCase();
-                const l = matchCase ? lineText : lineText.toLowerCase();
-                let pos = l.indexOf(q);
-                while (pos !== -1) {
-                  let valid = true;
-                  if (matchWholeWord) {
-                    const before = pos > 0 ? l[pos - 1] : " ";
-                    const after = pos + q.length < l.length ? l[pos + q.length] : " ";
-                    const isWordChar = (c: string) => /[a-zA-Z0-9_]/.test(c);
-                    if (isWordChar(before) || isWordChar(after)) {
-                      valid = false;
-                    }
-                  }
-                  if (valid) {
-                    results.push({
-                      fileId: node.path,
-                      fileName: node.name,
-                      line: lineNum,
-                      text: lineText,
-                      matchIndex: pos,
-                    });
-                  }
-                  pos = l.indexOf(q, pos + 1);
-                }
+              pattern.lastIndex = 0;
+              let match = pattern.exec(lineText);
+              while (match !== null && results.length < MAX_RESULTS) {
+                results.push({
+                  fileId: node.path,
+                  fileName: node.name,
+                  line: lineNum,
+                  text: lineText,
+                  matchIndex: match.index,
+                });
+                if (match[0].length === 0) pattern.lastIndex++;
+                match = pattern.exec(lineText);
               }
             });
           } catch {
@@ -137,16 +106,15 @@ export async function GET(req: NextRequest) {
 
     return Response.json({ results, resultsByFile });
   } catch (error: any) {
-    return Response.json({ error: error.message }, { status: 500 });
+    return apiError(error);
   }
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const projectPath = await getProjectPath();
-    const projectId = getProjectIdFromPath(projectPath);
-
     const body = await req.json();
+    const projectId = await requireProject(body.projectId);
+
     const query = body.query || "";
     const replaceText = body.replaceText ?? "";
     const matchCase = body.matchCase === true;
@@ -159,21 +127,7 @@ export async function POST(req: NextRequest) {
       return Response.json({ error: "Missing query" }, { status: 400 });
     }
 
-    let flags = "g";
-    if (!matchCase) flags += "i";
-
-    let pattern: RegExp;
-    if (useRegex) {
-      pattern = new RegExp(query, flags);
-    } else {
-      const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      if (matchWholeWord) {
-        pattern = new RegExp(`\\b${escaped}\\b`, flags);
-      } else {
-        pattern = new RegExp(escaped, flags);
-      }
-    }
-
+    const pattern = buildSearchPattern(query, { matchCase, matchWholeWord, useRegex });
     const files = await storage.listProjectFiles(projectId);
     let count = 0;
     const modifiedFiles: string[] = [];
@@ -209,6 +163,6 @@ export async function POST(req: NextRequest) {
     await traverse(files);
     return Response.json({ success: true, count, modifiedFiles });
   } catch (error: any) {
-    return Response.json({ error: error.message }, { status: 500 });
+    return apiError(error);
   }
 }

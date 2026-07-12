@@ -72,6 +72,7 @@
     "react-resizable-panels": "^4.12.1",
     "recharts": "3.8.0",
     "remark-gfm": "^4.0.1",
+    "safe-regex2": "^5.1.1",
     "shadcn": "^4.13.0",
     "shiki": "^4.3.1",
     "sonner": "^2.0.7",
