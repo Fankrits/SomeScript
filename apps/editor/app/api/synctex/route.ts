@@ -1,15 +1,13 @@
-import { getProjectPath, getProjectIdFromPath } from "@/lib/project";
+import { requireProject, apiError, ApiError, projectDirFor } from "@/lib/authz";
 import { NextRequest } from "next/server";
 
 export async function POST(req: NextRequest) {
   try {
-    const { path: fileRelativePath } = await req.json();
-    if (!fileRelativePath) {
-      return Response.json({ error: "Path parameter is required" }, { status: 400 });
-    }
+    const { projectId: rawProjectId, path: fileRelativePath } = await req.json();
+    if (!fileRelativePath) throw new ApiError(400, "Path parameter is required");
 
-    const projectPath = await getProjectPath();
-    const projectId = getProjectIdFromPath(projectPath);
+    const projectId = await requireProject(rawProjectId);
+    const projectPath = projectDirFor(projectId);
 
     const compilerUrl = process.env.COMPILER_URL || "http://127.0.0.1:3001";
     const defaultMode =
@@ -22,7 +20,12 @@ export async function POST(req: NextRequest) {
 
     const response = await fetch(`${compilerUrl}/synctex`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(process.env.COMPILER_SECRET
+          ? { Authorization: `Bearer ${process.env.COMPILER_SECRET}` }
+          : {}),
+      },
       body: JSON.stringify({
         mode: compilerMode,
         localProjectPath: projectPath,
@@ -32,12 +35,11 @@ export async function POST(req: NextRequest) {
     });
 
     if (!response.ok) {
-      return Response.json({ error: "Failed to parse SyncTeX from compiler" }, { status: response.status });
+      throw new ApiError(response.status, "Failed to parse SyncTeX from compiler");
     }
 
-    const data = await response.json();
-    return Response.json(data);
-  } catch (error: any) {
-    return Response.json({ error: error.message }, { status: 500 });
+    return Response.json(await response.json());
+  } catch (error) {
+    return apiError(error);
   }
 }

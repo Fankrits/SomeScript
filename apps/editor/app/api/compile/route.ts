@@ -1,4 +1,4 @@
-import { getProjectPath, getProjectIdFromPath } from "@/lib/project";
+import { requireProject, apiError, ApiError, projectDirFor } from "@/lib/authz";
 import { storage, FileNode } from "@/lib/storage";
 import { NextRequest } from "next/server";
 import { createHash } from "crypto";
@@ -18,24 +18,10 @@ async function getAllStorageFiles(projectId: string, nodes: FileNode[]): Promise
   for (const node of nodes) {
     if (node.isDir && node.children) {
       const subFiles = await getAllStorageFiles(projectId, node.children);
-      files = files.concat(subFiles);
+      files.push(...subFiles);
     } else if (!node.isDir) {
-      // Skip placeholder keep files
-      if (node.name === ".keep") continue;
-
-      if (
-        node.name.endsWith(".pdf") ||
-        node.name.endsWith(".png") ||
-        node.name.endsWith(".jpg") ||
-        node.name.endsWith(".jpeg") ||
-        node.name.endsWith(".woff2")
-      ) {
-        const buffer = await storage.readBinaryFile(projectId, node.path);
-        files.push({
-          path: node.path,
-          content: `data:application/octet-stream;base64,${buffer.toString("base64")}`,
-        });
-      } else {
+      // Read file content
+      if (node.path.endsWith(".tex") || node.path.endsWith(".bib") || node.path.endsWith(".png") || node.path.endsWith(".jpg") || node.path.endsWith(".jpeg")) {
         const content = await storage.readFile(projectId, node.path);
         files.push({
           path: node.path,
@@ -49,18 +35,13 @@ async function getAllStorageFiles(projectId: string, nodes: FileNode[]): Promise
 
 export async function POST(req: NextRequest) {
   try {
-    const { path: fileRelativePath, draftMode } = await req.json();
+    const { projectId: rawProjectId, path: fileRelativePath, draftMode } = await req.json();
     const isDraft = draftMode ?? true;
-    if (!fileRelativePath) {
-      return Response.json({ error: "Path parameter is required" }, { status: 400 });
-    }
+    if (!fileRelativePath) throw new ApiError(400, "Path parameter is required");
+    if (!fileRelativePath.endsWith(".tex")) throw new ApiError(400, "Only .tex files can be compiled");
 
-    const projectPath = await getProjectPath();
-    const projectId = getProjectIdFromPath(projectPath);
-
-    if (!fileRelativePath.endsWith(".tex")) {
-      return Response.json({ error: "Only .tex files can be compiled" }, { status: 400 });
-    }
+    const projectId = await requireProject(rawProjectId);
+    const projectPath = projectDirFor(projectId);
 
     const compilerUrl = process.env.COMPILER_URL || "http://127.0.0.1:3001";
     const defaultMode =
@@ -71,10 +52,18 @@ export async function POST(req: NextRequest) {
         : "upload";
     const compilerMode = process.env.COMPILER_MODE || defaultMode;
 
+    const compilerHeaders: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...(process.env.COMPILER_SECRET
+        ? { Authorization: `Bearer ${process.env.COMPILER_SECRET}` }
+        : {}),
+    };
+
     if (compilerMode === "local") {
       const response = await fetch(`${compilerUrl}/compile`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: compilerHeaders,
+        signal: req.signal,
         body: JSON.stringify({
           mode: "local",
           localProjectPath: projectPath,
@@ -154,7 +143,7 @@ export async function POST(req: NextRequest) {
 
       let response = await fetch(`${compilerUrl}/compile`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: compilerHeaders,
         body: JSON.stringify(compilePayload),
       });
 
@@ -174,7 +163,7 @@ export async function POST(req: NextRequest) {
 
           response = await fetch(`${compilerUrl}/compile`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: compilerHeaders,
             body: JSON.stringify({
               mode: "upload",
               projectId,
@@ -221,9 +210,7 @@ export async function POST(req: NextRequest) {
         },
       });
     }
-  } catch (error: unknown) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    return Response.json({ error: errMsg }, { status: 500 });
+  } catch (error) {
+    return apiError(error);
   }
 }
-
