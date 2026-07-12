@@ -58,6 +58,30 @@ async function ensureWorkspaceExists(orgId: string | null, userId: string) {
   return targetId;
 }
 
+import { editorFetch } from "@/lib/editor-api";
+
+const DEFAULT_MAIN_TEX = `\\documentclass[11pt, a4paper]{article}
+
+\\usepackage[utf8]{inputenc}
+\\usepackage[margin=1in]{geometry}
+\\usepackage{amsmath, amssymb}
+\\usepackage{graphicx}
+\\usepackage{hyperref}
+
+\\title{\\textbf{New LaTeX Project}}
+\\author{Author}
+\\date{\\today}
+
+\\begin{document}
+
+\\maketitle
+
+\\section{Introduction}
+Welcome to your new LaTeX project! Describe what you want the AI assistant to write or edit, and click compile to generate a preview.
+
+\\end{document}
+`;
+
 export async function createProject(formData: FormData) {
   const { userId, orgId } = await auth();
 
@@ -73,10 +97,28 @@ export async function createProject(formData: FormData) {
   // Ensure active workspace exists
   const workspaceId = await ensureWorkspaceExists(orgId || null, userId);
 
-  await db.insert(projects).values({
-    name: name.trim(),
-    workspaceId,
+  const [project] = await db
+    .insert(projects)
+    .values({ name: name.trim(), workspaceId })
+    .returning();
+
+  if (!project) throw new Error("Failed to create project");
+
+  const res = await editorFetch("/api/files", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      projectId: project.id,
+      action: "save",
+      path: "main.tex",
+      content: DEFAULT_MAIN_TEX,
+    }),
   });
+
+  if (!res.ok) {
+    await db.delete(projects).where(eq(projects.id, project.id));
+    throw new Error("Failed to initialize project files");
+  }
 
   revalidatePath("/dashboard");
 }
