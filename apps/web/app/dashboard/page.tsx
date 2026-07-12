@@ -25,6 +25,7 @@ export default async function DashboardPage() {
   const workspaceProjects = await db.query.projects.findMany({
     where: eq(projects.workspaceId, workspaceId),
     orderBy: [desc(projects.updatedAt)],
+    limit: 200,
   });
 
   return (

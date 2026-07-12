@@ -4,7 +4,7 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
 import { projects, workspaces, users } from "@/db/schema";
 import { revalidatePath } from "next/cache";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 
 // Helper to ensure the active workspace exists in our database
 async function ensureWorkspaceExists(orgId: string | null, userId: string) {
@@ -147,7 +147,7 @@ export async function importProject(formData: FormData) {
 
 
 export async function renameProject(projectId: string, newName: string) {
-  const { userId } = await auth();
+  const { userId, orgId } = await auth();
 
   if (!userId) {
     throw new Error("Unauthorized");
@@ -157,23 +157,39 @@ export async function renameProject(projectId: string, newName: string) {
     throw new Error("Project name is required");
   }
 
-  await db
+  const workspaceId = orgId || userId;
+
+  const updated = await db
     .update(projects)
     .set({ name: newName.trim(), updatedAt: new Date() })
-    .where(eq(projects.id, projectId));
+    .where(and(eq(projects.id, projectId), eq(projects.workspaceId, workspaceId)))
+    .returning({ id: projects.id });
+
+  if (updated.length === 0) {
+    throw new Error("Project not found");
+  }
 
   revalidatePath("/dashboard");
 }
 
 export async function deleteProject(projectId: string) {
-  const { userId } = await auth();
+  const { userId, orgId } = await auth();
 
   if (!userId) {
     throw new Error("Unauthorized");
   }
 
+  const workspaceId = orgId || userId;
+
   // 1. Delete from database
-  await db.delete(projects).where(eq(projects.id, projectId));
+  const deleted = await db
+    .delete(projects)
+    .where(and(eq(projects.id, projectId), eq(projects.workspaceId, workspaceId)))
+    .returning({ id: projects.id });
+
+  if (deleted.length === 0) {
+    throw new Error("Project not found");
+  }
 
   // 2. Delete files from storage by invoking the editor's delete API
   try {
