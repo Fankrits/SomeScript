@@ -1648,7 +1648,7 @@ const Example = () => {
             {/* Chat thread itself */}
             {activeThreadId && (
               <div className="flex-1 flex flex-col overflow-hidden">
-                <EveThread key={activeThreadId} threadId={activeThreadId} />
+                <EveThread key={activeThreadId} threadId={activeThreadId} projectId={projectId} />
               </div>
             )}
           </div>

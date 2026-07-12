@@ -9,7 +9,7 @@ import { useEveAgent } from "eve/react";
 import { useCallback, useEffect, useState, useRef } from "react";
 import type { EveMessage, EveMessagePart } from "eve/react";
 
-export function useEveRuntime(threadId: string) {
+export function useEveRuntime(threadId: string, projectId: string) {
   const completedToolCalls = useRef<Set<string>>(new Set());
 
   // Load initial state synchronously on mount/remount
@@ -187,6 +187,13 @@ export function useEveRuntime(threadId: string) {
       }
 
       if (parts.length > 0) {
+        const textPartIndex = parts.findIndex(p => p.type === "text");
+        if (textPartIndex !== -1) {
+          parts[textPartIndex].text = `[projectId: ${projectId}]\n${parts[textPartIndex].text}`;
+        } else {
+          parts.unshift({ type: "text", text: `[projectId: ${projectId}]` });
+        }
+
         if (parts.length === 1 && parts[0].type === "text") {
           await agent.send({ message: parts[0].text });
         } else {
@@ -194,7 +201,7 @@ export function useEveRuntime(threadId: string) {
         }
       }
     },
-    [agent],
+    [agent, projectId],
   );
 
   const isBusy =

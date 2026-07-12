@@ -1,17 +1,17 @@
 import { defineTool } from "eve/tools";
 import { z } from "zod";
-import { getProjectPath, getProjectIdFromPath } from "../../lib/project";
+import { requireProject } from "../../lib/authz";
 import { storage, type FileNode } from "../../lib/storage";
 
 export default defineTool({
   description: "Lists all files in the project workspace recursively.",
-  inputSchema: z.object({}),
-  async execute() {
+  inputSchema: z.object({
+    projectId: z.string().describe("The projectId from the [projectId: ...] context marker in the conversation"),
+  }),
+  async execute({ projectId }) {
     try {
-      const projectPath = await getProjectPath();
-      const projectId = getProjectIdFromPath(projectPath);
-      
-      const fileNodes = await storage.listProjectFiles(projectId);
+      const pid = await requireProject(projectId);
+      const fileNodes = await storage.listProjectFiles(pid);
       
       const flatten = (nodes: FileNode[]): string[] => {
         let list: string[] = [];
@@ -37,4 +37,3 @@ export default defineTool({
     }
   },
 });
-

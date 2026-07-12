@@ -34,8 +34,8 @@ import {
  * - Voice dictation (via browser Speech API)
  * - Stop button, copy
  */
-export function EveThread({ threadId }: { threadId: string }) {
-  const { runtime, agent } = useEveRuntime(threadId);
+export function EveThread({ threadId, projectId }: { threadId: string; projectId: string }) {
+  const { runtime, agent } = useEveRuntime(threadId, projectId);
 
   return (
     <EveAgentContext.Provider value={agent}>
