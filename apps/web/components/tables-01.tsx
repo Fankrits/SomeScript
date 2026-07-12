@@ -106,7 +106,7 @@ export default function ProjectsTable({ projects, editorUrl }: ProjectsTableProp
   const handleDownload = async (projectId: string, type: "pdf" | "zip") => {
     setPendingAction({ id: projectId, type });
     try {
-      const url = `${editorUrl}/api/project/export?projectId=${projectId}&type=${type}`;
+      const url = `/api/project/export?projectId=${projectId}&type=${type}`;
       // Trigger browser download by creating an anchor element
       const link = document.createElement("a");
       link.href = url;

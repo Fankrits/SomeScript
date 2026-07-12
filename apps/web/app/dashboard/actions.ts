@@ -159,13 +159,11 @@ export async function importProject(formData: FormData) {
 
   // 2. Call the editor's import API
   try {
-    const editorUrl = process.env.NEXT_PUBLIC_EDITOR_URL || "http://localhost:3002";
-    
     const editorFormData = new FormData();
     editorFormData.append("projectId", project.id);
     editorFormData.append("file", file);
 
-    const res = await fetch(`${editorUrl}/api/project/import`, {
+    const res = await editorFetch("/api/project/import", {
       method: "POST",
       body: editorFormData,
     });
@@ -223,32 +221,28 @@ export async function deleteProject(projectId: string) {
 
   const workspaceId = orgId || userId;
 
-  // 1. Delete from database
-  const deleted = await db
-    .delete(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.workspaceId, workspaceId)))
-    .returning({ id: projects.id });
+  const project = await db.query.projects.findFirst({
+    where: and(eq(projects.id, projectId), eq(projects.workspaceId, workspaceId)),
+  });
+  if (!project) throw new Error("Project not found");
 
-  if (deleted.length === 0) {
-    throw new Error("Project not found");
-  }
-
-  // 2. Delete files from storage by invoking the editor's delete API
+  // Delete files first: the editor's ownership check needs the DB row to still exist.
+  // If the editor is unreachable we still remove the row; orphaned storage is
+  // reclaimed manually (see docs/ops-checklist.md).
   try {
-    const editorUrl = process.env.NEXT_PUBLIC_EDITOR_URL || "http://localhost:3002";
-    const res = await fetch(`${editorUrl}/api/project/delete`, {
+    const res = await editorFetch("/api/project/delete", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ projectId }),
     });
     if (!res.ok) {
-      console.error("Failed to delete project files from editor service:", await res.text());
+      console.error("Editor file deletion failed:", await res.text());
     }
   } catch (error) {
     console.error("Error calling editor service to delete project files:", error);
   }
+
+  await db.delete(projects).where(and(eq(projects.id, projectId), eq(projects.workspaceId, workspaceId)));
 
   revalidatePath("/dashboard");
 }
