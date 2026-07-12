@@ -11,7 +11,11 @@ interface ImageViewerProps {
  * the available viewport.
  */
 export function ImageViewer({ path }: ImageViewerProps) {
-  const src = `/api/files?path=${encodeURIComponent(path)}&t=${Date.now()}`;
+  const projectId =
+    typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("projectId") ?? "default"
+      : "default";
+  const src = `/api/files?path=${encodeURIComponent(path)}&projectId=${encodeURIComponent(projectId)}&t=${Date.now()}`;
   const filename = path.split("/").pop() ?? path;
 
   return (

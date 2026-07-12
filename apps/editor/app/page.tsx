@@ -420,7 +420,17 @@ const Example = () => {
   // File tree state
   const [selectedPath, setSelectedPath] = useState<string>("");
   const [fileTree, setFileTree] = useState<FileNode[]>([]);
-  const [projectPathInput, setProjectPathInput] = useState<string>("./my-new-project");
+
+  // Single source of truth for the active project — from the URL, set by the dashboard link.
+  const [projectId] = useState<string>(() => {
+    if (typeof window === "undefined") return "default";
+    return new URLSearchParams(window.location.search).get("projectId") ?? "default";
+  });
+
+  const withProject = useCallback(
+    (url: string) => `${url}${url.includes("?") ? "&" : "?"}projectId=${encodeURIComponent(projectId)}`,
+    [projectId]
+  );
 
   // Code editor state
   const [currentCode, setCurrentCode] = useState<string>("// Select a file to view content");
@@ -611,7 +621,7 @@ const Example = () => {
       const res = await fetch("/api/synctex", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: compilePath }),
+        body: JSON.stringify({ projectId, path: compilePath }),
       });
       if (res.ok) {
         const data = await res.json();
@@ -620,7 +630,7 @@ const Example = () => {
     } catch (err) {
       console.warn("Failed to fetch SyncTeX map:", err);
     }
-  }, []);
+  }, [projectId]);
 
   // Chat History / Multi-thread states
   const [threads, setThreads] = useState<Array<{ id: string; title: string; createdAt: number }>>([]);
@@ -838,7 +848,7 @@ const Example = () => {
         await fetch("/api/files", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "save", path: selectedPath, content: editedCode }),
+          body: JSON.stringify({ projectId, action: "save", path: selectedPath, content: editedCode }),
         });
       } catch (err) {
         console.error("Failed to save changes before file switch", err);
@@ -860,7 +870,7 @@ const Example = () => {
 
     if (mode === "pdf-standalone") {
       // Show the PDF in the right PDF pane (same mechanism as compiled PDFs)
-      const url = `${window.location.origin}/api/files?path=${encodeURIComponent(path)}&t=${Date.now()}`;
+      const url = withProject(`${window.location.origin}/api/files?path=${encodeURIComponent(path)}&t=${Date.now()}`);
       setPdfUrl(url);
       setCurrentCode("");
       setEditedCode("");
@@ -874,10 +884,10 @@ const Example = () => {
     if (path.endsWith(".tex")) {
       const pdfPath = path.replace(/\.tex$/, ".pdf");
       const previewPath = `.preview-cache/${pdfPath}`;
-      fetch(`/api/files?path=${encodeURIComponent(previewPath)}`)
+      fetch(withProject(`/api/files?path=${encodeURIComponent(previewPath)}`))
         .then((res) => {
           if (res.ok) {
-            setPdfUrl(`${window.location.origin}/api/files?path=${encodeURIComponent(previewPath)}&t=${Date.now()}`);
+            setPdfUrl(withProject(`${window.location.origin}/api/files?path=${encodeURIComponent(previewPath)}&t=${Date.now()}`));
           } else {
             setPdfUrl(null);
           }
@@ -888,7 +898,7 @@ const Example = () => {
     }
 
     try {
-      const res = await fetch(`/api/files?path=${encodeURIComponent(path)}`);
+      const res = await fetch(withProject(`/api/files?path=${encodeURIComponent(path)}`));
       const data = await res.json();
       if (data.content !== undefined) {
         setCurrentCode(data.content);
@@ -904,18 +914,15 @@ const Example = () => {
   // Load file tree
   const refreshWorkspace = useCallback(async () => {
     try {
-      const res = await fetch("/api/files");
+      const res = await fetch(withProject("/api/files"));
       const data = await res.json();
       if (data.tree) {
         setFileTree(data.tree);
       }
-      if (data.projectPath) {
-        setProjectPathInput(data.projectPath);
-      }
     } catch (err) {
       console.error("Failed to load file tree", err);
     }
-  }, []);
+  }, [withProject]);
 
   const handleSelectMatch = useCallback((filePath: string, line: number) => {
     setPendingLineJump({ path: filePath, line });
@@ -928,6 +935,7 @@ const Example = () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          projectId,
           query: searchState.query,
           replaceText,
           matchCase: searchState.options.matchCase,
@@ -950,31 +958,11 @@ const Example = () => {
     } catch (err) {
       console.error(err);
     }
-  }, [selectedPath, refreshWorkspace, handleFileSelect]);
+  }, [projectId, selectedPath, refreshWorkspace, handleFileSelect]);
 
   const handleSearchChange = useCallback((query: string, options: { matchCase: boolean; matchWholeWord: boolean; useRegex: boolean }) => {
     setSearchState({ query, options });
   }, []);
-
-  const handleUpdateProject = useCallback(async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      const res = await fetch("/api/files", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: projectPathInput }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setSelectedPath("");
-        setCurrentCode("// Select a file to view content");
-        setEditedCode("");
-        refreshWorkspace();
-      }
-    } catch (err) {
-      console.error("Failed to update project path", err);
-    }
-  }, [projectPathInput, refreshWorkspace]);
 
   const handleCreateResourceSubmit = useCallback(async (isDir: boolean) => {
     let targetPath = newItemName.trim();
@@ -1005,7 +993,7 @@ const Example = () => {
       const res = await fetch("/api/files", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "create", path: targetPath, isDir }),
+        body: JSON.stringify({ projectId, action: "create", path: targetPath, isDir }),
       });
       const data = await res.json();
       if (data.success) {
@@ -1015,14 +1003,14 @@ const Example = () => {
     } catch (err) {
       console.error("Failed to create resource", err);
     }
-  }, [newItemName, fileTree, refreshWorkspace]);
+  }, [projectId, newItemName, fileTree, refreshWorkspace]);
 
   const handleFileMove = useCallback(async (oldPath: string, newPath: string) => {
     try {
       const res = await fetch("/api/files", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "move", oldPath, newPath }),
+        body: JSON.stringify({ projectId, action: "move", oldPath, newPath }),
       });
       const data = await res.json();
       if (data.success) {
@@ -1034,7 +1022,7 @@ const Example = () => {
     } catch (err) {
       console.error("Failed to move file", err);
     }
-  }, [selectedPath, refreshWorkspace]);
+  }, [projectId, selectedPath, refreshWorkspace]);
 
   const handleFileDelete = useCallback(async (path: string) => {
     if (!confirm(`Are you sure you want to delete ${path}?`)) return;
@@ -1042,7 +1030,7 @@ const Example = () => {
       const res = await fetch("/api/files", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "delete", path }),
+        body: JSON.stringify({ projectId, action: "delete", path }),
       });
       const data = await res.json();
       if (data.success) {
@@ -1056,7 +1044,7 @@ const Example = () => {
     } catch (err) {
       console.error("Failed to delete file", err);
     }
-  }, [selectedPath, refreshWorkspace]);
+  }, [projectId, selectedPath, refreshWorkspace]);
 
   // Autosave useEffect with debounce
   useEffect(() => {
@@ -1072,7 +1060,7 @@ const Example = () => {
         const res = await fetch("/api/files", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "save", path: selectedPath, content: editedCode }),
+          body: JSON.stringify({ projectId, action: "save", path: selectedPath, content: editedCode }),
         });
         const data = await res.json();
         if (data.success) {
@@ -1088,7 +1076,7 @@ const Example = () => {
     }, 1000);
 
     return () => clearTimeout(timer);
-  }, [selectedPath, editedCode, currentCode]);
+  }, [projectId, selectedPath, editedCode, currentCode]);
 
   const handleDownloadPdf = useCallback(() => {
     if (!pdfUrl) return;
@@ -1116,7 +1104,7 @@ const Example = () => {
         await fetch("/api/files", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "save", path: selectedPath, content: editedCode }),
+          body: JSON.stringify({ projectId, action: "save", path: selectedPath, content: editedCode }),
         });
         setCurrentCode(editedCode);
       }
@@ -1125,7 +1113,7 @@ const Example = () => {
       const res = await fetch("/api/compile", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: compilePath, draftMode: settings.draftMode }),
+        body: JSON.stringify({ projectId, path: compilePath, draftMode: settings.draftMode }),
       });
 
       if (!res.ok) {
@@ -1169,7 +1157,7 @@ const Example = () => {
             const derivedPdf = selectedPath.replace(/\.tex$/, ".pdf");
             pdfPath = `.preview-cache/${derivedPdf}`;
           }
-          setPdfUrl(`${window.location.origin}/api/files?path=${encodeURIComponent(pdfPath)}&t=${Date.now()}`);
+          setPdfUrl(withProject(`${window.location.origin}/api/files?path=${encodeURIComponent(pdfPath)}&t=${Date.now()}`));
           fetchSyncTex(compilePath);
         }
       }
@@ -1181,7 +1169,7 @@ const Example = () => {
       setIsCompiling(false);
       setIsTerminalStreaming(false);
     }
-  }, [selectedPath, editedCode, settings, fetchSyncTex]);
+  }, [projectId, selectedPath, editedCode, settings, fetchSyncTex, withProject]);
 
   // Reload current file content
   const refreshCurrentFile = useCallback(async () => {
@@ -1190,7 +1178,7 @@ const Example = () => {
     const mode = getViewMode(selectedPath);
     if (mode === "pdf-standalone" || mode === "image") return;
     try {
-      const res = await fetch(`/api/files?path=${encodeURIComponent(selectedPath)}`);
+      const res = await fetch(withProject(`/api/files?path=${encodeURIComponent(selectedPath)}`));
       const data = await res.json();
       if (data.content !== undefined) {
         setCurrentCode(data.content);
@@ -1201,27 +1189,11 @@ const Example = () => {
     } catch (err) {
       console.error("Failed to reload file content", err);
     }
-  }, [selectedPath]);
+  }, [selectedPath, withProject]);
 
-  // Load tree on mount and handle ?projectId parameter
+  // Load tree on mount
   useEffect(() => {
-    const initWorkspace = async () => {
-      const params = new URLSearchParams(window.location.search);
-      const projectId = params.get("projectId");
-      try {
-        const targetPath = projectId ? `projects/${projectId}` : "./my-new-project";
-        await fetch("/api/files", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ path: targetPath }),
-        });
-      } catch (err) {
-        console.error("Failed to initialize project path:", err);
-      }
-      refreshWorkspace();
-    };
-
-    initWorkspace();
+    refreshWorkspace();
   }, [refreshWorkspace]);
 
   // Reload current file when selectedPath changes
@@ -1332,26 +1304,19 @@ const Example = () => {
     }
 
     // Project Name
-    const params = new URLSearchParams(window.location.search);
-    const projectId = params.get("projectId");
-    if (projectId) {
-      fetch(`/api/project/name?projectId=${projectId}`)
-        .then((r) => r.json())
-        .then((data) => {
-          if (data.name) {
-            setProjectName(data.name);
-          } else {
-            setProjectName(projectId);
-          }
-        })
-        .catch(() => {
+    fetch(withProject("/api/project/name"))
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.name) {
+          setProjectName(data.name);
+        } else {
           setProjectName(projectId);
-        });
-    } else if (projectPathInput) {
-      const parts = projectPathInput.split("/");
-      setProjectName(parts[parts.length - 1] || "my-new-project");
-    }
-  }, [projectPathInput]);
+        }
+      })
+      .catch(() => {
+        setProjectName(projectId);
+      });
+  }, [withProject, projectId]);
 
   const completedTasks = tasks.filter((t) => t.status === "completed");
   const pendingTasks = tasks.filter((t) => t.status !== "completed");

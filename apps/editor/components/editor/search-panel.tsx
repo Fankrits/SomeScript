@@ -96,6 +96,11 @@ export const SearchPanel = forwardRef<SearchPanelHandle, SearchPanelProps>(
           startLine: startLine,
           endLine: endLine,
         });
+        const projectId =
+          typeof window !== "undefined"
+            ? new URLSearchParams(window.location.search).get("projectId") ?? "default"
+            : "default";
+        params.set("projectId", projectId);
         const res = await fetch(`/api/search?${params.toString()}`);
         const data = await res.json();
         if (requestId === activeRequestRef.current && data.results) {
