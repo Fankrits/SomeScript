@@ -1,17 +1,14 @@
 import { NextRequest } from "next/server";
 import { storage } from "@/lib/storage";
+import { requireProject, apiError, ApiError } from "@/lib/authz";
 import JSZip from "jszip";
 
 export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const projectId = searchParams.get("projectId");
-  const type = searchParams.get("type"); // "pdf" | "zip"
-
-  if (!projectId) {
-    return Response.json({ error: "Missing projectId" }, { status: 400 });
-  }
-
   try {
+    const { searchParams } = new URL(req.url);
+    const projectId = await requireProject(searchParams.get("projectId"));
+    const type = searchParams.get("type"); // "pdf" | "zip"
+
     if (type === "pdf") {
       try {
         const buffer = await storage.readBinaryFile(projectId, ".preview-cache/main.pdf");
@@ -58,9 +55,8 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    return Response.json({ error: "Invalid type parameter" }, { status: 400 });
-  } catch (error: any) {
-    console.error("Export error:", error);
-    return Response.json({ error: error.message }, { status: 500 });
+    throw new ApiError(400, "Invalid type parameter");
+  } catch (error) {
+    return apiError(error);
   }
 }

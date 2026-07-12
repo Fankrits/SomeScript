@@ -1,19 +1,14 @@
 import { NextRequest } from "next/server";
 import { storage } from "@/lib/storage";
+import { requireProject, apiError } from "@/lib/authz";
 
 export async function POST(req: NextRequest) {
   try {
-    const { projectId } = await req.json();
-
-    if (!projectId) {
-      return Response.json({ error: "Missing projectId" }, { status: 400 });
-    }
-
-    // Call storage delete with empty path to delete all files under projects/projectId/
+    const { projectId: rawProjectId } = await req.json();
+    const projectId = await requireProject(rawProjectId);
     await storage.delete(projectId, "");
     return Response.json({ success: true });
-  } catch (error: any) {
-    console.error("Delete files error:", error);
-    return Response.json({ error: error.message }, { status: 500 });
+  } catch (error) {
+    return apiError(error);
   }
 }

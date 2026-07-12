@@ -1,47 +1,44 @@
 import { NextRequest } from "next/server";
 import { storage } from "@/lib/storage";
+import { requireProject, apiError, ApiError } from "@/lib/authz";
+import { safeZipPath, MAX_ZIP_ENTRIES, MAX_ZIP_FILE_BYTES, MAX_ZIP_TOTAL_BYTES, MAX_UPLOAD_BYTES } from "@/lib/zip";
 import JSZip from "jszip";
 
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
-    const projectId = formData.get("projectId") as string;
+    const projectId = await requireProject(formData.get("projectId") as string | null);
     const file = formData.get("file") as File | null;
 
-    if (!projectId) {
-      return Response.json({ error: "Missing projectId" }, { status: 400 });
-    }
-    if (!file) {
-      return Response.json({ error: "Missing zip file" }, { status: 400 });
-    }
+    if (!file) throw new ApiError(400, "Missing zip file");
+    if (file.size > MAX_UPLOAD_BYTES) throw new ApiError(413, "Upload too large");
 
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    const loadedZip = await new JSZip().loadAsync(Buffer.from(await file.arrayBuffer()));
 
-    const zip = new JSZip();
-    const loadedZip = await zip.loadAsync(buffer);
+    const entries = Object.entries(loadedZip.files);
+    if (entries.length > MAX_ZIP_ENTRIES) throw new ApiError(413, "Archive has too many entries");
 
-    for (const [relativePath, zipEntry] of Object.entries(loadedZip.files)) {
-      // Ignore macOS system files/folders and other junk
-      if (
-        relativePath.startsWith("__MACOSX") ||
-        relativePath.includes(".DS_Store") ||
-        relativePath.includes("..")
-      ) {
+    let totalBytes = 0;
+    for (const [relativePath, zipEntry] of entries) {
+      if (relativePath.startsWith("__MACOSX") || relativePath.includes(".DS_Store")) continue;
+      const safePath = safeZipPath(relativePath);
+      if (!safePath) continue;
+
+      if (zipEntry.dir) {
+        await storage.createDirectory(projectId, safePath);
         continue;
       }
 
-      if (zipEntry.dir) {
-        await storage.createDirectory(projectId, relativePath);
-      } else {
-        const fileContent = await zipEntry.async("nodebuffer");
-        await storage.writeFile(projectId, relativePath, fileContent);
-      }
+      const fileContent = await zipEntry.async("nodebuffer");
+      if (fileContent.length > MAX_ZIP_FILE_BYTES) throw new ApiError(413, "Archive entry too large");
+      totalBytes += fileContent.length;
+      if (totalBytes > MAX_ZIP_TOTAL_BYTES) throw new ApiError(413, "Archive too large when decompressed");
+
+      await storage.writeFile(projectId, safePath, fileContent);
     }
 
     return Response.json({ success: true });
-  } catch (error: any) {
-    console.error("Import zip files error:", error);
-    return Response.json({ error: error.message }, { status: 500 });
+  } catch (error) {
+    return apiError(error);
   }
 }
