@@ -33,8 +33,11 @@ async function getAllStorageFiles(projectId: string, nodes: FileNode[]): Promise
   return files;
 }
 
+import { checkRate } from "@/lib/rate-limit";
+
 export async function POST(req: NextRequest) {
   try {
+    await checkRate("compile", 10, 60_000);
     const { projectId: rawProjectId, path: fileRelativePath, draftMode } = await req.json();
     const isDraft = draftMode ?? true;
     if (!fileRelativePath) throw new ApiError(400, "Path parameter is required");

@@ -22,8 +22,11 @@ function isTextFile(filename: string): boolean {
   return !BINARY_EXTENSIONS.has(ext);
 }
 
+import { checkRate } from "@/lib/rate-limit";
+
 export async function GET(req: NextRequest) {
   try {
+    await checkRate("search", 30, 60_000);
     const { searchParams } = new URL(req.url);
     const projectId = await requireProject(searchParams.get("projectId"));
     
@@ -112,6 +115,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    await checkRate("search", 30, 60_000);
     const body = await req.json();
     const projectId = await requireProject(body.projectId);
 

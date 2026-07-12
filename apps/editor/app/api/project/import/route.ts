@@ -4,8 +4,11 @@ import { requireProject, apiError, ApiError } from "@/lib/authz";
 import { safeZipPath, MAX_ZIP_ENTRIES, MAX_ZIP_FILE_BYTES, MAX_ZIP_TOTAL_BYTES, MAX_UPLOAD_BYTES } from "@/lib/zip";
 import JSZip from "jszip";
 
+import { checkRate } from "@/lib/rate-limit";
+
 export async function POST(req: NextRequest) {
   try {
+    await checkRate("import", 5, 60_000);
     const formData = await req.formData();
     const projectId = await requireProject(formData.get("projectId") as string | null);
     const file = formData.get("file") as File | null;
