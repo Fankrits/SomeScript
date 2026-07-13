@@ -1,6 +1,6 @@
 import { defineTool } from "eve/tools";
 import { z } from "zod";
-import { requireProject } from "../../lib/authz";
+import { resolveToolProject } from "../../lib/authz";
 import { storage } from "../../lib/storage";
 
 export default defineTool({
@@ -11,7 +11,7 @@ export default defineTool({
   }),
   async execute({ projectId, path: filePath }) {
     try {
-      const pid = await requireProject(projectId);
+      const pid = await resolveToolProject(projectId);
       return await storage.readFile(pid, filePath);
     } catch (e: any) {
       return `Error reading file at ${filePath}: ${e.message}`;

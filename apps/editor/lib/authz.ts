@@ -48,6 +48,35 @@ export async function requireProject(projectId: string | null | undefined): Prom
   return projectId;
 }
 
+/**
+ * Project resolution for Eve agent tools. Eve executes tools in its own runtime,
+ * which may be outside the Next request context where Clerk `auth()` can read the
+ * session. This keeps the full ownership check when auth() is available — a
+ * signed-out caller (401) or a non-owner (404) is still denied — and falls back to
+ * format validation only when auth() cannot run at all (raw, non-ApiError throw).
+ * The agent HTTP endpoint itself is gated by the Next middleware (proxy.ts).
+ * ponytail: best-effort ownership in the no-context case; make it a hard check once
+ * eve exposes request identity (workspaceId) to tool execution.
+ */
+export async function resolveToolProject(projectId: string | null | undefined): Promise<string> {
+  if (!projectId) throw new ApiError(400, "Missing projectId");
+  if (projectId === "default") {
+    if (process.env.NODE_ENV !== "production") return projectId;
+    throw new ApiError(404, "Project not found");
+  }
+  if (!isUuid(projectId)) throw new ApiError(404, "Project not found");
+
+  try {
+    return await requireProject(projectId);
+  } catch (e) {
+    // ApiError (401 signed-out, 404 not-owned) is a genuine denial — propagate it.
+    if (e instanceof ApiError) throw e;
+    // Non-ApiError means auth() could not run in this execution context; fall back
+    // to the already format-validated id. Endpoint identity is enforced upstream.
+    return projectId;
+  }
+}
+
 /** Uniform error responder: known ApiErrors pass through, everything else is a logged generic 500. */
 export function apiError(err: unknown): Response {
   if (err instanceof ApiError) {

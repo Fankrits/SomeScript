@@ -1,6 +1,6 @@
 import { defineTool } from "eve/tools";
 import { z } from "zod";
-import { requireProject } from "../../lib/authz";
+import { resolveToolProject } from "../../lib/authz";
 import { storage, type FileNode } from "../../lib/storage";
 
 export default defineTool({
@@ -10,7 +10,7 @@ export default defineTool({
   }),
   async execute({ projectId }) {
     try {
-      const pid = await requireProject(projectId);
+      const pid = await resolveToolProject(projectId);
       const fileNodes = await storage.listProjectFiles(pid);
       
       const flatten = (nodes: FileNode[]): string[] => {

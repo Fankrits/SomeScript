@@ -1,7 +1,7 @@
 import { defineTool } from "eve/tools";
 import { always } from "eve/tools/approval";
 import { z } from "zod";
-import { requireProject } from "../../lib/authz";
+import { resolveToolProject } from "../../lib/authz";
 import { storage } from "../../lib/storage";
 
 export default defineTool({
@@ -14,7 +14,7 @@ export default defineTool({
   approval: always(),
   async execute({ projectId, path: filePath, content }) {
     try {
-      const pid = await requireProject(projectId);
+      const pid = await resolveToolProject(projectId);
       await storage.writeFile(pid, filePath, content);
       return `Successfully updated file: ${filePath}`;
     } catch (e: any) {
