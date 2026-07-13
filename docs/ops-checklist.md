@@ -21,11 +21,12 @@
   `drizzle.__drizzle_migrations` tracking. The `projects_workspace_id_idx` index was added
   to it manually (`CREATE INDEX IF NOT EXISTS ...`). Production must start from
   `bun run db:migrate` on a fresh DB so migration history is tracked from the baseline.
-- **Editor has pre-existing lint debt** (~150 `@typescript-eslint/no-explicit-any` /
-  `no-this-alias` / react-compiler errors) unrelated to the hardening work — the new
-  hardening files are lint-clean. `bun run lint` (the CI gate) will be red on a clean
-  checkout until this is triaged: either downgrade those rules to warnings for this
-  codebase's conventions, or do a dedicated cleanup pass.
+- **Editor lint debt cleared.** The pre-existing `no-explicit-any` / `no-this-alias` /
+  react-compiler errors were fixed: `.eve`/`.output` generated dirs are ignored, `any`s
+  replaced with precise types, and react-compiler violations either fixed with idiomatic
+  patterns or given scoped `eslint-disable` comments with justifications (imperative
+  library APIs, SSR-safe hydration, external subscriptions). `bun run lint` exits 0.
+  Remaining output is warnings only (non-blocking).
 
 ## Scaling constraints (revisit before adding instances)
 - Editor and compiler are **single-instance** services: the editor's differential-upload
