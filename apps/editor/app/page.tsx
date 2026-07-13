@@ -1221,7 +1221,7 @@ const Example = () => {
             const res = await fetch("/api/files", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ action: "save", path: selectedPath, content: editedCode }),
+              body: JSON.stringify({ projectId, action: "save", path: selectedPath, content: editedCode }),
             });
             const data = await res.json();
             if (data.success) {
@@ -1251,7 +1251,7 @@ const Example = () => {
       window.removeEventListener("somescript:force-save", handleForceSave);
       window.removeEventListener("somescript:refresh-workspace", handleRefreshWorkspace);
     };
-  }, [refreshWorkspace, refreshCurrentFile]);
+  }, [refreshWorkspace, refreshCurrentFile, projectId]);
 
   // Stream terminal output line by line
   const streamTerminal = useCallback(async () => {
