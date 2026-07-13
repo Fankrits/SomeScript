@@ -8,6 +8,25 @@
 - [ ] Run `bun run db:migrate` (apps/web) against the production database as a deploy step — never `push`.
 - [ ] GitHub: require the CI check to pass before merging to main.
 
+## Known limitations & follow-ups
+- **Eve agent per-project ownership is best-effort.** Agent tools (`read/write/list-file`)
+  resolve the project via `resolveToolProject`, which enforces full ownership only when
+  Clerk `auth()` can read the session in the tool's execution context. Eve runs tools in
+  its own runtime, so when `auth()` is unavailable the tool falls back to format
+  validation and relies on the Next middleware (`proxy.ts`) gating the agent endpoint for
+  identity. Verify at deploy time that the agent endpoint is actually behind the
+  middleware in production; make ownership a hard check once eve can pass request identity
+  (workspaceId) into tool execution.
+- **Existing dev DB was created via `drizzle-kit push`**, so it has no
+  `drizzle.__drizzle_migrations` tracking. The `projects_workspace_id_idx` index was added
+  to it manually (`CREATE INDEX IF NOT EXISTS ...`). Production must start from
+  `bun run db:migrate` on a fresh DB so migration history is tracked from the baseline.
+- **Editor has pre-existing lint debt** (~150 `@typescript-eslint/no-explicit-any` /
+  `no-this-alias` / react-compiler errors) unrelated to the hardening work — the new
+  hardening files are lint-clean. `bun run lint` (the CI gate) will be red on a clean
+  checkout until this is triaged: either downgrade those rules to warnings for this
+  codebase's conventions, or do a dedicated cleanup pass.
+
 ## Scaling constraints (revisit before adding instances)
 - Editor and compiler are **single-instance** services: the editor's differential-upload
   cache and rate-limit buckets are in-memory (compiler self-heals via 409 full-sync,
