@@ -566,6 +566,7 @@ const Example = () => {
     if (stored) {
       try {
         const parsed = JSON.parse(stored);
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- SSR-safe: settings hydrate from localStorage after mount
         setSettings({
           mainFilePath: parsed.mainFilePath ?? "main.tex",
           compilerEngine: parsed.compilerEngine ?? "tectonic",
@@ -1052,6 +1053,7 @@ const Example = () => {
       return;
     }
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- drives the debounced autosave status machine
     setSaveStatus("unsaved");
 
     const timer = setTimeout(async () => {
@@ -1194,11 +1196,13 @@ const Example = () => {
 
   // Load tree on mount
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- data load: fetches the workspace tree on mount
     refreshWorkspace();
   }, [refreshWorkspace]);
 
   // Reload current file when selectedPath changes
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- data load: fetches file content when the selection changes
     refreshCurrentFile();
   }, [selectedPath, refreshCurrentFile]);
 
@@ -1298,11 +1302,13 @@ const Example = () => {
     // Dashboard URL
     const hostname = window.location.hostname;
     const port = window.location.port;
+    /* eslint-disable react-hooks/set-state-in-effect -- client-only value derived from window.location */
     if (port === "3002" || port === "3001" || port === "3000") {
       setDashboardUrl(`http://${hostname}:3000/dashboard`);
     } else {
       setDashboardUrl("/dashboard");
     }
+    /* eslint-enable react-hooks/set-state-in-effect */
 
     // Project Name
     fetch(withProject("/api/project/name"))
@@ -1891,6 +1897,7 @@ const Example = () => {
                         }}
                         onChange={(value) => setEditedCode(value)}
                         onCreateEditor={(view) => {
+                          // eslint-disable-next-line react-hooks/immutability -- storing the imperative CodeMirror EditorView handle in a ref
                           editorViewRef.current = view;
                         }}
                         onUpdate={handleUpdate}

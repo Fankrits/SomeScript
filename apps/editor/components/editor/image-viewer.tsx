@@ -15,7 +15,8 @@ export function ImageViewer({ path }: ImageViewerProps) {
     typeof window !== "undefined"
       ? new URLSearchParams(window.location.search).get("projectId") ?? "default"
       : "default";
-  const src = `/api/files?path=${encodeURIComponent(path)}&projectId=${encodeURIComponent(projectId)}&t=${Date.now()}`;
+  // No cache-buster needed: the /api/files image response sets Cache-Control: no-store.
+  const src = `/api/files?path=${encodeURIComponent(path)}&projectId=${encodeURIComponent(projectId)}`;
   const filename = path.split("/").pop() ?? path;
 
   return (
