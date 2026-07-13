@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { storage } from "@/lib/storage";
+import { storage, type FileNode } from "@/lib/storage";
 import { requireProject, apiError, ApiError } from "@/lib/authz";
 import JSZip from "jszip";
 
@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
             "Content-Length": buffer.length.toString(),
           },
         });
-      } catch (err: any) {
+      } catch {
         return Response.json({ error: "PDF preview file not found. Please compile the project first in the editor." }, { status: 404 });
       }
     }
@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
       const tree = await storage.listProjectFiles(projectId);
       const zip = new JSZip();
 
-      const addFilesToZip = async (zipInstance: JSZip, nodes: any[]) => {
+      const addFilesToZip = async (zipInstance: JSZip, nodes: FileNode[]) => {
         for (const node of nodes) {
           if (node.isDir && node.children) {
             const folder = zipInstance.folder(node.name);

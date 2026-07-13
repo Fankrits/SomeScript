@@ -17,7 +17,7 @@ test("normal relative paths are not flagged as traversal", async () => {
   // File won't exist — ENOENT is fine; it just must not be a traversal error.
   try {
     await p.readFile("zz-does-not-exist", "sections/intro.tex");
-  } catch (e: any) {
-    expect(e.message).not.toContain("Directory traversal");
+  } catch (e) {
+    expect(e instanceof Error ? e.message : String(e)).not.toContain("Directory traversal");
   }
 });

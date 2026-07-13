@@ -230,8 +230,8 @@ class S3StorageProvider implements StorageProvider {
             Key: oldPrefix,
           })
         );
-      } catch (error: any) {
-        console.error("Direct S3 move failed:", error.message);
+      } catch (error) {
+        console.error("Direct S3 move failed:", error instanceof Error ? error.message : String(error));
       }
       return;
     }

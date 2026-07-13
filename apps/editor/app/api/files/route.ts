@@ -49,8 +49,9 @@ export async function GET(req: NextRequest) {
 
     const tree = await storage.listProjectFiles(projectId);
     return Response.json({ tree });
-  } catch (error: any) {
-    if (error?.code === "ENOENT" || error?.message?.includes("ENOENT") || error?.name === "NoSuchKey") {
+  } catch (error) {
+    const e = error as { code?: string; message?: string; name?: string };
+    if (e?.code === "ENOENT" || e?.message?.includes("ENOENT") || e?.name === "NoSuchKey") {
       return apiError(new ApiError(404, "File not found"));
     }
     return apiError(error);

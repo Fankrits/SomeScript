@@ -13,8 +13,8 @@ export default defineTool({
     try {
       const pid = await resolveToolProject(projectId);
       return await storage.readFile(pid, filePath);
-    } catch (e: any) {
-      return `Error reading file at ${filePath}: ${e.message}`;
+    } catch (e) {
+      return `Error reading file at ${filePath}: ${e instanceof Error ? e.message : String(e)}`;
     }
   },
 });

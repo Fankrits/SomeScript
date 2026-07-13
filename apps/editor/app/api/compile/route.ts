@@ -13,7 +13,7 @@ interface DifferentialFile {
 
 // Recursively gather all project files via the unified storage provider
 async function getAllStorageFiles(projectId: string, nodes: FileNode[]): Promise<{ path: string; content: string }[]> {
-  let files: { path: string; content: string }[] = [];
+  const files: { path: string; content: string }[] = [];
 
   for (const node of nodes) {
     if (node.isDir && node.children) {

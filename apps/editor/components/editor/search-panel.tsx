@@ -34,7 +34,7 @@ export interface SearchResult {
 interface SearchPanelProps {
   selectedPath: string | null;
   onSelectMatch: (filePath: string, line: number) => void;
-  onReplaceAll: (replaceText: string, searchState: { query: string; options: any }) => void;
+  onReplaceAll: (replaceText: string, searchState: { query: string; options: { matchCase: boolean; matchWholeWord: boolean; useRegex: boolean; scope: string } }) => void;
   onSearchChange?: (query: string, options: { matchCase: boolean; matchWholeWord: boolean; useRegex: boolean }) => void;
 }
 
@@ -396,7 +396,7 @@ export const SearchPanel = forwardRef<SearchPanelHandle, SearchPanelProps>(
             <div className="flex flex-col items-center justify-center p-8 text-center">
               <Search className="w-8 h-8 text-muted-foreground mb-2 opacity-20" />
               <p className="text-xs text-muted-foreground">
-                No results found for "{query}"
+                No results found for &quot;{query}&quot;
               </p>
             </div>
           )}

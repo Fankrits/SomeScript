@@ -32,8 +32,8 @@ export default defineTool({
         return "The project workspace is empty.";
       }
       return `Files in the project workspace:\n${filesList.map(f => `- ${f}`).join("\n")}`;
-    } catch (e: any) {
-      return `Error listing project files: ${e.message}`;
+    } catch (e) {
+      return `Error listing project files: ${e instanceof Error ? e.message : String(e)}`;
     }
   },
 });

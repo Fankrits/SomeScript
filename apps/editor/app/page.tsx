@@ -84,7 +84,7 @@ const LayoutIconRight = ({ active }: { active: boolean }) => (
     {active && <rect x="11.25" y="2.25" width="2.5" height="11.5" fill="currentColor" opacity="0.8" />}
   </svg>
 );
-import CodeMirror, { EditorView } from "@uiw/react-codemirror";
+import CodeMirror, { EditorView, type ViewUpdate } from "@uiw/react-codemirror";
 import { undo, redo, undoDepth, redoDepth } from "@codemirror/commands";
 import { EditorToolbar } from "@/components/editor/editor-toolbar";
 import { ImageViewer } from "@/components/editor/image-viewer";
@@ -730,7 +730,7 @@ const Example = () => {
   const [canUndo, setCanUndo] = useState<boolean>(false);
   const [canRedo, setCanRedo] = useState<boolean>(false);
 
-  const handleUpdate = useCallback((update: any) => {
+  const handleUpdate = useCallback((update: ViewUpdate) => {
     if (update.docChanged || update.selectionSet) {
       const view = editorViewRef.current;
       if (view) {
@@ -929,7 +929,7 @@ const Example = () => {
     handleFileSelect(filePath);
   }, [handleFileSelect]);
 
-  const handleReplaceAll = useCallback(async (replaceText: string, searchState: { query: string; options: any }) => {
+  const handleReplaceAll = useCallback(async (replaceText: string, searchState: { query: string; options: { matchCase: boolean; matchWholeWord: boolean; useRegex: boolean; scope: string } }) => {
     try {
       const res = await fetch("/api/search", {
         method: "POST",
@@ -970,7 +970,7 @@ const Example = () => {
       const baseName = isDir ? "untitled-folder" : "untitled.tex";
       targetPath = baseName;
       
-      const exists = (name: string, nodes: any[]): boolean => {
+      const exists = (name: string, nodes: FileNode[]): boolean => {
         for (const n of nodes) {
           if (n.name === name) return true;
           if (n.children && exists(name, n.children)) return true;
@@ -1161,10 +1161,11 @@ const Example = () => {
           fetchSyncTex(compilePath);
         }
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error("Compilation error", err);
+      const errMessage = err instanceof Error ? err.message : String(err);
       // Put compilation error into the terminal output
-      setTerminalOutput((prev) => `${prev}\n\u001B[31mError compiling LaTeX:\u001B[0m ${err.message}\n`);
+      setTerminalOutput((prev) => `${prev}\n\u001B[31mError compiling LaTeX:\u001B[0m ${errMessage}\n`);
     } finally {
       setIsCompiling(false);
       setIsTerminalStreaming(false);
@@ -1214,7 +1215,7 @@ const Example = () => {
 
       // If there are unsaved edits, save them immediately
       if (editedCode !== currentCode) {
-        const customEvent = e as CustomEvent<{ promises: Promise<any>[] }>;
+        const customEvent = e as CustomEvent<{ promises: Promise<unknown>[] }>;
         setSaveStatus("saving");
         const savePromise = (async () => {
           try {
@@ -1897,7 +1898,7 @@ const Example = () => {
                       />
                     ) : (
                       <div className="flex items-center justify-center h-full text-muted-foreground text-sm font-mono bg-background">
-                        // Select a file from the sidebar to edit
+                        {"// Select a file from the sidebar to edit"}
                       </div>
                     )}
                   </div>
@@ -1992,9 +1993,23 @@ const Example = () => {
   );
 };
 
+interface SynctexRecord {
+  fileId: number;
+  line: number;
+  page: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+interface SynctexData {
+  files: Record<string, string>;
+  records: SynctexRecord[];
+}
+
 interface HeadlessPdfViewerProps {
   pdfUrl: string | null;
-  synctexData: any;
+  synctexData: SynctexData | null;
   selectedPath: string;
   currentLineNumber: number;
   onSelectLine: (filePath: string, line: number) => void;
@@ -2061,7 +2076,7 @@ const HeadlessPdfViewer = ({
 interface HeadlessPdfViewerInnerProps {
   pdfUrl: string;
   documentId: string;
-  synctexData: any;
+  synctexData: SynctexData | null;
   selectedPath: string;
   currentLineNumber: number;
   onSelectLine: (filePath: string, line: number) => void;
@@ -2093,12 +2108,12 @@ const HeadlessPdfViewerInner = ({
     const fileId = parseInt(fileIdStr, 10);
 
     // Look up record matching fileId and closest line
-    let match = synctexData.records.find((r: any) => r.fileId === fileId && r.line === currentLineNumber);
+    let match = synctexData.records.find((r: SynctexRecord) => r.fileId === fileId && r.line === currentLineNumber);
     if (!match) {
       // Find the closest line match
-      const fileRecords = synctexData.records.filter((r: any) => r.fileId === fileId);
+      const fileRecords = synctexData.records.filter((r: SynctexRecord) => r.fileId === fileId);
       if (fileRecords.length > 0) {
-        match = fileRecords.reduce((prev: any, curr: any) => {
+        match = fileRecords.reduce((prev: SynctexRecord, curr: SynctexRecord) => {
           return Math.abs(curr.line - currentLineNumber) < Math.abs(prev.line - currentLineNumber) ? curr : prev;
         });
       }
@@ -2428,7 +2443,7 @@ const HeadlessPdfViewerInner = ({
                     // Let's find the page dimensions in TeX points or match records by page and relative distance.
                     
                     const pageNumber = pageIndex + 1;
-                    const pageRecords = synctexData.records.filter((r: any) => r.page === pageNumber);
+                    const pageRecords = synctexData.records.filter((r: SynctexRecord) => r.page === pageNumber);
                     if (pageRecords.length === 0) return;
 
                     // Calculate distance in normalized coordinate space or TeX point space.
@@ -2445,7 +2460,7 @@ const HeadlessPdfViewerInner = ({
                     const estimatedWidth = 612;
                     const estimatedHeight = 792;
                     
-                    let closestRecord: any = null;
+                    let closestRecord: SynctexRecord | null = null;
                     let minDistance = Infinity;
 
                     for (const r of pageRecords) {
@@ -2501,7 +2516,7 @@ const HeadlessPdfViewerInner = ({
                             documentId={documentId}
                             pageIndex={pageIndex}
                             textStyle={{ background: "rgba(59, 130, 246, 0.35)" }}
-                            selectionMenu={((({ menuWrapperProps, placement }: any) => {
+                            selectionMenu={(({ menuWrapperProps, placement }) => {
                               return (
                                 <div
                                   {...menuWrapperProps}
@@ -2572,7 +2587,7 @@ const HeadlessPdfViewerInner = ({
                                   </div>
                                 </div>
                               );
-                            }) as any)}
+                            })}
                           />
                         )}
                       </PagePointerProvider>

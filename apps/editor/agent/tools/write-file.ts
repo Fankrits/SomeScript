@@ -17,8 +17,8 @@ export default defineTool({
       const pid = await resolveToolProject(projectId);
       await storage.writeFile(pid, filePath, content);
       return `Successfully updated file: ${filePath}`;
-    } catch (e: any) {
-      return `Error writing file at ${filePath}: ${e.message}`;
+    } catch (e) {
+      return `Error writing file at ${filePath}: ${e instanceof Error ? e.message : String(e)}`;
     }
   },
 });

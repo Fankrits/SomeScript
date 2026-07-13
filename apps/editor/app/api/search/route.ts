@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { storage } from "@/lib/storage";
+import { storage, type FileNode } from "@/lib/storage";
 import { requireProject, apiError } from "@/lib/authz";
 import { buildSearchPattern } from "@/lib/search-pattern";
 import path from "path";
@@ -51,7 +51,7 @@ export async function GET(req: NextRequest) {
     const results: SearchResult[] = [];
     const files = await storage.listProjectFiles(projectId);
 
-    const traverse = async (nodes: any[]) => {
+    const traverse = async (nodes: FileNode[]) => {
       for (const node of nodes) {
         if (results.length >= MAX_RESULTS) return;
         if (node.isDir) {
@@ -108,7 +108,7 @@ export async function GET(req: NextRequest) {
     });
 
     return Response.json({ results, resultsByFile });
-  } catch (error: any) {
+  } catch (error) {
     return apiError(error);
   }
 }
@@ -136,7 +136,7 @@ export async function POST(req: NextRequest) {
     let count = 0;
     const modifiedFiles: string[] = [];
 
-    const traverse = async (nodes: any[]) => {
+    const traverse = async (nodes: FileNode[]) => {
       for (const node of nodes) {
         if (node.isDir) {
           if (node.children) await traverse(node.children);
@@ -166,7 +166,7 @@ export async function POST(req: NextRequest) {
 
     await traverse(files);
     return Response.json({ success: true, count, modifiedFiles });
-  } catch (error: any) {
+  } catch (error) {
     return apiError(error);
   }
 }

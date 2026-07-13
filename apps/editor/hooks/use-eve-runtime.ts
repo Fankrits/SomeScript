@@ -83,7 +83,7 @@ export function useEveRuntime(threadId: string, projectId: string) {
           },
           result: "output" in part ? part.output : undefined,
           isError: part.state === "output-error",
-        } as any;
+        } as unknown as ThreadMessageLike["content"][number];
       }
 
       // 4. OAuth/connection authorization
@@ -104,7 +104,7 @@ export function useEveRuntime(threadId: string, projectId: string) {
           isError:
             "outcome" in part &&
             (part.outcome === "failed" || part.outcome === "timed-out"),
-        } as any;
+        } as unknown as ThreadMessageLike["content"][number];
       }
 
       // step-start and unknown part types: skip
@@ -119,7 +119,7 @@ export function useEveRuntime(threadId: string, projectId: string) {
       role: msg.role,
       content: msg.parts
         .map((part, i) => convertEvePart(part, msg.id, i))
-        .filter((p): p is NonNullable<typeof p> => p !== null) as any,
+        .filter((p): p is NonNullable<typeof p> => p !== null) as unknown as ThreadMessageLike["content"],
     }),
     [convertEvePart],
   );
@@ -127,7 +127,7 @@ export function useEveRuntime(threadId: string, projectId: string) {
   const onNew = useCallback(
     async (message: AppendMessage) => {
       // Force save any unsaved changes in the editor before sending
-      const promises: Promise<any>[] = [];
+      const promises: Promise<unknown>[] = [];
       window.dispatchEvent(
         new CustomEvent("somescript:force-save", { detail: { promises } })
       );
@@ -139,7 +139,11 @@ export function useEveRuntime(threadId: string, projectId: string) {
         }
       }
 
-      const parts: any[] = [];
+      type OutgoingPart =
+        | { type: "text"; text: string }
+        | { type: "image"; image: string }
+        | { type: "file"; data: ArrayBuffer; mimeType: string };
+      const parts: OutgoingPart[] = [];
 
       for (const part of message.content) {
         if (part.type === "text") {
@@ -148,9 +152,9 @@ export function useEveRuntime(threadId: string, projectId: string) {
           parts.push({ type: "image", image: part.image });
         } else if (part.type === "file") {
           try {
-            const filePart = part as any;
+            const filePart = part as { file?: File };
             if (filePart.file) {
-              const fileObj = filePart.file as File;
+              const fileObj = filePart.file;
               const isText =
                 fileObj.type.startsWith("text/") ||
                 fileObj.name.endsWith(".tex") ||
@@ -187,17 +191,22 @@ export function useEveRuntime(threadId: string, projectId: string) {
       }
 
       if (parts.length > 0) {
-        const textPartIndex = parts.findIndex(p => p.type === "text");
-        if (textPartIndex !== -1) {
-          parts[textPartIndex].text = `[projectId: ${projectId}]\n${parts[textPartIndex].text}`;
+        const textPart = parts.find(
+          (p): p is Extract<OutgoingPart, { type: "text" }> => p.type === "text"
+        );
+        if (textPart) {
+          textPart.text = `[projectId: ${projectId}]\n${textPart.text}`;
         } else {
           parts.unshift({ type: "text", text: `[projectId: ${projectId}]` });
         }
 
-        if (parts.length === 1 && parts[0].type === "text") {
-          await agent.send({ message: parts[0].text });
+        const firstPart = parts[0];
+        if (parts.length === 1 && firstPart.type === "text") {
+          await agent.send({ message: firstPart.text });
         } else {
-          await agent.send({ message: parts });
+          await agent.send({
+            message: parts as unknown as Parameters<typeof agent.send>[0]["message"],
+          });
         }
       }
     },
@@ -230,11 +239,13 @@ export function useEveRuntime(threadId: string, projectId: string) {
       const threadListRaw = localStorage.getItem("eve-threads-list");
       if (threadListRaw) {
         try {
-          const list = JSON.parse(threadListRaw);
-          const threadIndex = list.findIndex((t: any) => t.id === threadId);
+          const list = JSON.parse(threadListRaw) as { id: string; title: string }[];
+          const threadIndex = list.findIndex((t) => t.id === threadId);
           if (threadIndex !== -1 && list[threadIndex].title === "New Chat") {
-            const firstUserMessage = agent.data?.messages?.find((m: any) => m.role === "user");
-            const firstPart = firstUserMessage?.parts?.find((p: any) => p.type === "text");
+            const firstUserMessage = agent.data?.messages?.find((m) => m.role === "user");
+            const firstPart = firstUserMessage?.parts?.find(
+              (p: { type: string; text?: string }) => p.type === "text"
+            );
             if (firstPart && "text" in firstPart && firstPart.text) {
               const cleanText = firstPart.text.trim();
               list[threadIndex].title = cleanText.length > 25 ? cleanText.substring(0, 22) + "..." : cleanText;

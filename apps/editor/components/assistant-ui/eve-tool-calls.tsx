@@ -15,11 +15,32 @@ import { Button } from "@/components/ui/button";
 import { useEveAgentCtx } from "@/components/chat/eve-agent-context";
 import { makeAssistantToolUI } from "@assistant-ui/react";
 
+// Loosely-structured args carried by Eve tool calls; every field is optional
+// because each card reads only the subset relevant to its tool.
+interface ToolCardArgs {
+  inputRequest?: {
+    requestId: string;
+    prompt?: string;
+    display?: string;
+    options?: Array<{ id: string; label: string; style?: string }>;
+  };
+  state?: string;
+  input?: unknown;
+  displayName?: string;
+  description?: string;
+  authorization?: { userCode?: string; url?: string; instructions?: string };
+  outcome?: string;
+  toolName?: string;
+  query?: string;
+  command?: string;
+  path?: string;
+  action?: string;
+}
 
 // ---------------------------------------------------------------------------
 // HITL — Human-in-the-Loop approval + ask_question prompt
 // ---------------------------------------------------------------------------
-function HitlCard({ args }: { args: any }) {
+function HitlCard({ args }: { args: ToolCardArgs }) {
   const agent = useEveAgentCtx();
   const inputRequest = args.inputRequest;
   const state = args.state;
@@ -58,7 +79,7 @@ function HitlCard({ args }: { args: any }) {
       <p className="text-sm text-foreground">{inputRequest.prompt}</p>
 
       {/* Show tool input for transparency on approvals */}
-      {args.input && inputRequest.display === "confirmation" && (
+      {!!args.input && inputRequest.display === "confirmation" && (
         <pre className="text-xs bg-muted/65 p-2 rounded overflow-x-auto max-h-40 font-mono">
           {JSON.stringify(args.input, null, 2)}
         </pre>
@@ -66,7 +87,7 @@ function HitlCard({ args }: { args: any }) {
 
       <div className="flex flex-wrap gap-2 pt-1">
         {inputRequest.options && inputRequest.options.length > 0 ? (
-          inputRequest.options.map((opt: any) => (
+          inputRequest.options.map((opt) => (
             <Button
               key={opt.id}
               size="sm"
@@ -106,7 +127,7 @@ function HitlCard({ args }: { args: any }) {
 // ---------------------------------------------------------------------------
 // OAuth / Connection authorization prompt
 // ---------------------------------------------------------------------------
-function OAuthCard({ args }: { args: any }) {
+function OAuthCard({ args }: { args: ToolCardArgs }) {
   const { displayName, description, authorization, state, outcome } = args;
 
   if (state === "completed") {
@@ -161,7 +182,7 @@ function OAuthCard({ args }: { args: any }) {
 // ---------------------------------------------------------------------------
 // Subagent delegation card
 // ---------------------------------------------------------------------------
-function SubagentCard({ args }: { args: any }) {
+function SubagentCard({ args }: { args: ToolCardArgs }) {
   const state = args.state;
   const toolName = args.toolName;
   const isDone = state === "output-available" || state === "output-error" || state === "output-denied";
@@ -186,7 +207,7 @@ function SubagentCard({ args }: { args: any }) {
 // ---------------------------------------------------------------------------
 // Harness tool cards
 // ---------------------------------------------------------------------------
-function WebSearchCard({ args, result }: { args: any; result?: any }) {
+function WebSearchCard({ args, result }: { args: ToolCardArgs; result?: unknown }) {
   return (
     <div className="rounded-lg border p-3.5 bg-muted/10 mt-1 space-y-2">
       <div className="flex items-center gap-2 text-xs text-muted-foreground font-medium">
@@ -195,7 +216,7 @@ function WebSearchCard({ args, result }: { args: any; result?: any }) {
           Web Search: <b>{args?.query || "Searching…"}</b>
         </span>
       </div>
-      {result && (
+      {!!result && (
         <div className="text-xs text-foreground/80 pl-5 border-l border-muted-foreground/20 leading-relaxed max-h-32 overflow-y-auto">
           {typeof result === "string" ? result : JSON.stringify(result, null, 2)}
         </div>
@@ -204,7 +225,7 @@ function WebSearchCard({ args, result }: { args: any; result?: any }) {
   );
 }
 
-function BashCard({ args, result }: { args: any; result?: any }) {
+function BashCard({ args, result }: { args: ToolCardArgs; result?: unknown }) {
   return (
     <div className="rounded-lg border p-3 bg-neutral-900 text-neutral-100 font-mono text-xs mt-1 space-y-1.5 overflow-hidden">
       <div className="flex items-center gap-2 text-neutral-400 border-b border-neutral-800 pb-1.5">
@@ -217,7 +238,7 @@ function BashCard({ args, result }: { args: any; result?: any }) {
       <pre className="text-green-400 overflow-x-auto whitespace-pre-wrap max-h-48 py-1">
         $ {args?.command || ""}
       </pre>
-      {result && (
+      {!!result && (
         <pre className="text-neutral-300 overflow-x-auto whitespace-pre-wrap max-h-60 border-t border-neutral-800/50 pt-1.5">
           {typeof result === "string" ? result : JSON.stringify(result, null, 2)}
         </pre>
@@ -226,7 +247,7 @@ function BashCard({ args, result }: { args: any; result?: any }) {
   );
 }
 
-function ReadFileCard({ args, result }: { args: any; result?: any }) {
+function ReadFileCard({ args, result }: { args: ToolCardArgs; result?: unknown }) {
   return (
     <div className="rounded-lg border p-3 bg-muted/10 mt-1 space-y-1.5">
       <div className="flex items-center gap-2 text-xs text-muted-foreground font-medium">
@@ -238,7 +259,7 @@ function ReadFileCard({ args, result }: { args: any; result?: any }) {
           </code>
         </span>
       </div>
-      {result && (
+      {!!result && (
         <pre className="text-[11px] font-mono bg-muted/40 p-2 rounded border max-h-40 overflow-auto whitespace-pre">
           {typeof result === "string" ? result : JSON.stringify(result, null, 2)}
         </pre>
@@ -247,7 +268,7 @@ function ReadFileCard({ args, result }: { args: any; result?: any }) {
   );
 }
 
-function WriteFileCard({ args, result }: { args: any; result?: any }) {
+function WriteFileCard({ args, result }: { args: ToolCardArgs; result?: unknown }) {
   return (
     <div className="rounded-lg border p-3 bg-muted/10 mt-1 space-y-1.5">
       <div className="flex items-center gap-2 text-xs text-muted-foreground font-medium">
@@ -259,7 +280,7 @@ function WriteFileCard({ args, result }: { args: any; result?: any }) {
           </code>
         </span>
       </div>
-      {result && (
+      {!!result && (
         <div className="text-xs text-emerald-600 dark:text-emerald-400 font-medium pl-5">
           ✓ Written successfully.
         </div>
@@ -268,7 +289,7 @@ function WriteFileCard({ args, result }: { args: any; result?: any }) {
   );
 }
 
-function TodoCard({ args, result }: { args: any; result?: any }) {
+function TodoCard({ args, result }: { args: ToolCardArgs; result?: unknown }) {
   return (
     <div className="rounded-lg border p-3 bg-muted/10 mt-1 space-y-1.5">
       <div className="flex items-center gap-2 text-xs text-muted-foreground font-medium">
@@ -277,7 +298,7 @@ function TodoCard({ args, result }: { args: any; result?: any }) {
           Todo: <b>{args?.action || "update"}</b>
         </span>
       </div>
-      {result && (
+      {!!result && (
         <pre className="text-xs bg-muted/40 p-2 rounded border max-h-32 overflow-auto font-mono">
           {JSON.stringify(result, null, 2)}
         </pre>
@@ -286,14 +307,14 @@ function TodoCard({ args, result }: { args: any; result?: any }) {
   );
 }
 
-function ListFilesCard({ result }: { result?: any }) {
+function ListFilesCard({ result }: { result?: unknown }) {
   return (
     <div className="rounded-lg border p-3 bg-muted/10 mt-1 space-y-1.5">
       <div className="flex items-center gap-2 text-xs text-muted-foreground font-medium">
         <Search className="size-3.5 text-violet-500" />
         <span>List Files in Project</span>
       </div>
-      {result && (
+      {!!result && (
         <pre className="text-[11px] font-mono bg-muted/40 p-2 rounded border max-h-40 overflow-auto whitespace-pre">
           {typeof result === "string" ? result : JSON.stringify(result, null, 2)}
         </pre>

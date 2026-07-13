@@ -60,6 +60,14 @@ function useDimensions<T extends HTMLElement>() {
   return [ref, dimensions] as const;
 }
 
+// Shape react-arborist consumes (needs `id` instead of `path`).
+interface ArboristNode {
+  id: string;
+  name: string;
+  isDir: boolean;
+  children?: ArboristNode[];
+}
+
 const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "svg", "webp"]);
 
 const getFileIcon = (name: string) => {
@@ -83,7 +91,7 @@ export const FileTree = ({
 
   // Map our tree structure to the react-arborist structure (requires id instead of path)
   const arboristData = useMemo(() => {
-    const mapNode = (node: FileNode): any => ({
+    const mapNode = (node: FileNode): ArboristNode => ({
       id: node.path,
       name: node.name,
       isDir: node.isDir,
@@ -116,7 +124,7 @@ export const FileTree = ({
     }
   };
 
-  const NodeRenderer = ({ node, style, dragHandle }: NodeRendererProps<any>) => {
+  const NodeRenderer = ({ node, style, dragHandle }: NodeRendererProps<ArboristNode>) => {
     const isSelected = selectedPath === node.id;
     const isFolder = !node.isLeaf;
 
