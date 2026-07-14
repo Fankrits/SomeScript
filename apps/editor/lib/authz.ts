@@ -1,4 +1,3 @@
-import { auth } from "@clerk/nextjs/server";
 import { Pool } from "pg";
 import path from "path";
 
@@ -30,6 +29,12 @@ export function getPool(): Pool {
 export async function requireProject(projectId: string | null | undefined): Promise<string> {
   if (!projectId) throw new ApiError(400, "Missing projectId");
 
+  // Loaded lazily: @clerk/nextjs ships ESM with extensionless imports that Node's
+  // resolver rejects. Eve bundles this module into its Node runtime, so a top-level
+  // clerk import would crash eve at load. Deferring to call time keeps the Next
+  // request path working and lets resolveToolProject() catch the failure in eve's
+  // context (where auth() can't run anyway) and fall back to format validation.
+  const { auth } = await import("@clerk/nextjs/server");
   const { userId, orgId } = await auth();
   if (!userId) throw new ApiError(401, "Unauthorized");
 
