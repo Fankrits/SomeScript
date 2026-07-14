@@ -2128,7 +2128,12 @@ const HeadlessPdfViewerInner = ({
 
     if (match) {
       try {
-        scrollHook.provides.scrollToPage({ pageNumber: match.page });
+        // Records are in scaled points (65536 sp = 1 pt); pageCoordinates wants pt from the top-left.
+        scrollHook.provides.scrollToPage({
+          pageNumber: match.page,
+          pageCoordinates: { x: match.x / 65536, y: match.y / 65536 },
+          alignY: 50,
+        });
       } catch (e) {
         console.warn("Failed to scroll to page:", e);
       }
@@ -2455,7 +2460,7 @@ const HeadlessPdfViewerInner = ({
 
                     // Calculate distance in normalized coordinate space or TeX point space.
                     // Since we don't have page width/height in TeX points explicitly, we can compute normalized distance:
-                    // Let's assume the SyncTeX record coordinates (x, y) are in TeX points.
+                    // SyncTeX record coordinates (x, y) are in scaled points (65536 sp = 1 pt), y from the top.
                     // Standard TeX pages are 8.5x11 inches (Letter = 612x792 pt) or A4 (595x842 pt).
                     // In either case, we can find the maximum x and y of the records on the page to estimate the page width/height in TeX points,
                     // or use standard fallback (e.g. A4/Letter size approximation), or calculate the closest record using normalized coords.
@@ -2471,9 +2476,9 @@ const HeadlessPdfViewerInner = ({
                     let minDistance = Infinity;
 
                     for (const r of pageRecords) {
-                      // If we just use the relative coordinates:
-                      const rxRelative = r.x / estimatedWidth;
-                      const ryRelative = r.y / estimatedHeight;
+                      // Records are in scaled points (65536 sp = 1 pt); convert to pt before normalizing.
+                      const rxRelative = r.x / 65536 / estimatedWidth;
+                      const ryRelative = r.y / 65536 / estimatedHeight;
                       const clickXRelative = clickX / rect.width;
                       const clickYRelative = clickY / rect.height;
                       

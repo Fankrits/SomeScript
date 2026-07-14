@@ -83,7 +83,7 @@ function parseSyncTex(rawText: string): SyncTexData {
       }
     } else if (line.startsWith("{")) {
       currentPage = parseInt(line.substring(1), 10);
-    } else if (line.startsWith("h") || line.startsWith("v") || line.startsWith("[")) {
+    } else if (line.startsWith("h") || line.startsWith("v") || line.startsWith("[") || line.startsWith("(")) {
       const content = line.substring(1);
       const parts = content.replace(/:/g, ",").split(",");
       if (parts.length >= 6) {
