@@ -31,9 +31,12 @@ export function useEveRuntime(threadId: string, projectId: string) {
 
   const convertEvePart = useCallback(
     (part: EveMessagePart, messageId: string, index: number) => {
-      // 1. Plain text — assistant-ui TextMessagePart
+      // 1. Plain text — assistant-ui TextMessagePart.
+      //    Hide the leading [projectId: ...] marker we inject in onNew: the model
+      //    still receives it (it's how tools learn the project), but users shouldn't see it.
       if (part.type === "text") {
-        return { type: "text" as const, text: part.text };
+        const text = part.text.replace(/^\[projectId: [^\]]*\]\n?/, "");
+        return { type: "text" as const, text };
       }
 
       // 2. Reasoning/thinking — assistant-ui native ReasoningMessagePart (renders
