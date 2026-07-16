@@ -30,6 +30,7 @@ const useFileSrc = (file: File | undefined) => {
 
   useEffect(() => {
     if (!file) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- object-URL lifecycle tied to the file prop (created/revoked in this effect)
       setSrc(undefined);
       return;
     }

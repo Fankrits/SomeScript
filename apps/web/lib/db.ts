@@ -6,9 +6,10 @@ const globalForDb = globalThis as unknown as {
   conn: Pool | undefined;
 };
 
-// Use the local connection if not specified
-const connectionString =
-  process.env.DATABASE_URL || "postgresql://postgres:password@localhost:5432/latex_editor";
+const connectionString = process.env.DATABASE_URL;
+if (!connectionString) {
+  throw new Error("DATABASE_URL is not set");
+}
 
 const pool =
   globalForDb.conn ??

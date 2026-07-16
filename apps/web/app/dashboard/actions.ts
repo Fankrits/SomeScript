@@ -4,6 +4,7 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
 import { projects, workspaces, users } from "@/db/schema";
 import { revalidatePath } from "next/cache";
+import { eq, and } from "drizzle-orm";
 
 // Helper to ensure the active workspace exists in our database
 async function ensureWorkspaceExists(orgId: string | null, userId: string) {
@@ -57,6 +58,30 @@ async function ensureWorkspaceExists(orgId: string | null, userId: string) {
   return targetId;
 }
 
+import { editorFetch } from "@/lib/editor-api";
+
+const DEFAULT_MAIN_TEX = `\\documentclass[11pt, a4paper]{article}
+
+\\usepackage[utf8]{inputenc}
+\\usepackage[margin=1in]{geometry}
+\\usepackage{amsmath, amssymb}
+\\usepackage{graphicx}
+\\usepackage{hyperref}
+
+\\title{\\textbf{New LaTeX Project}}
+\\author{Author}
+\\date{\\today}
+
+\\begin{document}
+
+\\maketitle
+
+\\section{Introduction}
+Welcome to your new LaTeX project! Describe what you want the AI assistant to write or edit, and click compile to generate a preview.
+
+\\end{document}
+`;
+
 export async function createProject(formData: FormData) {
   const { userId, orgId } = await auth();
 
@@ -72,10 +97,153 @@ export async function createProject(formData: FormData) {
   // Ensure active workspace exists
   const workspaceId = await ensureWorkspaceExists(orgId || null, userId);
 
-  await db.insert(projects).values({
-    name: name.trim(),
-    workspaceId,
+  const [project] = await db
+    .insert(projects)
+    .values({ name: name.trim(), workspaceId })
+    .returning();
+
+  if (!project) throw new Error("Failed to create project");
+
+  const res = await editorFetch("/api/files", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      projectId: project.id,
+      action: "save",
+      path: "main.tex",
+      content: DEFAULT_MAIN_TEX,
+    }),
   });
+
+  if (!res.ok) {
+    await db.delete(projects).where(eq(projects.id, project.id));
+    throw new Error("Failed to initialize project files");
+  }
 
   revalidatePath("/dashboard");
 }
+
+export async function importProject(formData: FormData) {
+  const { userId, orgId } = await auth();
+
+  if (!userId) {
+    throw new Error("Unauthorized");
+  }
+
+  const name = formData.get("name") as string;
+  const file = formData.get("file") as File | null;
+
+  if (!name || name.trim() === "") {
+    throw new Error("Project name is required");
+  }
+
+  if (!file || file.size === 0) {
+    throw new Error("ZIP file is required");
+  }
+
+  // Ensure active workspace exists
+  const workspaceId = await ensureWorkspaceExists(orgId || null, userId);
+
+  // 1. Insert into database
+  const [project] = await db
+    .insert(projects)
+    .values({
+      name: name.trim(),
+      workspaceId,
+    })
+    .returning();
+
+  if (!project) {
+    throw new Error("Failed to create project record");
+  }
+
+  // 2. Call the editor's import API
+  try {
+    const editorFormData = new FormData();
+    editorFormData.append("projectId", project.id);
+    editorFormData.append("file", file);
+
+    const res = await editorFetch("/api/project/import", {
+      method: "POST",
+      body: editorFormData,
+    });
+
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error("Failed to import files to editor service:", errorText);
+      // Clean up the project if file import failed
+      await db.delete(projects).where(eq(projects.id, project.id));
+      throw new Error(`Failed to import files: ${errorText}`);
+    }
+  } catch (error: any) {
+    console.error("Error calling editor service to import files:", error);
+    // Clean up the project if file import failed
+    await db.delete(projects).where(eq(projects.id, project.id));
+    throw new Error(error.message || "Failed to call editor service for import");
+  }
+
+  revalidatePath("/dashboard");
+}
+
+
+export async function renameProject(projectId: string, newName: string) {
+  const { userId, orgId } = await auth();
+
+  if (!userId) {
+    throw new Error("Unauthorized");
+  }
+
+  if (!newName || newName.trim() === "") {
+    throw new Error("Project name is required");
+  }
+
+  const workspaceId = orgId || userId;
+
+  const updated = await db
+    .update(projects)
+    .set({ name: newName.trim(), updatedAt: new Date() })
+    .where(and(eq(projects.id, projectId), eq(projects.workspaceId, workspaceId)))
+    .returning({ id: projects.id });
+
+  if (updated.length === 0) {
+    throw new Error("Project not found");
+  }
+
+  revalidatePath("/dashboard");
+}
+
+export async function deleteProject(projectId: string) {
+  const { userId, orgId } = await auth();
+
+  if (!userId) {
+    throw new Error("Unauthorized");
+  }
+
+  const workspaceId = orgId || userId;
+
+  const project = await db.query.projects.findFirst({
+    where: and(eq(projects.id, projectId), eq(projects.workspaceId, workspaceId)),
+  });
+  if (!project) throw new Error("Project not found");
+
+  // Delete files first: the editor's ownership check needs the DB row to still exist.
+  // If the editor is unreachable we still remove the row; orphaned storage is
+  // reclaimed manually (see docs/ops-checklist.md).
+  try {
+    const res = await editorFetch("/api/project/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ projectId }),
+    });
+    if (!res.ok) {
+      console.error("Editor file deletion failed:", await res.text());
+    }
+  } catch (error) {
+    console.error("Error calling editor service to delete project files:", error);
+  }
+
+  await db.delete(projects).where(and(eq(projects.id, projectId), eq(projects.workspaceId, workspaceId)));
+
+  revalidatePath("/dashboard");
+}
+

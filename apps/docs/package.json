@@ -1,0 +1,15 @@
+{
+  "name": "docs",
+  "private": true,
+  "scripts": {
+    "dev": "nuxt dev -p 3003 --extends docus",
+    "build": "nuxt build --extends docus",
+    "preview": "nuxt preview --extends docus"
+  },
+  "dependencies": {
+    "@takumi-rs/core": "^1.8.7",
+    "docus": "5.12.3",
+    "katex": "^0.17.0",
+    "nuxt": "^4.4.8"
+  }
+}

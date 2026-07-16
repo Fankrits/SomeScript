@@ -171,6 +171,7 @@ export const InlineCitationCarouselIndex = ({
       return;
     }
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncs initial state from the imperative embla carousel API
     syncState();
 
     api.on("select", syncState);

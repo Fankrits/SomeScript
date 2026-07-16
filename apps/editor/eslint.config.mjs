@@ -12,6 +12,12 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Eve local runtime snapshots and Nitro build output contain generated code
+    // (incl. nested .next chunks) that must never be linted.
+    ".eve/**",
+    ".workflow-data/**",
+    ".output/**",
+    "**/.next/**",
   ]),
 ]);
 

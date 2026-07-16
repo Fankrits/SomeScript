@@ -1,27 +1,15 @@
 import { spawn } from "child_process";
 import fs from "fs/promises";
 import path from "path";
-import crypto from "crypto";
 
 const PORT = process.env.PORT || 3001;
 
-// Compilation PDF Output Cache (In-Memory)
-interface CacheEntry {
-  pdf: string; // base64 string
-  logs: string;
-  createdAt: number;
+const COMPILER_SECRET = process.env.COMPILER_SECRET;
+// Local mode reads arbitrary caller-supplied filesystem paths — dev only unless explicitly enabled.
+const ALLOW_LOCAL = process.env.ALLOW_LOCAL_COMPILE === "true" || process.env.NODE_ENV !== "production";
+if (!COMPILER_SECRET) {
+  console.warn("[SECURITY] COMPILER_SECRET is not set — compiler accepts unauthenticated requests. Set it in production.");
 }
-const compilationCache = new Map<string, CacheEntry>();
-
-// Cleanup compilation cache entries older than 1 hour (runs every 10 min)
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, value] of compilationCache.entries()) {
-    if (now - value.createdAt > 3600000) {
-      compilationCache.delete(key);
-    }
-  }
-}, 600000);
 
 // Helper to safely write uploaded files to a directory
 async function writeFiles(baseDir: string, files: { path: string; content: string }[]) {
@@ -68,6 +56,63 @@ async function cleanupStaleWorkspaces() {
 setInterval(cleanupStaleWorkspaces, 3600000); // run hourly
 cleanupStaleWorkspaces();
 
+interface SyncTexData {
+  files: Record<string, string>;
+  records: Array<{
+    fileId: number;
+    line: number;
+    page: number;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+  }>;
+}
+
+function parseSyncTex(rawText: string): SyncTexData {
+  const files: Record<string, string> = {};
+  const records: SyncTexData["records"] = [];
+  let currentPage = 1;
+
+  const lines = rawText.split(/\r?\n/);
+  for (const line of lines) {
+    if (line.startsWith("Input:")) {
+      const parts = line.split(":");
+      if (parts.length >= 3) {
+        files[parts[1]] = parts.slice(2).join(":");
+      }
+    } else if (line.startsWith("{")) {
+      currentPage = parseInt(line.substring(1), 10);
+    } else if (line.startsWith("h") || line.startsWith("v") || line.startsWith("[") || line.startsWith("(")) {
+      const content = line.substring(1);
+      const parts = content.replace(/:/g, ",").split(",");
+      if (parts.length >= 6) {
+        const fileId = parseInt(parts[0], 10);
+        const lineNum = parseInt(parts[1], 10);
+        const x = parseFloat(parts[2]);
+        const y = parseFloat(parts[3]);
+        const w = parseFloat(parts[4]);
+        const h = parseFloat(parts[5]);
+        
+        if (!isNaN(fileId) && !isNaN(lineNum)) {
+          records.push({ fileId, line: lineNum, page: currentPage, x, y, w, h });
+        }
+      }
+    }
+  }
+
+  // ponytail: Deduplicate line records to keep payload small
+  const seen = new Set<string>();
+  const uniqueRecords = records.filter(r => {
+    const key = `${r.fileId}:${r.line}:${r.page}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  return { files, records: uniqueRecords };
+}
+
 const server = Bun.serve({
   port: PORT,
   async fetch(req) {
@@ -77,6 +122,44 @@ const server = Bun.serve({
       return new Response("OK", { status: 200 });
     }
 
+    if (COMPILER_SECRET && req.headers.get("authorization") !== `Bearer ${COMPILER_SECRET}`) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+
+    if (url.pathname === "/synctex" && req.method === "POST") {
+      try {
+        const body = await req.json();
+        const { mode, localProjectPath, projectId, fileRelativePath } = body;
+        
+        let synctexPath = "";
+        if (mode === "local") {
+          if (!ALLOW_LOCAL) return Response.json({ error: "local mode disabled" }, { status: 403 });
+          const base = path.resolve(localProjectPath);
+          synctexPath = path.resolve(base, fileRelativePath.replace(/\.tex$/, ".synctex.gz"));
+          const rel = path.relative(base, synctexPath);
+          if (rel.startsWith("..") || path.isAbsolute(rel)) {
+            return Response.json({ error: "Access denied" }, { status: 403 });
+          }
+        } else {
+          const workspacesDir = path.resolve(process.cwd(), "workspaces");
+          synctexPath = path.resolve(workspacesDir, projectId, fileRelativePath.replace(/\.tex$/, ".synctex.gz"));
+          const rel = path.relative(workspacesDir, synctexPath);
+          if (rel.startsWith("..") || path.isAbsolute(rel) || !rel.includes(path.sep)) {
+            return Response.json({ error: "Access denied" }, { status: 403 });
+          }
+        }
+
+        const fileBuffer = await fs.readFile(synctexPath);
+        const decompressed = Bun.gunzipSync(fileBuffer);
+        const text = new TextDecoder().decode(decompressed);
+        const parsedData = parseSyncTex(text);
+
+        return Response.json(parsedData);
+      } catch (err: any) {
+        return Response.json({ error: err.message }, { status: 500 });
+      }
+    }
+
     if (url.pathname === "/compile" && req.method === "POST") {
       try {
         const bodyText = await req.text();
@@ -84,6 +167,10 @@ const server = Bun.serve({
         const { mode, localProjectPath, fileRelativePath, files, deletedFiles, projectId, syncType, draft, projectHash } = body;
 
         if (mode === "local") {
+          if (!ALLOW_LOCAL) {
+            return Response.json({ error: "local mode disabled" }, { status: 403 });
+          }
+
           if (!localProjectPath || !fileRelativePath) {
             return Response.json({ error: "Missing localProjectPath or fileRelativePath for local mode" }, { status: 400 });
           }
@@ -100,7 +187,12 @@ const server = Bun.serve({
 
           const runTectonic = (args: string[]) => {
             return new Promise<number>((resolve) => {
-              const child = spawn("tectonic", args, { cwd: localProjectPath });
+              const child = spawn("tectonic", args, {
+                cwd: localProjectPath,
+                env: { ...process.env, TECTONIC_UNTRUSTED_MODE: "1" },
+              });
+              const onAbort = () => child.kill();
+              req.signal.addEventListener("abort", onAbort);
 
               child.stdout.on("data", (data) => {
                 writer.write(encoder.encode(data.toString()));
@@ -111,10 +203,12 @@ const server = Bun.serve({
               });
 
               child.on("close", (code) => {
+                req.signal.removeEventListener("abort", onAbort);
                 resolve(code ?? -1);
               });
 
               child.on("error", (err) => {
+                req.signal.removeEventListener("abort", onAbort);
                 writer.write(encoder.encode(`\n[ERROR] Failed to start Tectonic: ${err.message}\n`));
                 resolve(-1);
               });
@@ -124,7 +218,7 @@ const server = Bun.serve({
           (async () => {
             try {
               // Compile flags
-              const flags = ["-C"];
+              const flags = ["-C", "--synctex"];
               if (draft) {
                 flags.push("-r", "0");
               }
@@ -133,7 +227,7 @@ const server = Bun.serve({
               let code = await runTectonic(flags);
               if (code !== 0) {
                 writer.write(encoder.encode(`\n[INFO] Cached compilation failed. Retrying with remote package fetching...\n`));
-                const fallbackFlags = [];
+                const fallbackFlags = ["--synctex"];
                 if (draft) {
                   fallbackFlags.push("-r", "0");
                 }
@@ -217,19 +311,21 @@ const server = Bun.serve({
             await writeFiles(projectDir, files);
           }
 
-          // Output Cache Verification disabled to enforce fresh compilations
-          let cacheKey = "";
-
           const resolvedTexPath = path.resolve(projectDir, fileRelativePath);
           const relativePathCheck = path.relative(projectDir, resolvedTexPath);
           if (relativePathCheck.startsWith("..") || path.isAbsolute(relativePathCheck)) {
             return Response.json({ error: "Access denied" }, { status: 403 });
           }
           let logs = "";
-
+ 
           const runTectonicUpload = (args: string[]) => {
             return new Promise<number>((resolve) => {
-              const child = spawn("tectonic", args, { cwd: projectDir });
+              const child = spawn("tectonic", args, {
+                cwd: projectDir,
+                env: { ...process.env, TECTONIC_UNTRUSTED_MODE: "1" },
+              });
+              const onAbort = () => child.kill();
+              req.signal.addEventListener("abort", onAbort);
 
               child.stdout.on("data", (data) => {
                 logs += data.toString();
@@ -240,61 +336,48 @@ const server = Bun.serve({
               });
 
               child.on("close", (code) => {
+                req.signal.removeEventListener("abort", onAbort);
                 resolve(code ?? -1);
               });
 
               child.on("error", (err) => {
+                req.signal.removeEventListener("abort", onAbort);
                 logs += `\n[ERROR] Failed to start Tectonic: ${err.message}\n`;
                 resolve(-1);
               });
             });
           };
-
+ 
           // Compile flags
-          const flags = ["-C"];
+          const flags = ["-C", "--synctex"];
           if (draft) {
             flags.push("-r", "0");
           }
           flags.push(resolvedTexPath);
-
+ 
           let code = await runTectonicUpload(flags);
           if (code !== 0) {
             logs += `\n[INFO] Cached compilation failed or package missing. Retrying with remote package fetching...\n`;
-            const fallbackFlags = [];
+            const fallbackFlags = ["--synctex"];
             if (draft) {
               fallbackFlags.push("-r", "0");
             }
             fallbackFlags.push(resolvedTexPath);
             code = await runTectonicUpload(fallbackFlags);
           }
-
+ 
           if (code === 0) {
             const pdfRelativePath = fileRelativePath.replace(/\.tex$/, ".pdf");
             const pdfAbsolutePath = path.resolve(projectDir, pdfRelativePath);
             const pdfBuffer = await fs.readFile(pdfAbsolutePath);
             const pdfBase64 = pdfBuffer.toString("base64");
-
+ 
             const responseObj = {
               success: true,
               logs: logs + `\n[SUCCESS] ${pdfRelativePath}\n`,
               pdf: pdfBase64,
             };
-
-            // Cache the successful compilation
-            if (cacheKey) {
-              if (compilationCache.size >= 100 && !compilationCache.has(cacheKey)) {
-                const oldestKey = compilationCache.keys().next().value;
-                if (oldestKey !== undefined) {
-                  compilationCache.delete(oldestKey);
-                }
-              }
-              compilationCache.set(cacheKey, {
-                pdf: pdfBase64,
-                logs: logs + `\n[SUCCESS] ${pdfRelativePath}\n`,
-                createdAt: Date.now(),
-              });
-            }
-
+ 
             return Response.json(responseObj);
           } else {
             return Response.json({
@@ -303,7 +386,7 @@ const server = Bun.serve({
             }, { status: 422 });
           }
         }
-
+ 
         return Response.json({ error: "Invalid mode" }, { status: 400 });
       } catch (error: any) {
         return Response.json({ error: error.message }, { status: 500 });

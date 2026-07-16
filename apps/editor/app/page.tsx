@@ -84,11 +84,12 @@ const LayoutIconRight = ({ active }: { active: boolean }) => (
     {active && <rect x="11.25" y="2.25" width="2.5" height="11.5" fill="currentColor" opacity="0.8" />}
   </svg>
 );
-import CodeMirror, { EditorView } from "@uiw/react-codemirror";
+import CodeMirror, { EditorView, type ViewUpdate } from "@uiw/react-codemirror";
 import { undo, redo, undoDepth, redoDepth } from "@codemirror/commands";
 import { EditorToolbar } from "@/components/editor/editor-toolbar";
 import { ImageViewer } from "@/components/editor/image-viewer";
 import { latex } from "codemirror-lang-latex";
+import { useCodeMirrorExtensions } from "@/hooks/use-codemirror-extensions";
 import { createPluginRegistration } from "@embedpdf/core";
 import { EmbedPDF } from "@embedpdf/core/react";
 import { usePdfiumEngine } from "@embedpdf/engines/react";
@@ -419,7 +420,17 @@ const Example = () => {
   // File tree state
   const [selectedPath, setSelectedPath] = useState<string>("");
   const [fileTree, setFileTree] = useState<FileNode[]>([]);
-  const [projectPathInput, setProjectPathInput] = useState<string>("./my-new-project");
+
+  // Single source of truth for the active project — from the URL, set by the dashboard link.
+  const [projectId] = useState<string>(() => {
+    if (typeof window === "undefined") return "default";
+    return new URLSearchParams(window.location.search).get("projectId") ?? "default";
+  });
+
+  const withProject = useCallback(
+    (url: string) => `${url}${url.includes("?") ? "&" : "?"}projectId=${encodeURIComponent(projectId)}`,
+    [projectId]
+  );
 
   // Code editor state
   const [currentCode, setCurrentCode] = useState<string>("// Select a file to view content");
@@ -427,6 +438,11 @@ const Example = () => {
   const [editedCode, setEditedCode] = useState<string>("");
   const [newItemName, setNewItemName] = useState<string>("");
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [synctexData, setSynctexData] = useState<{
+    files: Record<string, string>;
+    records: Array<{ fileId: number; line: number; page: number; x: number; y: number; w: number; h: number; }>;
+  } | null>(null);
+  const [currentLineNumber, setCurrentLineNumber] = useState<number>(1);
   const [isCompiling, setIsCompiling] = useState<boolean>(false);
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "unsaved" | "idle">("idle");
   // View mode: "code" for text | "image" for images | "pdf-standalone" for PDFs opened from tree
@@ -467,12 +483,22 @@ const Example = () => {
     compilerEngine: string;
     tooltipsEnabled: boolean;
     draftMode: boolean;
+    vimModeEnabled: boolean;
+    foldingEnabled: boolean;
+    autocompleteEnabled: boolean;
+    bracketMatchingEnabled: boolean;
   }>({
     mainFilePath: "main.tex",
     compilerEngine: "tectonic",
     tooltipsEnabled: true,
     draftMode: true,
+    vimModeEnabled: false,
+    foldingEnabled: true,
+    autocompleteEnabled: true,
+    bracketMatchingEnabled: true,
   });
+
+  const extensions = useCodeMirrorExtensions(settings, currentLanguage);
 
   useEffect(() => {
     if (pendingLineJump && selectedPath === pendingLineJump.path && editorViewRef.current) {
@@ -533,18 +559,23 @@ const Example = () => {
     }
   }, [searchState, currentCode]);
 
-  // Load Settings from LocalStorage when projectPathInput changes
+  // Load Settings from LocalStorage on mount
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const stored = localStorage.getItem(`somescript-settings-${projectPathInput}`);
+    const stored = localStorage.getItem("somescript-user-settings");
     if (stored) {
       try {
         const parsed = JSON.parse(stored);
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- SSR-safe: settings hydrate from localStorage after mount
         setSettings({
           mainFilePath: parsed.mainFilePath ?? "main.tex",
           compilerEngine: parsed.compilerEngine ?? "tectonic",
           tooltipsEnabled: parsed.tooltipsEnabled ?? (typeof parsed.tooltipsEnabled === "boolean" ? parsed.tooltipsEnabled : true),
           draftMode: parsed.draftMode ?? true,
+          vimModeEnabled: parsed.vimModeEnabled ?? false,
+          foldingEnabled: parsed.foldingEnabled ?? true,
+          autocompleteEnabled: parsed.autocompleteEnabled ?? true,
+          bracketMatchingEnabled: parsed.bracketMatchingEnabled ?? true,
         });
       } catch (e) {
         console.error("Failed to parse settings", e);
@@ -555,16 +586,20 @@ const Example = () => {
         compilerEngine: "tectonic",
         tooltipsEnabled: true,
         draftMode: true,
+        vimModeEnabled: false,
+        foldingEnabled: true,
+        autocompleteEnabled: true,
+        bracketMatchingEnabled: true,
       });
     }
-  }, [projectPathInput]);
+  }, []);
 
   const saveSettings = useCallback((newSettings: typeof settings) => {
     setSettings(newSettings);
     if (typeof window !== "undefined") {
-      localStorage.setItem(`somescript-settings-${projectPathInput}`, JSON.stringify(newSettings));
+      localStorage.setItem("somescript-user-settings", JSON.stringify(newSettings));
     }
-  }, [projectPathInput]);
+  }, []);
 
   // Recursively collect all .tex files in project
   const getTexFiles = useCallback((nodes: FileNode[]): string[] => {
@@ -581,6 +616,22 @@ const Example = () => {
     traverse(nodes);
     return files;
   }, []);
+
+  const fetchSyncTex = useCallback(async (compilePath: string) => {
+    try {
+      const res = await fetch("/api/synctex", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId, path: compilePath }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSynctexData(data);
+      }
+    } catch (err) {
+      console.warn("Failed to fetch SyncTeX map:", err);
+    }
+  }, [projectId]);
 
   // Chat History / Multi-thread states
   const [threads, setThreads] = useState<Array<{ id: string; title: string; createdAt: number }>>([]);
@@ -680,12 +731,18 @@ const Example = () => {
   const [canUndo, setCanUndo] = useState<boolean>(false);
   const [canRedo, setCanRedo] = useState<boolean>(false);
 
-  const handleUpdate = useCallback((update: any) => {
+  const handleUpdate = useCallback((update: ViewUpdate) => {
     if (update.docChanged || update.selectionSet) {
       const view = editorViewRef.current;
       if (view) {
         setCanUndo(undoDepth(view.state) > 0);
         setCanRedo(redoDepth(view.state) > 0);
+      }
+      try {
+        const line = update.state.doc.lineAt(update.state.selection.main.head).number;
+        setCurrentLineNumber(line);
+      } catch (e) {
+        // ignore
       }
     }
   }, []);
@@ -792,7 +849,7 @@ const Example = () => {
         await fetch("/api/files", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "save", path: selectedPath, content: editedCode }),
+          body: JSON.stringify({ projectId, action: "save", path: selectedPath, content: editedCode }),
         });
       } catch (err) {
         console.error("Failed to save changes before file switch", err);
@@ -814,7 +871,7 @@ const Example = () => {
 
     if (mode === "pdf-standalone") {
       // Show the PDF in the right PDF pane (same mechanism as compiled PDFs)
-      const url = `${window.location.origin}/api/files?path=${encodeURIComponent(path)}&t=${Date.now()}`;
+      const url = withProject(`${window.location.origin}/api/files?path=${encodeURIComponent(path)}&t=${Date.now()}`);
       setPdfUrl(url);
       setCurrentCode("");
       setEditedCode("");
@@ -828,10 +885,10 @@ const Example = () => {
     if (path.endsWith(".tex")) {
       const pdfPath = path.replace(/\.tex$/, ".pdf");
       const previewPath = `.preview-cache/${pdfPath}`;
-      fetch(`/api/files?path=${encodeURIComponent(previewPath)}`)
+      fetch(withProject(`/api/files?path=${encodeURIComponent(previewPath)}`))
         .then((res) => {
           if (res.ok) {
-            setPdfUrl(`${window.location.origin}/api/files?path=${encodeURIComponent(previewPath)}&t=${Date.now()}`);
+            setPdfUrl(withProject(`${window.location.origin}/api/files?path=${encodeURIComponent(previewPath)}&t=${Date.now()}`));
           } else {
             setPdfUrl(null);
           }
@@ -842,7 +899,7 @@ const Example = () => {
     }
 
     try {
-      const res = await fetch(`/api/files?path=${encodeURIComponent(path)}`);
+      const res = await fetch(withProject(`/api/files?path=${encodeURIComponent(path)}`));
       const data = await res.json();
       if (data.content !== undefined) {
         setCurrentCode(data.content);
@@ -858,30 +915,28 @@ const Example = () => {
   // Load file tree
   const refreshWorkspace = useCallback(async () => {
     try {
-      const res = await fetch("/api/files");
+      const res = await fetch(withProject("/api/files"));
       const data = await res.json();
       if (data.tree) {
         setFileTree(data.tree);
       }
-      if (data.projectPath) {
-        setProjectPathInput(data.projectPath);
-      }
     } catch (err) {
       console.error("Failed to load file tree", err);
     }
-  }, []);
+  }, [withProject]);
 
   const handleSelectMatch = useCallback((filePath: string, line: number) => {
     setPendingLineJump({ path: filePath, line });
     handleFileSelect(filePath);
   }, [handleFileSelect]);
 
-  const handleReplaceAll = useCallback(async (replaceText: string, searchState: { query: string; options: any }) => {
+  const handleReplaceAll = useCallback(async (replaceText: string, searchState: { query: string; options: { matchCase: boolean; matchWholeWord: boolean; useRegex: boolean; scope: string } }) => {
     try {
       const res = await fetch("/api/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          projectId,
           query: searchState.query,
           replaceText,
           matchCase: searchState.options.matchCase,
@@ -904,31 +959,11 @@ const Example = () => {
     } catch (err) {
       console.error(err);
     }
-  }, [selectedPath, refreshWorkspace, handleFileSelect]);
+  }, [projectId, selectedPath, refreshWorkspace, handleFileSelect]);
 
   const handleSearchChange = useCallback((query: string, options: { matchCase: boolean; matchWholeWord: boolean; useRegex: boolean }) => {
     setSearchState({ query, options });
   }, []);
-
-  const handleUpdateProject = useCallback(async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      const res = await fetch("/api/files", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: projectPathInput }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setSelectedPath("");
-        setCurrentCode("// Select a file to view content");
-        setEditedCode("");
-        refreshWorkspace();
-      }
-    } catch (err) {
-      console.error("Failed to update project path", err);
-    }
-  }, [projectPathInput, refreshWorkspace]);
 
   const handleCreateResourceSubmit = useCallback(async (isDir: boolean) => {
     let targetPath = newItemName.trim();
@@ -936,7 +971,7 @@ const Example = () => {
       const baseName = isDir ? "untitled-folder" : "untitled.tex";
       targetPath = baseName;
       
-      const exists = (name: string, nodes: any[]): boolean => {
+      const exists = (name: string, nodes: FileNode[]): boolean => {
         for (const n of nodes) {
           if (n.name === name) return true;
           if (n.children && exists(name, n.children)) return true;
@@ -959,7 +994,7 @@ const Example = () => {
       const res = await fetch("/api/files", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "create", path: targetPath, isDir }),
+        body: JSON.stringify({ projectId, action: "create", path: targetPath, isDir }),
       });
       const data = await res.json();
       if (data.success) {
@@ -969,14 +1004,14 @@ const Example = () => {
     } catch (err) {
       console.error("Failed to create resource", err);
     }
-  }, [newItemName, fileTree, refreshWorkspace]);
+  }, [projectId, newItemName, fileTree, refreshWorkspace]);
 
   const handleFileMove = useCallback(async (oldPath: string, newPath: string) => {
     try {
       const res = await fetch("/api/files", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "move", oldPath, newPath }),
+        body: JSON.stringify({ projectId, action: "move", oldPath, newPath }),
       });
       const data = await res.json();
       if (data.success) {
@@ -988,7 +1023,7 @@ const Example = () => {
     } catch (err) {
       console.error("Failed to move file", err);
     }
-  }, [selectedPath, refreshWorkspace]);
+  }, [projectId, selectedPath, refreshWorkspace]);
 
   const handleFileDelete = useCallback(async (path: string) => {
     if (!confirm(`Are you sure you want to delete ${path}?`)) return;
@@ -996,7 +1031,7 @@ const Example = () => {
       const res = await fetch("/api/files", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "delete", path }),
+        body: JSON.stringify({ projectId, action: "delete", path }),
       });
       const data = await res.json();
       if (data.success) {
@@ -1010,7 +1045,7 @@ const Example = () => {
     } catch (err) {
       console.error("Failed to delete file", err);
     }
-  }, [selectedPath, refreshWorkspace]);
+  }, [projectId, selectedPath, refreshWorkspace]);
 
   // Autosave useEffect with debounce
   useEffect(() => {
@@ -1018,6 +1053,7 @@ const Example = () => {
       return;
     }
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- drives the debounced autosave status machine
     setSaveStatus("unsaved");
 
     const timer = setTimeout(async () => {
@@ -1026,7 +1062,7 @@ const Example = () => {
         const res = await fetch("/api/files", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "save", path: selectedPath, content: editedCode }),
+          body: JSON.stringify({ projectId, action: "save", path: selectedPath, content: editedCode }),
         });
         const data = await res.json();
         if (data.success) {
@@ -1042,7 +1078,7 @@ const Example = () => {
     }, 1000);
 
     return () => clearTimeout(timer);
-  }, [selectedPath, editedCode, currentCode]);
+  }, [projectId, selectedPath, editedCode, currentCode]);
 
   const handleDownloadPdf = useCallback(() => {
     if (!pdfUrl) return;
@@ -1070,7 +1106,7 @@ const Example = () => {
         await fetch("/api/files", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "save", path: selectedPath, content: editedCode }),
+          body: JSON.stringify({ projectId, action: "save", path: selectedPath, content: editedCode }),
         });
         setCurrentCode(editedCode);
       }
@@ -1079,7 +1115,7 @@ const Example = () => {
       const res = await fetch("/api/compile", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: compilePath, draftMode: settings.draftMode }),
+        body: JSON.stringify({ projectId, path: compilePath, draftMode: settings.draftMode }),
       });
 
       if (!res.ok) {
@@ -1123,18 +1159,20 @@ const Example = () => {
             const derivedPdf = selectedPath.replace(/\.tex$/, ".pdf");
             pdfPath = `.preview-cache/${derivedPdf}`;
           }
-          setPdfUrl(`${window.location.origin}/api/files?path=${encodeURIComponent(pdfPath)}&t=${Date.now()}`);
+          setPdfUrl(withProject(`${window.location.origin}/api/files?path=${encodeURIComponent(pdfPath)}&t=${Date.now()}`));
+          fetchSyncTex(compilePath);
         }
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error("Compilation error", err);
+      const errMessage = err instanceof Error ? err.message : String(err);
       // Put compilation error into the terminal output
-      setTerminalOutput((prev) => `${prev}\n\u001B[31mError compiling LaTeX:\u001B[0m ${err.message}\n`);
+      setTerminalOutput((prev) => `${prev}\n\u001B[31mError compiling LaTeX:\u001B[0m ${errMessage}\n`);
     } finally {
       setIsCompiling(false);
       setIsTerminalStreaming(false);
     }
-  }, [selectedPath, editedCode, settings]);
+  }, [projectId, selectedPath, editedCode, settings, fetchSyncTex, withProject]);
 
   // Reload current file content
   const refreshCurrentFile = useCallback(async () => {
@@ -1143,7 +1181,7 @@ const Example = () => {
     const mode = getViewMode(selectedPath);
     if (mode === "pdf-standalone" || mode === "image") return;
     try {
-      const res = await fetch(`/api/files?path=${encodeURIComponent(selectedPath)}`);
+      const res = await fetch(withProject(`/api/files?path=${encodeURIComponent(selectedPath)}`));
       const data = await res.json();
       if (data.content !== undefined) {
         setCurrentCode(data.content);
@@ -1154,31 +1192,17 @@ const Example = () => {
     } catch (err) {
       console.error("Failed to reload file content", err);
     }
-  }, [selectedPath]);
+  }, [selectedPath, withProject]);
 
-  // Load tree on mount and handle ?projectId parameter
+  // Load tree on mount
   useEffect(() => {
-    const initWorkspace = async () => {
-      const params = new URLSearchParams(window.location.search);
-      const projectId = params.get("projectId");
-      try {
-        const targetPath = projectId ? `projects/${projectId}` : "./my-new-project";
-        await fetch("/api/files", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ path: targetPath }),
-        });
-      } catch (err) {
-        console.error("Failed to initialize project path:", err);
-      }
-      refreshWorkspace();
-    };
-
-    initWorkspace();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- data load: fetches the workspace tree on mount
+    refreshWorkspace();
   }, [refreshWorkspace]);
 
   // Reload current file when selectedPath changes
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- data load: fetches file content when the selection changes
     refreshCurrentFile();
   }, [selectedPath, refreshCurrentFile]);
 
@@ -1195,14 +1219,14 @@ const Example = () => {
 
       // If there are unsaved edits, save them immediately
       if (editedCode !== currentCode) {
-        const customEvent = e as CustomEvent<{ promises: Promise<any>[] }>;
+        const customEvent = e as CustomEvent<{ promises: Promise<unknown>[] }>;
         setSaveStatus("saving");
         const savePromise = (async () => {
           try {
             const res = await fetch("/api/files", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ action: "save", path: selectedPath, content: editedCode }),
+              body: JSON.stringify({ projectId, action: "save", path: selectedPath, content: editedCode }),
             });
             const data = await res.json();
             if (data.success) {
@@ -1232,7 +1256,7 @@ const Example = () => {
       window.removeEventListener("somescript:force-save", handleForceSave);
       window.removeEventListener("somescript:refresh-workspace", handleRefreshWorkspace);
     };
-  }, [refreshWorkspace, refreshCurrentFile]);
+  }, [refreshWorkspace, refreshCurrentFile, projectId]);
 
   // Stream terminal output line by line
   const streamTerminal = useCallback(async () => {
@@ -1278,33 +1302,28 @@ const Example = () => {
     // Dashboard URL
     const hostname = window.location.hostname;
     const port = window.location.port;
+    /* eslint-disable react-hooks/set-state-in-effect -- client-only value derived from window.location */
     if (port === "3002" || port === "3001" || port === "3000") {
       setDashboardUrl(`http://${hostname}:3000/dashboard`);
     } else {
       setDashboardUrl("/dashboard");
     }
+    /* eslint-enable react-hooks/set-state-in-effect */
 
     // Project Name
-    const params = new URLSearchParams(window.location.search);
-    const projectId = params.get("projectId");
-    if (projectId) {
-      fetch(`/api/project/name?projectId=${projectId}`)
-        .then((r) => r.json())
-        .then((data) => {
-          if (data.name) {
-            setProjectName(data.name);
-          } else {
-            setProjectName(projectId);
-          }
-        })
-        .catch(() => {
+    fetch(withProject("/api/project/name"))
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.name) {
+          setProjectName(data.name);
+        } else {
           setProjectName(projectId);
-        });
-    } else if (projectPathInput) {
-      const parts = projectPathInput.split("/");
-      setProjectName(parts[parts.length - 1] || "my-new-project");
-    }
-  }, [projectPathInput]);
+        }
+      })
+      .catch(() => {
+        setProjectName(projectId);
+      });
+  }, [withProject, projectId]);
 
   const completedTasks = tasks.filter((t) => t.status === "completed");
   const pendingTasks = tasks.filter((t) => t.status !== "completed");
@@ -1636,7 +1655,7 @@ const Example = () => {
             {/* Chat thread itself */}
             {activeThreadId && (
               <div className="flex-1 flex flex-col overflow-hidden">
-                <EveThread key={activeThreadId} threadId={activeThreadId} />
+                <EveThread key={activeThreadId} threadId={activeThreadId} projectId={projectId} />
               </div>
             )}
           </div>
@@ -1741,6 +1760,86 @@ const Example = () => {
                 className="mt-0.5 size-4 rounded border-border text-primary focus:ring-primary cursor-pointer"
               />
             </div>
+
+            <hr className="border-border/60" />
+
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-0.5">
+                <label htmlFor="vim-mode-toggle" className="text-xs font-semibold text-muted-foreground">
+                  Vim Keybindings
+                </label>
+                <div className="text-[11px] text-muted-foreground leading-relaxed">
+                  Enable Vim keybindings and modal editing in the code editor.
+                </div>
+              </div>
+              <input
+                id="vim-mode-toggle"
+                type="checkbox"
+                checked={settings.vimModeEnabled}
+                onChange={(e) => saveSettings({ ...settings, vimModeEnabled: e.target.checked })}
+                className="mt-0.5 size-4 rounded border-border text-primary focus:ring-primary cursor-pointer"
+              />
+            </div>
+
+            <hr className="border-border/60" />
+
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-0.5">
+                <label htmlFor="folding-toggle" className="text-xs font-semibold text-muted-foreground">
+                  Code Folding
+                </label>
+                <div className="text-[11px] text-muted-foreground leading-relaxed">
+                  Enable code folding gutters to collapse sections and blocks.
+                </div>
+              </div>
+              <input
+                id="folding-toggle"
+                type="checkbox"
+                checked={settings.foldingEnabled}
+                onChange={(e) => saveSettings({ ...settings, foldingEnabled: e.target.checked })}
+                className="mt-0.5 size-4 rounded border-border text-primary focus:ring-primary cursor-pointer"
+              />
+            </div>
+
+            <hr className="border-border/60" />
+
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-0.5">
+                <label htmlFor="autocomplete-toggle" className="text-xs font-semibold text-muted-foreground">
+                  Autocompletion
+                </label>
+                <div className="text-[11px] text-muted-foreground leading-relaxed">
+                  Enable automatic code completion and suggestions.
+                </div>
+              </div>
+              <input
+                id="autocomplete-toggle"
+                type="checkbox"
+                checked={settings.autocompleteEnabled}
+                onChange={(e) => saveSettings({ ...settings, autocompleteEnabled: e.target.checked })}
+                className="mt-0.5 size-4 rounded border-border text-primary focus:ring-primary cursor-pointer"
+              />
+            </div>
+
+            <hr className="border-border/60" />
+
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-0.5">
+                <label htmlFor="bracket-matching-toggle" className="text-xs font-semibold text-muted-foreground">
+                  Bracket Matching
+                </label>
+                <div className="text-[11px] text-muted-foreground leading-relaxed">
+                  Enable highlighting of matching brackets, parentheses, and braces.
+                </div>
+              </div>
+              <input
+                id="bracket-matching-toggle"
+                type="checkbox"
+                checked={settings.bracketMatchingEnabled}
+                onChange={(e) => saveSettings({ ...settings, bracketMatchingEnabled: e.target.checked })}
+                className="mt-0.5 size-4 rounded border-border text-primary focus:ring-primary cursor-pointer"
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -1790,9 +1889,15 @@ const Example = () => {
                         value={editedCode}
                         height="100%"
                         theme="dark"
-                        extensions={currentLanguage === "latex" ? [latex({ enableTooltips: settings.tooltipsEnabled }), EditorView.lineWrapping, searchExtension()] : [EditorView.lineWrapping, searchExtension()]}
+                        extensions={extensions}
+                        basicSetup={{
+                          foldGutter: false,
+                          bracketMatching: false,
+                          autocompletion: false,
+                        }}
                         onChange={(value) => setEditedCode(value)}
                         onCreateEditor={(view) => {
+                          // eslint-disable-next-line react-hooks/immutability -- storing the imperative CodeMirror EditorView handle in a ref
                           editorViewRef.current = view;
                         }}
                         onUpdate={handleUpdate}
@@ -1800,7 +1905,7 @@ const Example = () => {
                       />
                     ) : (
                       <div className="flex items-center justify-center h-full text-muted-foreground text-sm font-mono bg-background">
-                        // Select a file from the sidebar to edit
+                        {"// Select a file from the sidebar to edit"}
                       </div>
                     )}
                   </div>
@@ -1837,7 +1942,13 @@ const Example = () => {
                             engine={pdfEngine}
                             config={{}}
                           >
-                            <HeadlessPdfViewer pdfUrl={pdfUrl} />
+                            <HeadlessPdfViewer
+                              pdfUrl={pdfUrl}
+                              synctexData={synctexData}
+                              selectedPath={selectedPath}
+                              currentLineNumber={currentLineNumber}
+                              onSelectLine={handleSelectMatch}
+                            />
                           </EmbedPDF>
                         </div>
                       ) : (
@@ -1889,11 +2000,35 @@ const Example = () => {
   );
 };
 
-interface HeadlessPdfViewerProps {
-  pdfUrl: string | null;
+interface SynctexRecord {
+  fileId: number;
+  line: number;
+  page: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+interface SynctexData {
+  files: Record<string, string>;
+  records: SynctexRecord[];
 }
 
-const HeadlessPdfViewer = ({ pdfUrl }: HeadlessPdfViewerProps) => {
+interface HeadlessPdfViewerProps {
+  pdfUrl: string | null;
+  synctexData: SynctexData | null;
+  selectedPath: string;
+  currentLineNumber: number;
+  onSelectLine: (filePath: string, line: number) => void;
+}
+
+const HeadlessPdfViewer = ({
+  pdfUrl,
+  synctexData,
+  selectedPath,
+  currentLineNumber,
+  onSelectLine,
+}: HeadlessPdfViewerProps) => {
   const docManagerCap = useDocumentManagerCapability();
   const { activeDocumentId, activeDocument } = useActiveDocument();
   const lastLoadedUrlRef = useRef<string | null>(null);
@@ -1933,20 +2068,77 @@ const HeadlessPdfViewer = ({ pdfUrl }: HeadlessPdfViewerProps) => {
     );
   }
 
-  return <HeadlessPdfViewerInner pdfUrl={pdfUrl} documentId={activeDocumentId} />;
+  return (
+    <HeadlessPdfViewerInner
+      pdfUrl={pdfUrl}
+      documentId={activeDocumentId}
+      synctexData={synctexData}
+      selectedPath={selectedPath}
+      currentLineNumber={currentLineNumber}
+      onSelectLine={onSelectLine}
+    />
+  );
 };
 
 interface HeadlessPdfViewerInnerProps {
   pdfUrl: string;
   documentId: string;
+  synctexData: SynctexData | null;
+  selectedPath: string;
+  currentLineNumber: number;
+  onSelectLine: (filePath: string, line: number) => void;
 }
 
-const HeadlessPdfViewerInner = ({ pdfUrl, documentId }: HeadlessPdfViewerInnerProps) => {
+const HeadlessPdfViewerInner = ({
+  pdfUrl,
+  documentId,
+  synctexData,
+  selectedPath,
+  currentLineNumber,
+  onSelectLine,
+}: HeadlessPdfViewerInnerProps) => {
   const scrollHook = useScroll(documentId);
   const zoomHook = useZoom(documentId);
   const panHook = usePan(documentId);
   const searchHook = useSearch(documentId);
   const selectionCap = useSelectionCapability();
+
+  // Cursor synchronization hook
+  useEffect(() => {
+    if (!synctexData || !selectedPath || !scrollHook?.provides) return;
+
+    // Find fileId
+    const fileIdStr = Object.keys(synctexData.files).find(
+      (key: string) => synctexData.files[key].endsWith(selectedPath)
+    );
+    if (!fileIdStr) return;
+    const fileId = parseInt(fileIdStr, 10);
+
+    // Look up record matching fileId and closest line
+    let match = synctexData.records.find((r: SynctexRecord) => r.fileId === fileId && r.line === currentLineNumber);
+    if (!match) {
+      // Find the closest line match
+      const fileRecords = synctexData.records.filter((r: SynctexRecord) => r.fileId === fileId);
+      if (fileRecords.length > 0) {
+        match = fileRecords.reduce((prev: SynctexRecord, curr: SynctexRecord) => {
+          return Math.abs(curr.line - currentLineNumber) < Math.abs(prev.line - currentLineNumber) ? curr : prev;
+        });
+      }
+    }
+
+    if (match) {
+      try {
+        // Records are in scaled points (65536 sp = 1 pt); pageCoordinates wants pt from the top-left.
+        scrollHook.provides.scrollToPage({
+          pageNumber: match.page,
+          pageCoordinates: { x: match.x / 65536, y: match.y / 65536 },
+          alignY: 50,
+        });
+      } catch (e) {
+        console.warn("Failed to scroll to page:", e);
+      }
+    }
+  }, [currentLineNumber, selectedPath, synctexData, scrollHook?.provides]);
 
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
 
@@ -2245,110 +2437,176 @@ const HeadlessPdfViewerInner = ({ pdfUrl, documentId }: HeadlessPdfViewerInnerPr
             <ZoomGestureWrapper documentId={documentId} className="w-full min-h-full">
               <Scroller
                 documentId={documentId}
-                renderPage={({ pageIndex, width, height }) => (
-                  <div
-                    key={pageIndex}
-                    style={{ width: "100%", display: "flex", justifyContent: "center", paddingTop: pageIndex === 0 ? "16px" : "8px", paddingBottom: "8px" }}
-                  >
-                    <PagePointerProvider
-                      documentId={documentId}
-                      pageIndex={pageIndex}
-                      style={{ width, height, position: "relative", display: "block", flexShrink: 0 }}
-                      className="shadow-md bg-background border border-border/40 rounded-sm overflow-hidden"
+                renderPage={({ pageIndex, width, height }) => {
+                  const handleDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+                    if (!synctexData) return;
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const clickX = e.clientX - rect.left;
+                    const clickY = e.clientY - rect.top;
+                    
+                    // Convert display coordinates to TeX points (72 DPI)
+                    // The PDF standard uses 72 points per inch.
+                    // Map display coordinates relative to width/height to TeX coordinates.
+                    // According to compile data or SyncTeX, records have page, x, y coordinates.
+                    // SyncTeX coordinates on pages are usually measured from the top-left (or bottom-left depending on convention, but let's check).
+                    // Actually, SyncTeX coordinates are 72 DPI, and they are usually defined relative to page dimensions:
+                    // x_tex = (clickX / rect.width) * page_width_in_tex_points
+                    // y_tex = (clickY / rect.height) * page_height_in_tex_points
+                    // Let's find the page dimensions in TeX points or match records by page and relative distance.
+                    
+                    const pageNumber = pageIndex + 1;
+                    const pageRecords = synctexData.records.filter((r: SynctexRecord) => r.page === pageNumber);
+                    if (pageRecords.length === 0) return;
+
+                    // Calculate distance in normalized coordinate space or TeX point space.
+                    // Since we don't have page width/height in TeX points explicitly, we can compute normalized distance:
+                    // SyncTeX record coordinates (x, y) are in scaled points (65536 sp = 1 pt), y from the top.
+                    // Standard TeX pages are 8.5x11 inches (Letter = 612x792 pt) or A4 (595x842 pt).
+                    // In either case, we can find the maximum x and y of the records on the page to estimate the page width/height in TeX points,
+                    // or use standard fallback (e.g. A4/Letter size approximation), or calculate the closest record using normalized coords.
+                    // Even simpler: since both the click coordinate (clickX / rect.width) and SyncTeX records can be normalized,
+                    // let's estimate the bounds of SyncTeX records. Or, we can just use the fact that SyncTeX y is measured from top-left or bottom-left.
+                    // Usually, PDF y increases upwards, but SyncTeX/UI y increases downwards.
+                    // Estimate standard page dimensions in TeX points (72 DPI)
+                    // For Letter: 612 x 792. For A4: 595 x 842.
+                    const estimatedWidth = 612;
+                    const estimatedHeight = 792;
+                    
+                    let closestRecord: SynctexRecord | null = null;
+                    let minDistance = Infinity;
+
+                    for (const r of pageRecords) {
+                      // Records are in scaled points (65536 sp = 1 pt); convert to pt before normalizing.
+                      const rxRelative = r.x / 65536 / estimatedWidth;
+                      const ryRelative = r.y / 65536 / estimatedHeight;
+                      const clickXRelative = clickX / rect.width;
+                      const clickYRelative = clickY / rect.height;
+                      
+                      const dist = Math.pow(rxRelative - clickXRelative, 2) + Math.pow(ryRelative - clickYRelative, 2);
+                      if (dist < minDistance) {
+                        minDistance = dist;
+                        closestRecord = r;
+                      }
+                    }
+
+                    if (closestRecord) {
+                      const fileRelativePath = synctexData.files[closestRecord.fileId];
+                      if (fileRelativePath) {
+                        onSelectLine(fileRelativePath, closestRecord.line);
+                      }
+                    }
+                  };
+
+                  return (
+                    <div
+                      key={pageIndex}
+                      style={{ width: "100%", display: "flex", justifyContent: "center", paddingTop: pageIndex === 0 ? "16px" : "8px", paddingBottom: "8px" }}
                     >
-                      <RenderLayer
-                        documentId={documentId}
-                        pageIndex={pageIndex}
-                        style={{ width: "100%", height: "100%", display: "block", userSelect: "none", pointerEvents: "none" }}
-                        draggable={false}
-                      />
-                      <SearchLayer
-                        documentId={documentId}
-                        pageIndex={pageIndex}
-                        style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
-                      />
-                      {!isPanning && (
-                        <SelectionLayer
+                      <div
+                        style={{ width, height, position: "relative", display: "block", flexShrink: 0 }}
+                        className="shadow-md bg-background border border-border/40 rounded-sm overflow-hidden"
+                        onDoubleClick={handleDoubleClick}
+                      >
+                        <PagePointerProvider
                           documentId={documentId}
                           pageIndex={pageIndex}
-                          textStyle={{ background: "rgba(59, 130, 246, 0.35)" }}
-                          selectionMenu={((({ menuWrapperProps, placement }: any) => {
-                            return (
-                              <div
-                                {...menuWrapperProps}
-                                className="z-50"
-                                style={{
-                                  ...menuWrapperProps.style,
-                                  pointerEvents: "auto",
-                                }}
-                              >
+                          style={{ width: "100%", height: "100%", position: "relative", display: "block", flexShrink: 0 }}
+                        >
+                          <RenderLayer
+                          documentId={documentId}
+                          pageIndex={pageIndex}
+                          style={{ width: "100%", height: "100%", display: "block", userSelect: "none", pointerEvents: "none" }}
+                          draggable={false}
+                        />
+                        <SearchLayer
+                          documentId={documentId}
+                          pageIndex={pageIndex}
+                          style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
+                        />
+                        {!isPanning && (
+                          <SelectionLayer
+                            documentId={documentId}
+                            pageIndex={pageIndex}
+                            textStyle={{ background: "rgba(59, 130, 246, 0.35)" }}
+                            selectionMenu={(({ menuWrapperProps, placement }) => {
+                              return (
                                 <div
-                                  className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center shrink-0"
+                                  {...menuWrapperProps}
+                                  className="z-50"
                                   style={{
-                                    ...(placement.suggestTop
-                                      ? { bottom: "100%", marginBottom: "6px" }
-                                      : { top: "100%", marginTop: "6px" }),
+                                    ...menuWrapperProps.style,
+                                    pointerEvents: "auto",
                                   }}
                                 >
-                                  <button
-                                    className={cn(
-                                      "flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium bg-popover text-popover-foreground border border-border rounded-md shadow-md hover:bg-accent transition-colors",
-                                      isCopied && "border-green-500/30 bg-green-500/10 text-green-600 dark:text-green-400"
-                                    )}
-                                    onClick={(e) => {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                      if (!isCopied) handleCopy();
+                                  <div
+                                    className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center shrink-0"
+                                    style={{
+                                      ...(placement.suggestTop
+                                        ? { bottom: "100%", marginBottom: "6px" }
+                                        : { top: "100%", marginTop: "6px" }),
                                     }}
                                   >
-                                    {isCopied ? (
-                                      <>
-                                        <svg
-                                          xmlns="http://www.w3.org/2000/svg"
-                                          width="11"
-                                          height="11"
-                                          viewBox="0 0 24 24"
-                                          fill="none"
-                                          stroke="currentColor"
-                                          strokeWidth="3"
-                                          strokeLinecap="round"
-                                          strokeLinejoin="round"
-                                          className="size-3 text-green-500"
-                                        >
-                                          <polyline points="20 6 9 17 4 12" />
-                                        </svg>
-                                        Copied!
-                                      </>
-                                    ) : (
-                                      <>
-                                        <svg
-                                          xmlns="http://www.w3.org/2000/svg"
-                                          width="11"
-                                          height="11"
-                                          viewBox="0 0 24 24"
-                                          fill="none"
-                                          stroke="currentColor"
-                                          strokeWidth="2.5"
-                                          strokeLinecap="round"
-                                          strokeLinejoin="round"
-                                          className="size-3"
-                                        >
-                                          <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
-                                          <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
-                                        </svg>
-                                        Copy
-                                      </>
-                                    )}
-                                  </button>
+                                    <button
+                                      className={cn(
+                                        "flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium bg-popover text-popover-foreground border border-border rounded-md shadow-md hover:bg-accent transition-colors",
+                                        isCopied && "border-green-500/30 bg-green-500/10 text-green-600 dark:text-green-400"
+                                      )}
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        if (!isCopied) handleCopy();
+                                      }}
+                                    >
+                                      {isCopied ? (
+                                        <>
+                                          <svg
+                                            xmlns="http://www.w3.org/2000/svg"
+                                            width="11"
+                                            height="11"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            strokeWidth="3"
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            className="size-3 text-green-500"
+                                          >
+                                            <polyline points="20 6 9 17 4 12" />
+                                          </svg>
+                                          Copied!
+                                        </>
+                                      ) : (
+                                        <>
+                                          <svg
+                                            xmlns="http://www.w3.org/2000/svg"
+                                            width="11"
+                                            height="11"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            strokeWidth="2.5"
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            className="size-3"
+                                          >
+                                            <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
+                                            <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+                                          </svg>
+                                          Copy
+                                        </>
+                                      )}
+                                    </button>
+                                  </div>
                                 </div>
-                              </div>
-                            );
-                          }) as any)}
-                        />
-                      )}
-                    </PagePointerProvider>
-                  </div>
-                )}
+                              );
+                            })}
+                          />
+                        )}
+                      </PagePointerProvider>
+                      </div>
+                    </div>
+                  );
+                }}
               />
             </ZoomGestureWrapper>
           </GlobalPointerProvider>

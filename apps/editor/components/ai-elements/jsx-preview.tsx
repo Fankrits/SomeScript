@@ -213,6 +213,7 @@ export const JSXPreviewContent = memo(
     // Reset error tracking when jsx changes
     useEffect(() => {
       errorReportedRef.current = null;
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- resets error tracking when the streamed JSX input changes
       setHadError(false);
     }, [processedJsx]);
 
@@ -244,9 +245,9 @@ export const JSXPreviewContent = memo(
       }
     }, [processedJsx, setLastGoodJsx]);
 
-    // During streaming, if the current JSX errored, re-render with last good version
-    const displayJsx =
-      isStreaming && hadError ? lastGoodJsxRef.current : processedJsx;
+    // During streaming, if the current JSX errored, re-render with last good version.
+    // eslint-disable-next-line react-hooks/refs -- reads the last-error-free JSX cached in a ref (streaming fallback)
+    const displayJsx = isStreaming && hadError ? lastGoodJsxRef.current : processedJsx;
 
     return (
       <div className={cn("jsx-preview-content", className)} {...props}>
