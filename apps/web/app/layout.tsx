@@ -37,6 +37,7 @@ export default function RootLayout({
       signUpUrl="/sign-up"
       signInFallbackRedirectUrl="/dashboard"
       signUpFallbackRedirectUrl="/dashboard"
+      appearance={{ cssLayerName: "clerk" }}
     >
       <html
         lang="en"
