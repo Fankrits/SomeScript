@@ -1,23 +1,121 @@
-## OpenWiki
+# CLAUDE.md
 
-This repository has documentation located in the /openwiki directory.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Start here:
-- [OpenWiki quickstart](openwiki/quickstart.md)
+## Project Overview
 
-OpenWiki includes repository overview, architecture notes, workflows, domain concepts, operations, integrations, testing guidance, and source maps.
+**SomeScript** is a LaTeX editing platform with three integrated surfaces:
+- **`apps/web/`** — public marketing site, Clerk auth shell, workspace dashboard, project management
+- **`apps/editor/`** — core LaTeX editor with CodeMirror, PDF preview, file tree, search, embedded Eve AI assistant
+- **`apps/compiler/`** — standalone Bun service that runs Tectonic and returns compiled PDFs/logs
 
-When working in this repository, read the OpenWiki quickstart first, then follow its links to the relevant architecture, workflow, domain, operation, and testing notes.
+This is a Bun-managed Turbo monorepo. The root workspace is intentionally small; each app has its own `package.json` and dev scripts.
+
+For high-level architecture, request flow, and storage model, see [OpenWiki architecture overview](openwiki/architecture.md).
+
+## Critical Scope and Constraints
+
+### You (Workspace Developer)
+- **Scope**: Edit the monorepo code itself (`apps/editor/`, `apps/compiler/`, `apps/web/`).
+- **Rule**: Never edit `apps/editor/my-new-project/` (the LaTeX sandbox) unless explicitly requested for verification or template defaults.
+- **Next.js 16 Breaking Changes**: Read `node_modules/next/dist/docs/` before writing Next.js code. Middleware is now `proxy.ts`, not `middleware.ts`. Clerk middleware must include `'/__clerk/(.*)'` matcher.
+- **Type Safety**: Always run `cd apps/editor && bun x tsc --noEmit` after editing Next.js pages or components.
+
+### Embedded Eve Agent (apps/editor/agent/)
+- **Scope**: LaTeX projects only; never explains monorepo structure to users.
+- **Path Safety**: Always use `getProjectPath()` from `apps/editor/lib/project.ts` to prevent directory traversal.
+- **UI Runtime**: Uses `@assistant-ui/react` with `useExternalStoreRuntime` — **branching is NOT supported**. Never re-add `<BranchPicker />`.
+
+## Architecture Highlights
+
+### Storage Abstraction
+`apps/editor/lib/storage.ts` provides a unified interface for local filesystem and S3 storage. File paths are project-relative; directory traversal is guarded. The file tree excludes `node_modules`, `.git`, `.next`, `.eve`, `.workflow-data`.
+
+### Project Path Resolution
+`apps/editor/lib/project.ts` stores the current project path in a temp file. Falls back to local `my-new-project` if none selected. Project id is derived from the `projects/` segment in the path, or defaults to `default`.
+
+### Compilation Flow
+1. Editor calls `apps/editor/app/api/compile/route.ts`
+2. Which proxies to `apps/compiler/index.ts` (port 3001)
+3. Compiler spawns Tectonic, caches results, returns logs and base64 PDF
+
+### Eve Assistant
+- Defined in `apps/editor/components/chat/eve-thread.tsx`
+- Tool renderers in `apps/editor/components/assistant-ui/eve-tool-calls.tsx`
+- HITL tools (e.g., `ask_question`) map to `<HitlCard />` via `apps/editor/hooks/use-eve-runtime.ts`
 
 ## Commands
 
-Bun-managed Turbo monorepo (`apps/web`, `apps/editor`, `apps/compiler`). Run from repo root unless noted.
+**From repo root (unless noted):**
 
-- `bun install` — install all workspace deps
-- `bun dev` — runs `apps/web` (:3000) and `apps/editor` (:3002) via Turbo; `apps/compiler` is not wired into root `dev`/`build`/`lint` and must be run separately
+- `bun install` — install workspace deps
+- `bun dev` — runs `apps/web` (:3000) and `apps/editor` (:3002) via Turbo; compiler must be run separately
 - `bun build` / `bun lint` — Turbo-orchestrated build/lint across `apps/web` and `apps/editor`
-- `cd apps/editor && bun x tsc --noEmit` — type-check after editing editor pages/components (required by AGENTS.md)
-- `cd apps/web && bun test` — run Bun tests (e.g. `apps/web/components/hero-mockup.test.ts`); single file: `bun test components/hero-mockup.test.ts`. Bun `*.test.ts` files are excluded from `tsc` (see `apps/web/tsconfig.json`), so type-check and test separately.
-- `cd apps/compiler && bun --watch index.ts` (dev) / `bun index.ts` (start) — requires `tectonic` on PATH; serves `GET /health` and `POST /compile` on :3001
 
-@AGENTS.md
+**Type-checking and testing (REQUIRED for changes to Next.js pages/components):**
+
+- `cd apps/editor && bun x tsc --noEmit` — type-check after editing editor pages/components
+- `cd apps/web && bun test` — run Bun tests; single file: `bun test components/hero-mockup.test.ts`
+  - Note: `*.test.ts` files are excluded from `tsc` (see `apps/web/tsconfig.json`), so type-check and test separately
+
+**Compiler service (separate process, port 3001):**
+
+- `cd apps/compiler && bun --watch index.ts` (dev with auto-reload)
+- `cd apps/compiler && bun index.ts` (start; requires `tectonic` on PATH)
+- Health check: `curl http://localhost:3001/health`
+
+**Editor app dev (if running in isolation):**
+
+- `cd apps/editor && bun dev` — runs on port 3002
+
+## Key Dependencies and Patterns
+
+### UI Components
+- **Editor**: CodeMirror 6 with custom LaTeX syntax highlight (`codemirror-lang-latex`)
+- **PDF/Image Viewers**: `@embedpdf/react-pdf-viewer`
+- **Chat/Assistant**: `@assistant-ui/react` with custom Eve runtime adapter
+- **Base UI**: `@base-ui/react` for unstyled primitives; styled via Tailwind
+
+### Storage and Auth
+- **File Storage**: S3 via `@aws-sdk/client-s3` or local filesystem
+- **Database**: Drizzle ORM (used in `apps/web/` for workspace/project metadata)
+- **Auth**: Clerk (`@clerk/nextjs`); middleware in `apps/web/proxy.ts`
+
+### Search and Compile
+- **Search API**: `apps/editor/app/api/search/route.ts` — searches non-binary files with regex/case/word-boundary filters
+- **Compile API**: `apps/editor/app/api/compile/route.ts` — proxies to compiler service; supports local and upload modes
+- **File Serving**: `apps/editor/app/api/files/route.ts` — returns binary PDFs/images directly; text as JSON
+
+## Common Tasks
+
+**Adding UI to the editor:**
+1. Add component to `apps/editor/components/`
+2. Import in `apps/editor/app/page.tsx` (main editor layout)
+3. Type-check: `cd apps/editor && bun x tsc --noEmit`
+4. Run: `bun dev` (starts both apps)
+
+**Modifying storage behavior:**
+1. Update `apps/editor/lib/storage.ts` (storage abstraction)
+2. Storage is used by file-serving, search, compile, and Eve tools
+3. Changes affect both local dev and S3 paths
+
+**Adding Eve tools:**
+1. Define tool in `apps/editor/agent/` (e.g., `write-file.ts`)
+2. Add renderer in `apps/editor/components/assistant-ui/eve-tool-calls.tsx` if needed
+3. Update Eve system prompt in the runtime
+
+**Updating compiler behavior:**
+1. Edit `apps/compiler/index.ts`
+2. Restart compiler service: `cd apps/compiler && bun index.ts`
+3. Test via `POST http://localhost:3001/compile` or through editor UI
+
+## Further Reading
+
+For deeper dives, see:
+- [OpenWiki quickstart](openwiki/quickstart.md) — entry point to all docs
+- [Architecture overview](openwiki/architecture.md) — system boundaries, request flow, storage model
+- [Editor app docs](openwiki/editor.md) — file operations, search, viewer architecture
+- [Operations and compilation flow](openwiki/operations.md) — compiler modes, caching, differential sync
+- [Auth, dashboard, and web app](openwiki/auth-and-web.md) — Clerk setup, workspace boundaries
+
+See [AGENTS.md](AGENTS.md) for detailed agent guidance on scope, constraints, and Next.js 16 specifics.

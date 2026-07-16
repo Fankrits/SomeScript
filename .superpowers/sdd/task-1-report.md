@@ -1,63 +1,36 @@
-# Task 1 Report: Responsive Hero Overlap Contract
+# Task 1 Report: Ownership checks on web server actions (H1) + dashboard list bound (O6)
 
-## Status
+## Changes
 
-Task 1 is complete as a contract-first test task. The regression test was written from the brief, verified RED against the current `HeroMockup` source, and committed. The implementation-side GREEN state is intentionally deferred to the next task because this task owns only the test and report.
+**`apps/web/app/dashboard/actions.ts`**
+- Added `and` to the `drizzle-orm` import.
+- `renameProject`: now destructures `{ userId, orgId }` from `auth()`, computes `workspaceId = orgId || userId`, and scopes the `update` with `.where(and(eq(projects.id, projectId), eq(projects.workspaceId, workspaceId)))`. Uses `.returning({ id: projects.id })` and throws `"Project not found"` if zero rows matched.
+- `deleteProject`: same pattern — `{ userId, orgId }` destructure, `workspaceId` computed once, DB `delete` scoped with the same `and(...)` where clause, `.returning()` + zero-rows check throwing `"Project not found"`. Left the editor-service `fetch` call and `revalidatePath` untouched, per the brief (Task 11 will restructure that later).
 
-## TDD evidence
+**`apps/web/app/dashboard/page.tsx`**
+- Added `limit: 200` to the `db.query.projects.findMany` call that feeds the dashboard project list.
 
-### RED
+Diff matches the brief's Step 1/2 code verbatim.
 
-Command:
+## Type-check
 
-```text
-cd /Users/fankrits/dev/SomeScript-adv/apps/web
-bun test components/hero-mockup.test.ts
-```
+`cd apps/web && bun x tsc --noEmit` → exit 0.
 
-Result: expected failure.
-
-- Bun ran 2 tests.
-- 0 passed and 2 failed.
-- The first failure showed that `hero-mockup.tsx` does not yet contain `lg:absolute lg:top-0 lg:right-0`.
-- The second failure showed that the source does not yet contain `overlay?: React.ReactNode`.
-- The failure was a normal assertion failure, confirming the test is exercising the missing responsive-layout contract rather than failing to load or parse.
-
-### GREEN
-
-Not performed in this task. The requested implementation changes belong to the subsequent `HeroMockup` implementation task. Running the test after that implementation should provide the GREEN evidence for this contract.
-
-## Contract covered
-
-The new source-level Bun test locks these requirements:
-
-- Desktop PDF preview anchor: `lg:absolute lg:top-0 lg:right-0`.
-- Desktop editor preview anchor: `lg:absolute lg:bottom-0 lg:left-0`.
-- Mobile normal-flow composition: `flex flex-col gap-6 lg:block`.
-- Optional overlay prop: `overlay?: React.ReactNode`.
-- Desktop centered overlay layer above both previews: `lg:absolute lg:inset-0 lg:z-30`.
-
-## Changed files
-
-- Created `apps/web/components/hero-mockup.test.ts`.
-- Created `.superpowers/sdd/task-1-report.md`.
-
-Existing edits in the worktree were preserved. No production implementation file was changed by this task.
-
-## Commits
-
-- `1c4ddcb test(landing): define responsive hero overlap contract` — failing contract test, committed as required by the brief.
-- The report is intentionally separate and is the only remaining task file to commit.
+Note: the first run failed with 3 errors in `.next/dev/types/validator.ts` referencing `app/about/page.js`, `app/contact/page.js`, `app/legal/page.js` — these directories don't exist on disk (`ls` confirms). Verified via `git stash` that this failure is pre-existing and unrelated to this task's edits (reproduces identically on the base commit before this task's changes). It's a stale Next.js dev-mode generated type-checking manifest (build cache artifact, not source), not something in this task's scope. Deleted `.next/dev/types` (regenerates automatically on next `bun dev`/`bun build`) and reran — clean exit 0 with no source changes needed for that unrelated issue.
 
 ## Self-review
 
-- The test content matches the exact snippets specified in the task brief.
-- The test reads the colocated implementation with `new URL("./hero-mockup.tsx", import.meta.url)`, so it does not depend on the current working directory.
-- The test remains intentionally source-level and does not import or render the client component, avoiding unrelated browser/runtime setup.
-- The current RED result is attributable to the missing implementation contract, with both expected assertions reported.
-- No unrelated worktree changes were staged or reverted.
+- Both `renameProject` and `deleteProject` filter by `and(eq(projects.id, projectId), eq(projects.workspaceId, workspaceId))` — confirmed by reading the diff.
+- Both throw `"Project not found"` when the `.returning()` result is empty (0 rows affected), which happens both when the project doesn't exist and when it belongs to a different workspace — correct IDOR closure, doesn't leak existence info beyond a generic message.
+- `auth()` called once per action (not twice), avoiding a redundant Clerk round-trip, per the brief's explicit instruction.
+- `deleteProject`'s existing editor-service `fetch` call and `revalidatePath` were left untouched, as instructed (Task 11 scope).
+- Dashboard list now bounded to 200 rows, ordered by `updatedAt desc` (unchanged ordering), preventing unbounded query growth (O6).
+- No changes made outside the two named files; no extra abstractions added (YAGNI honored — no shared helper, no new dependency, no restructuring beyond what's specified).
 
-## Concerns / follow-up
+## Deferred to QA
 
-- The test will remain failing until the next task updates `HeroMockup` to implement the required desktop anchors, mobile flow classes, and optional overlay layer.
-- The source-level assertions intentionally require the exact class/property strings from the brief; future refactors that preserve behavior but alter these strings will need an explicit contract decision.
+Step 4 (manual 2-user verification) requires a running app with live Clerk sessions for two distinct users/orgs, which isn't feasible in this offline subagent context. The static analysis above confirms the code path returns `"Project not found"` and touches zero rows whenever workspace ownership doesn't match, which is the mechanism the manual test would exercise. Recommend QA performs the live 2-user check before this ships to production, per the brief's Step 4 instructions.
+
+## Concerns
+
+None outside the pre-existing unrelated `.next` stale-cache tsc noise (resolved by clearing cache, not a code issue).

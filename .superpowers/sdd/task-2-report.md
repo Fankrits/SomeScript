@@ -1,132 +1,66 @@
-# Task 2 Report: Responsive editor/PDF hero composition
+# Task 2 Report: DB fail-fast (M4), workspace index (O5), versioned migrations (M6)
 
-## Outcome
+## Status: DONE_WITH_CONCERNS
 
-Implemented the responsive `HeroMockup` composition in `apps/web/components/hero-mockup.tsx`.
+## What was done
 
-- Added the optional `overlay?: React.ReactNode` prop and a centered overlay slot.
-- Mobile uses normal document flow: overlay (when present), PDF card, then editor card.
-- Desktop (`lg`) uses a fixed-height composition with the PDF card anchored top-right and the editor card anchored bottom-left.
-- Preserved the existing typing/compilation animation state machine and the dynamically imported `FluidGlass` background.
-
-## Changed files
-
-- `apps/web/components/hero-mockup.tsx`
-- `.superpowers/sdd/task-2-report.md`
-
-The pre-existing `apps/web/components/hero-mockup.test.ts` was intentionally not modified or committed, per task ownership instructions.
-
-## Test evidence
-
-### RED baseline
-
-Command:
-
-```sh
-cd apps/web && bun test components/hero-mockup.test.ts
+**Step 1 — Fail fast on missing `DATABASE_URL`** (`apps/web/lib/db.ts:9-11`)
+Replaced the hardcoded fallback connection string with a throw, verbatim per brief:
+```ts
+const connectionString = process.env.DATABASE_URL;
+if (!connectionString) {
+  throw new Error("DATABASE_URL is not set");
+}
 ```
 
-Result before implementation: `0 pass`, `2 fail`.
-
-- The desktop/mobile anchor assertion failed because the old layout used unprefixed absolute positioning.
-- The overlay assertion failed because `HeroMockup` had no overlay prop or slot.
-
-### GREEN verification
-
-Command:
-
-```sh
-cd apps/web && bun test components/hero-mockup.test.ts
+**Step 2 — Workspace index** (`apps/web/db/schema.ts`)
+Added `index` to the `drizzle-orm/pg-core` import and converted `projects` to the 3-arg `pgTable` form with the array-style index definition from the brief:
+```ts
+(table) => [index("projects_workspace_id_idx").on(table.workspaceId)]
 ```
+The installed `drizzle-orm` is `0.45.2`, which accepts the array form — no need for the object-form fallback.
 
-Result after implementation: `2 pass`, `0 fail`, `5 expect() calls`.
+**Step 3 — Scripts** (`apps/web/package.json`)
+Replaced `db:push` with `db:generate` (`drizzle-kit generate`) and `db:migrate` (`drizzle-kit migrate`), left `db:studio` untouched, exactly as specified.
 
-Additional checks:
-
-```sh
-cd apps/web && bun x tsc --noEmit --target ES2017 --lib dom,dom.iterable,esnext --allowJs --skipLibCheck --strict --esModuleInterop --module esnext --moduleResolution bundler --resolveJsonModule --isolatedModules --jsx react-jsx components/hero-mockup.tsx
-git diff --check
+**Step 4 — Baseline migration**
+Ran `cd apps/web && bun run db:generate`. **It worked fully offline** — `drizzle-kit generate` only introspects `schema.ts`, it never opens a DB connection, so the lack of a running Postgres in this environment was not an issue. Output:
 ```
-
-Both commands exited successfully.
-
-The repository-wide required command `cd apps/web && bun x tsc --noEmit` remains blocked by the pre-existing Task 1 test: `components/hero-mockup.test.ts(1,30): error TS2307: Cannot find module 'bun:test' or its corresponding type declarations.` The owned component type-checks successfully in isolation; no test or dependency files were changed to avoid exceeding this task’s ownership boundary.
-
-## Self-review
-
-- Confirmed exact responsive anchors, widths, stacking order, height values, and overlay z-index behavior are present.
-- Confirmed mobile cards are `w-full` in normal flex flow and desktop positioning only begins at `lg`.
-- Confirmed animation state and dynamic `FluidGlass` import were retained.
-- Confirmed whitespace check passes and no unrelated files are included in the intended commit.
-
-## P1 re-review: track FluidGlass dependency
-
-The dynamically imported `apps/web/components/FluidGlass.jsx` module was present locally but untracked, which meant a clean checkout could not resolve `import("./FluidGlass")` from `HeroMockup`. This re-review commit adds that existing component to version control without changing its implementation.
-
-Scoped implementation review confirms the component uses only local Three.js JSX geometries (`planeGeometry`, `dodecahedronGeometry`, `boxGeometry`, and `torusKnotGeometry`). It has no GLB asset imports, GLTF loader usage, or network `fetch` calls.
-
-### Re-review verification
-
-Executed from `apps/web`:
-
-```sh
-bun test components/hero-mockup.test.ts
-bun x tsc --noEmit
-bun x eslint components/hero-mockup.tsx components/hero-mockup.test.ts
+4 tables
+documents 6 columns 0 indexes 1 fks
+projects 5 columns 1 indexes 1 fks
+users 6 columns 0 indexes 0 fks
+workspaces 7 columns 0 indexes 1 fks
+[✓] Your SQL migration file ➜ drizzle/0000_easy_viper.sql
 ```
+Generated `apps/web/drizzle/0000_easy_viper.sql` (plus `meta/0000_snapshot.json` and `meta/_journal.json`). The SQL contains `CREATE TABLE` for all four tables, the three FKs, and — matching the brief's expected outcome exactly — `CREATE INDEX "projects_workspace_id_idx" ON "projects" USING btree ("workspace_id")`. No hand-written SQL was needed.
 
-All commands exited with status `0`.
+**Step 5 — Apply to local dev DB — SKIPPED (deferred)**
+Docker/Postgres is not available in this environment. Dropping/recreating `latex_editor` and running `bun run db:migrate` against it, plus the `\di projects*` index verification, is **deferred to the deploy/ops step**. This also means the production/staging DB has not yet had the baseline migration applied — that must happen before the new `db:migrate`-based deploy flow can be relied on there, and before this migration folder becomes the source of truth (the live DB was previously built via `drizzle-kit push`, so its actual state needs to be reconciled with this baseline — e.g. via `drizzle-kit migrate` after confirming the existing tables already match this snapshot, or a manual baseline mark).
 
-- Hero mockup contract: `2 pass`, `0 fail`.
-- TypeScript: no diagnostics.
-- ESLint: no diagnostics.
+**Step 6 — Type-check**
+`cd apps/web && bun x tsc --noEmit` → exit 0.
 
-This supersedes the earlier note about missing `bun:test` types: the full web TypeScript check now passes in the current workspace.
+## Deviation from the brief (flagging explicitly)
 
-## Task 2 validation blocker fix
+The brief's file list only names `db.ts`, `schema.ts`, `package.json`, and the generated `apps/web/drizzle/` folder. However, the existing `apps/web/drizzle.config.ts` had `out: "./db/migrations"`, not `"./drizzle"`. Left as-is, `bun run db:generate` would have written the baseline migration to `apps/web/db/migrations/`, contradicting the brief's Step 4 expectation (`apps/web/drizzle/`) and Step 6's `git add ... apps/web/drizzle`. I changed `out` to `"./drizzle"` in `drizzle.config.ts` and included that file in the commit — without it, `db:migrate` (which reads the same config) would look in the wrong directory and the committed `drizzle/` folder would be orphaned/unused. This is a one-line necessary consequence of the brief's own stated target path, not scope creep, but it's outside the brief's literal "Files" list so I'm calling it out.
 
-The repository-wide TypeScript validation blocker was fixed by excluding Bun test files from the Next.js TypeScript project:
+Not touched (out of scope per brief / YAGNI): `drizzle.config.ts`'s `dbCredentials.url` still has the same hardcoded-fallback pattern the brief flagged in `db.ts` (M4). The brief only targets the app's runtime `db.ts`, not the drizzle-kit CLI config, which is dev-tooling-only and not a production boot path — left alone.
 
-- `apps/web/tsconfig.json`: added `**/*.test.ts` to `exclude`.
-- `bun test components/hero-mockup.test.ts` remains supported because Bun runs the test file directly and does not depend on the app TypeScript project inclusion.
+## Verification
 
-### Exact validation results
+- `cd apps/web && bun x tsc --noEmit` → exit 0.
+- `bun run db:generate` succeeded offline, produced SQL matching the brief's expected `CREATE TABLE`/`CREATE INDEX` statements verbatim.
+- Did not verify `db:migrate` against a live DB (no Postgres available) — see Step 5 above.
 
-Working directory: `apps/web`
+## Files changed / committed
 
-Command:
+- `apps/web/lib/db.ts`
+- `apps/web/db/schema.ts`
+- `apps/web/package.json`
+- `apps/web/drizzle.config.ts` (deviation, explained above)
+- `apps/web/drizzle/0000_easy_viper.sql`
+- `apps/web/drizzle/meta/0000_snapshot.json`
+- `apps/web/drizzle/meta/_journal.json`
 
-```sh
-bun test components/hero-mockup.test.ts
-```
-
-Result: exit code `0`
-
-```text
-bun test v1.3.14 (0d9b296a)
-
-components/hero-mockup.test.ts:
-(pass) uses desktop anchors and mobile normal flow for the product previews [0.41ms]
-(pass) renders an optional centered overlay above both previews [0.03ms]
-
- 2 pass
- 0 fail
- 5 expect() calls
-Ran 2 tests across 1 file. [14.00ms]
-```
-
-Command:
-
-```sh
-bun x tsc --noEmit
-```
-
-Result: exit code `0`; no output.
-
-Command:
-
-```sh
-bun x eslint components/hero-mockup.tsx components/hero-mockup.test.ts
-```
-
-Result: exit code `0`; no output.
+Commit: `47d184e` — "feat(db): fail-fast on missing DATABASE_URL, index projects.workspace_id, adopt versioned migrations" (on branch `production-hardening`).

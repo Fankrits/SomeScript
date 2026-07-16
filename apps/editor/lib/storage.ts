@@ -138,7 +138,7 @@ class S3StorageProvider implements StorageProvider {
         accessKeyId: process.env.AWS_ACCESS_KEY_ID || "",
         secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "",
       },
-      forcePathStyle: true, // Crucial for Railway / MinIO / LocalStack
+      forcePathStyle: process.env.S3_FORCE_PATH_STYLE === "true", // true for local RustFS/MinIO, false for Railway Object Storage / R2 / managed S3
     });
     this.bucket = process.env.AWS_BUCKET_NAME || "latex-editor";
   }
