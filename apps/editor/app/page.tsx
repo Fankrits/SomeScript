@@ -51,6 +51,16 @@ import {
 import { Terminal, TerminalContent } from "@/components/ai-elements/terminal";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { CheckCircle2Icon, ListTodoIcon, FilePlus, FolderPlus, PanelLeft, PanelRight, Sparkles, Loader2, Check, Home, ChevronRight, ChevronLeft, ArrowLeft, Clock, Trash2, Plus, Minus, Hand, MousePointer, Settings, Search, Download } from "lucide-react";
 import { nanoid } from "nanoid";
 import { useCallback, useEffect, useInsertionEffect, useRef, useState } from "react";
@@ -1025,8 +1035,9 @@ const Example = () => {
     }
   }, [projectId, selectedPath, refreshWorkspace]);
 
+  const [deletePath, setDeletePath] = useState<string | null>(null);
+
   const handleFileDelete = useCallback(async (path: string) => {
-    if (!confirm(`Are you sure you want to delete ${path}?`)) return;
     try {
       const res = await fetch("/api/files", {
         method: "POST",
@@ -1570,7 +1581,7 @@ const Example = () => {
               onSelect={handleFileSelect}
               selectedPath={selectedPath}
               onMove={handleFileMove}
-              onDelete={handleFileDelete}
+              onDelete={setDeletePath}
             />
           </div>
         </div>
@@ -1996,6 +2007,29 @@ const Example = () => {
         </ResizablePanelGroup>
       </div>
       </div>
+
+      <AlertDialog open={deletePath !== null} onOpenChange={(open) => !open && setDeletePath(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete file</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete {deletePath}? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                if (deletePath) handleFileDelete(deletePath);
+                setDeletePath(null);
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

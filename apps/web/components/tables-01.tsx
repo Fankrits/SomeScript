@@ -12,6 +12,16 @@ import {
   TableRow
 } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import Link from "next/link";
 import { deleteProject, renameProject } from "@/app/dashboard/actions";
 import { Editable, EditableArea, EditableInput, EditablePreview } from "@/components/ui/editable";
@@ -34,6 +44,8 @@ export default function ProjectsTable({ projects, editorUrl }: ProjectsTableProp
     id: string;
     type: "pdf" | "zip" | "delete";
   } | null>(null);
+
+  const [deleteId, setDeleteId] = useState<string | null>(null);
 
   const [sortConfig, setSortConfig] = useState<{
     key: "name" | "createdAt" | "updatedAt";
@@ -88,9 +100,6 @@ export default function ProjectsTable({ projects, editorUrl }: ProjectsTableProp
   };
 
   const handleDelete = async (projectId: string) => {
-    if (!confirm("Are you sure you want to delete this project? This action cannot be undone.")) {
-      return;
-    }
     setPendingAction({ id: projectId, type: "delete" });
     try {
       await deleteProject(projectId);
@@ -166,8 +175,15 @@ export default function ProjectsTable({ projects, editorUrl }: ProjectsTableProp
               const isBusy = !!pendingAction && pendingAction.id === project.id;
 
               return (
-                <TableRow key={project.id} className="hover:bg-secondary/20 transition-colors group">
-                  <TableCell className="px-6 py-4 font-medium text-foreground flex items-center gap-3">
+                <TableRow
+                  key={project.id}
+                  onClick={() => { window.location.href = `${editorUrl}/?projectId=${project.id}`; }}
+                  className="hover:bg-secondary/20 transition-colors group cursor-pointer"
+                >
+                  <TableCell
+                    onClick={(e) => e.stopPropagation()}
+                    className="px-6 py-4 font-medium text-foreground flex items-center gap-3"
+                  >
                     <div className="h-8 w-8 rounded-lg bg-secondary border border-border flex items-center justify-center text-primary group-hover:text-primary-foreground group-hover:bg-primary transition-all shrink-0">
                       <FileText className="h-4 w-4" />
                     </div>
@@ -205,7 +221,7 @@ export default function ProjectsTable({ projects, editorUrl }: ProjectsTableProp
                       year: "numeric",
                     })}
                   </TableCell>
-                  <TableCell className="px-6 py-4 text-right">
+                  <TableCell onClick={(e) => e.stopPropagation()} className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-1.5">
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -263,7 +279,7 @@ export default function ProjectsTable({ projects, editorUrl }: ProjectsTableProp
                             variant="outline"
                             size="icon"
                             className="text-destructive hover:bg-destructive h-8 w-8 hover:text-white"
-                            onClick={() => handleDelete(project.id)}
+                            onClick={() => setDeleteId(project.id)}
                             disabled={isBusy}
                           >
                             {isDeletePending ? (
@@ -283,6 +299,29 @@ export default function ProjectsTable({ projects, editorUrl }: ProjectsTableProp
           </TableBody>
         </Table>
       </TooltipProvider>
+
+      <AlertDialog open={deleteId !== null} onOpenChange={(open) => !open && setDeleteId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete project</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this project? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                if (deleteId) handleDelete(deleteId);
+                setDeleteId(null);
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
