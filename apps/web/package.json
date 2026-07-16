@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "bun --bun next dev -p 3000",
+    "dev": "lsof -ti:3000 | xargs kill 2>/dev/null; bun --bun next dev -p 3000",
     "build": "bun --bun next build",
     "start": "bun --bun next start",
     "lint": "eslint",

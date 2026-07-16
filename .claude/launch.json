@@ -12,6 +12,12 @@
       "runtimeExecutable": "bun",
       "runtimeArgs": ["--cwd=apps/web", "run", "dev"],
       "port": 3000
+    },
+    {
+      "name": "dev-no-compiler",
+      "runtimeExecutable": "node_modules/.bin/turbo",
+      "runtimeArgs": ["run", "dev", "--filter=!compiler"],
+      "port": 3000
     }
   ]
 }

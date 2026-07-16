@@ -85,7 +85,7 @@ export default async function DashboardPage() {
             appearance={{
               elements: {
                 userButtonBox: "flex flex-row-reverse gap-3 items-center w-full",
-                userButtonOuterIdentifier: "text-muted-foreground font-medium text-sm text-left truncate max-w-[120px] order-last hover:text-primary transition-colors",
+                userButtonOuterIdentifier: "text-muted-foreground font-medium text-sm text-left truncate max-w-[120px] hover:text-primary transition-colors",
               },
             }}
             showName
