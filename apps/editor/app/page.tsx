@@ -65,6 +65,7 @@ import { CheckCircle2Icon, ListTodoIcon, FilePlus, FolderPlus, PanelLeft, PanelR
 import { nanoid } from "nanoid";
 import { useCallback, useEffect, useInsertionEffect, useRef, useState } from "react";
 import type { PanelImperativeHandle } from "react-resizable-panels";
+import { useDefaultLayout } from "react-resizable-panels";
 import { useEveAgent } from "eve/react";
 import { EveThread } from "@/components/chat/eve-thread";
 import { SearchPanel, SearchPanelHandle } from "@/components/editor/search-panel";
@@ -424,6 +425,86 @@ const pdfPlugins = [
   createPluginRegistration(SelectionPluginPackage),
 ];
 
+// SSR-safe storage for useDefaultLayout — its getServerSnapshot touches localStorage directly.
+const layoutStorage = {
+  getItem: (key: string) => (typeof window === "undefined" ? null : window.localStorage.getItem(key)),
+  setItem: (key: string, value: string) => {
+    if (typeof window !== "undefined") window.localStorage.setItem(key, value);
+  },
+};
+
+// Skeleton shown until the client mounts and the layout is restored from localStorage.
+// Mirrors the real layout so there's no shift when the editor appears.
+const SkeletonRow = ({ width }: { width: string }) => (
+  <div className="h-3 rounded bg-muted/50" style={{ width }} />
+);
+
+const EditorSkeleton = () => (
+  <div className="flex flex-col h-screen w-screen bg-background overflow-hidden animate-pulse">
+    <header className="flex items-center justify-between border-b px-4 h-14 shrink-0">
+      <div className="flex items-center gap-3">
+        <div className="h-7 w-24 rounded-md bg-muted" />
+        <div className="h-4 w-px bg-border" />
+        <div className="h-5 w-40 rounded bg-muted/70" />
+      </div>
+      <div className="flex items-center gap-3">
+        <div className="h-9 w-20 rounded-md bg-muted" />
+        <div className="h-9 w-28 rounded-md bg-muted/60" />
+      </div>
+    </header>
+    <div className="flex flex-1 overflow-hidden">
+      {/* Left sidebar */}
+      <div className="w-80 border-r flex flex-col shrink-0">
+        <div className="h-11 border-b flex items-center gap-1 px-2">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="flex-1 h-7 rounded bg-muted/60" />
+          ))}
+        </div>
+        <div className="p-3 space-y-2.5">
+          {Array.from({ length: 9 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-2" style={{ paddingLeft: `${(i % 3) * 14}px` }}>
+              <div className="size-3.5 rounded-sm bg-muted/70 shrink-0" />
+              <SkeletonRow width={`${45 + ((i * 13) % 40)}%`} />
+            </div>
+          ))}
+        </div>
+      </div>
+      {/* Center: editor + pdf, terminal below */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 flex overflow-hidden">
+          <div className="flex-1 border-r flex flex-col">
+            <div className="h-10 border-b flex items-center gap-2 px-3">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="size-6 rounded bg-muted/50" />
+              ))}
+            </div>
+            <div className="flex-1 p-4 space-y-2.5">
+              {Array.from({ length: 16 }).map((_, i) => (
+                <SkeletonRow key={i} width={`${25 + ((i * 17) % 60)}%`} />
+              ))}
+            </div>
+          </div>
+          <div className="flex-1 flex flex-col bg-muted/5">
+            <div className="h-11 border-b flex items-center justify-between px-3">
+              <div className="h-7 w-20 rounded-md bg-muted/50" />
+              <div className="h-7 w-24 rounded-md bg-muted/50" />
+              <div className="h-7 w-7 rounded-md bg-muted/50" />
+            </div>
+            <div className="flex-1 flex items-start justify-center p-6">
+              <div className="w-full max-w-[420px] aspect-[1/1.3] rounded bg-muted/40" />
+            </div>
+          </div>
+        </div>
+        <div className="h-40 border-t p-3 space-y-2">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <SkeletonRow key={i} width={`${40 + ((i * 23) % 50)}%`} />
+          ))}
+        </div>
+      </div>
+    </div>
+  </div>
+);
+
 const Example = () => {
   const { engine: pdfEngine, isLoading: isPdfEngineLoading, error: pdfEngineError } = usePdfiumEngine();
 
@@ -442,6 +523,16 @@ const Example = () => {
     [projectId]
   );
 
+  // SyncTeX/compiler-echoed paths can be absolute container paths (e.g. /app/workspaces/<id>/main.tex).
+  // Everything sent to /api/files or /api/compile must be project-relative, so normalize at the boundary.
+  const toProjectRelative = useCallback((raw: string): string => {
+    if (!raw) return raw;
+    const marker = `/${projectId}/`;
+    const idx = raw.lastIndexOf(marker);
+    if (idx >= 0) return raw.slice(idx + marker.length);
+    return raw.replace(/^.*\/workspaces\/[^/]+\//, "").replace(/^\.?\/+/, "");
+  }, [projectId]);
+
   // Code editor state
   const [currentCode, setCurrentCode] = useState<string>("// Select a file to view content");
   const [currentLanguage, setCurrentLanguage] = useState<string>("typescript");
@@ -450,9 +541,10 @@ const Example = () => {
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [synctexData, setSynctexData] = useState<{
     files: Record<string, string>;
-    records: Array<{ fileId: number; line: number; page: number; x: number; y: number; w: number; h: number; }>;
+    records: Array<{ fileId: number; line: number; page: number; x: number; y: number; y2?: number; w: number; h: number; }>;
   } | null>(null);
-  const [currentLineNumber, setCurrentLineNumber] = useState<number>(1);
+  // Set only on an explicit editor double-click — the PDF scrolls to this line then, not on cursor moves.
+  const [pdfSyncRequest, setPdfSyncRequest] = useState<{ line: number; frac: number; nonce: number } | null>(null);
   const [isCompiling, setIsCompiling] = useState<boolean>(false);
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "unsaved" | "idle">("idle");
   // View mode: "code" for text | "image" for images | "pdf-standalone" for PDFs opened from tree
@@ -475,6 +567,21 @@ const Example = () => {
   // Sidebar states
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<"files" | "search" | "chat" | "settings">("files");
+
+  // Gates the skeleton: false until mounted + layout restored from localStorage (SSR-safe).
+  const [mounted, setMounted] = useState<boolean>(false);
+
+  // Persisted resizable-panel layouts (native to react-resizable-panels; localStorage-backed).
+  const verticalLayout = useDefaultLayout({
+    id: "somescript-editor-vertical",
+    panelIds: ["editor-main", "terminal"],
+    storage: layoutStorage,
+  });
+  const horizontalLayout = useDefaultLayout({
+    id: "somescript-editor-horizontal",
+    panelIds: ["code", "pdf"],
+    storage: layoutStorage,
+  });
 
   // Search Panel Refs and States
   const searchPanelRef = useRef<SearchPanelHandle>(null);
@@ -518,10 +625,13 @@ const Example = () => {
         try {
           if (view.state.doc.length > 0) {
             const lineObj = view.state.doc.line(Math.min(line, view.state.doc.lines));
+            // Select the whole line and focus so the jump target is visibly highlighted —
+            // an unfocused CodeMirror renders no cursor/selection at all.
             view.dispatch({
-              selection: { anchor: lineObj.from, head: lineObj.from },
-              scrollIntoView: true,
+              selection: { anchor: lineObj.from, head: lineObj.to },
+              effects: EditorView.scrollIntoView(lineObj.from, { y: "center" }),
             });
+            view.focus();
             setPendingLineJump(null);
           }
         } catch (e) {
@@ -604,6 +714,21 @@ const Example = () => {
     }
   }, []);
 
+  // Restore sidebar open state from localStorage, then reveal the editor (hide skeleton).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const savedSidebar = localStorage.getItem("somescript-sidebar-open");
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- SSR-safe: hydrate layout from localStorage after mount
+    if (savedSidebar !== null) setIsLeftSidebarOpen(savedSidebar === "true");
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reveal real UI once client-only layout is restored
+    setMounted(true);
+  }, []);
+
+  // Persist sidebar open state whenever it changes (post-mount to avoid clobbering the stored value).
+  useEffect(() => {
+    if (mounted) localStorage.setItem("somescript-sidebar-open", String(isLeftSidebarOpen));
+  }, [isLeftSidebarOpen, mounted]);
+
   const saveSettings = useCallback((newSettings: typeof settings) => {
     setSettings(newSettings);
     if (typeof window !== "undefined") {
@@ -636,12 +761,18 @@ const Example = () => {
       });
       if (res.ok) {
         const data = await res.json();
-        setSynctexData(data);
+        // SyncTeX "Input:" paths are absolute container paths — relativize so reverse-sync and
+        // PDF-preview lookups hit /api/files correctly instead of 404ing.
+        const files: Record<string, string> = {};
+        for (const [id, raw] of Object.entries((data.files ?? {}) as Record<string, string>)) {
+          files[id] = toProjectRelative(raw);
+        }
+        setSynctexData({ ...data, files });
       }
     } catch (err) {
       console.warn("Failed to fetch SyncTeX map:", err);
     }
-  }, [projectId]);
+  }, [projectId, toProjectRelative]);
 
   // Chat History / Multi-thread states
   const [threads, setThreads] = useState<Array<{ id: string; title: string; createdAt: number }>>([]);
@@ -748,12 +879,23 @@ const Example = () => {
         setCanUndo(undoDepth(view.state) > 0);
         setCanRedo(redoDepth(view.state) > 0);
       }
-      try {
-        const line = update.state.doc.lineAt(update.state.selection.main.head).number;
-        setCurrentLineNumber(line);
-      } catch (e) {
-        // ignore
-      }
+    }
+  }, []);
+
+  // Double-click in the editor jumps the PDF to that line (forward SyncTeX).
+  // The `nonce` lets the same line re-trigger a scroll on a repeat double-click.
+  // `frac` = how far into the source line the click was — a wrapped paragraph is one
+  // source line, so this picks the right typeset line within its y-range in the PDF.
+  const handleSyncToPdf = useCallback(() => {
+    const view = editorViewRef.current;
+    if (!view) return;
+    try {
+      const head = view.state.selection.main.head;
+      const lineObj = view.state.doc.lineAt(head);
+      const frac = lineObj.length > 0 ? (head - lineObj.from) / lineObj.length : 0;
+      setPdfSyncRequest({ line: lineObj.number, frac, nonce: Date.now() });
+    } catch (e) {
+      // ignore
     }
   }, []);
 
@@ -854,6 +996,11 @@ const Example = () => {
 
   // Handle file selection
   const handleFileSelect = useCallback(async (path: string) => {
+    path = toProjectRelative(path);
+    // Already open: nothing to load. Re-selecting would reload the PDF (new t= URL),
+    // which unloads/reloads the document — the preview "disappears" and scroll resets —
+    // and the content re-fetch races the pendingLineJump cursor jump.
+    if (path === selectedPath) return;
     if (selectedPath && editedCode !== currentCode) {
       try {
         await fetch("/api/files", {
@@ -920,7 +1067,7 @@ const Example = () => {
     } catch (err) {
       console.error("Failed to read file", err);
     }
-  }, [selectedPath, editedCode, currentCode, fileTree]);
+  }, [selectedPath, editedCode, currentCode, fileTree, toProjectRelative]);
 
   // Load file tree
   const refreshWorkspace = useCallback(async () => {
@@ -935,10 +1082,33 @@ const Example = () => {
     }
   }, [withProject]);
 
+  // Reload current file content (defined before handleReplaceAll, which uses it)
+  const refreshCurrentFile = useCallback(async () => {
+    if (!selectedPath) return;
+    // Skip binary files — PDFs and images are served as raw bytes, not JSON
+    const mode = getViewMode(selectedPath);
+    if (mode === "pdf-standalone" || mode === "image") return;
+    try {
+      const res = await fetch(withProject(`/api/files?path=${encodeURIComponent(selectedPath)}`));
+      const data = await res.json();
+      if (data.content !== undefined) {
+        setCurrentCode(data.content);
+        setEditedCode(data.content);
+        setCurrentLanguage(getLanguageFromPath(selectedPath));
+        setSaveStatus("saved");
+      }
+    } catch (err) {
+      console.error("Failed to reload file content", err);
+    }
+  }, [selectedPath, withProject]);
+
   const handleSelectMatch = useCallback((filePath: string, line: number) => {
-    setPendingLineJump({ path: filePath, line });
-    handleFileSelect(filePath);
-  }, [handleFileSelect]);
+    // Normalize here too so pendingLineJump.path always matches the (normalized) selectedPath;
+    // a mismatch means the editor jump silently never fires.
+    const rel = toProjectRelative(filePath);
+    setPendingLineJump({ path: rel, line });
+    handleFileSelect(rel);
+  }, [handleFileSelect, toProjectRelative]);
 
   const handleReplaceAll = useCallback(async (replaceText: string, searchState: { query: string; options: { matchCase: boolean; matchWholeWord: boolean; useRegex: boolean; scope: string } }) => {
     try {
@@ -961,15 +1131,15 @@ const Example = () => {
         // Reload workspace tree
         refreshWorkspace();
         // If selected file was updated, reload its content in the editor
+        // (handleFileSelect now no-ops on the already-open file, so reload directly)
         if (selectedPath && data.modifiedFiles.includes(selectedPath)) {
-          // Trigger file select reload
-          handleFileSelect(selectedPath);
+          refreshCurrentFile();
         }
       }
     } catch (err) {
       console.error(err);
     }
-  }, [projectId, selectedPath, refreshWorkspace, handleFileSelect]);
+  }, [projectId, selectedPath, refreshWorkspace, refreshCurrentFile]);
 
   const handleSearchChange = useCallback((query: string, options: { matchCase: boolean; matchWholeWord: boolean; useRegex: boolean }) => {
     setSearchState({ query, options });
@@ -1102,7 +1272,7 @@ const Example = () => {
   }, [pdfUrl]);
 
   const handleCompileLatex = useCallback(async () => {
-    const compilePath = settings.mainFilePath || selectedPath;
+    const compilePath = toProjectRelative(settings.mainFilePath || selectedPath);
     if (!compilePath || !compilePath.endsWith(".tex")) {
       alert("Please select a main .tex file to compile (or open a .tex file). You can set the main file in the settings tab.");
       return;
@@ -1163,11 +1333,12 @@ const Example = () => {
           let pdfPath = ".preview-cache/main.pdf";
           const match = logBuffer.match(/\[SUCCESS\]\s+(.*)/);
           if (match && match[1]) {
-            const rawPdfPath = match[1].trim();
+            // Normalize in case the compiler echoes an absolute container path.
+            const rawPdfPath = toProjectRelative(match[1].trim());
             pdfPath = rawPdfPath.startsWith(".preview-cache/") ? rawPdfPath : `.preview-cache/${rawPdfPath}`;
           } else if (selectedPath) {
             // Derive PDF filename from current selected .tex file path
-            const derivedPdf = selectedPath.replace(/\.tex$/, ".pdf");
+            const derivedPdf = toProjectRelative(selectedPath).replace(/\.tex$/, ".pdf");
             pdfPath = `.preview-cache/${derivedPdf}`;
           }
           setPdfUrl(withProject(`${window.location.origin}/api/files?path=${encodeURIComponent(pdfPath)}&t=${Date.now()}`));
@@ -1183,27 +1354,7 @@ const Example = () => {
       setIsCompiling(false);
       setIsTerminalStreaming(false);
     }
-  }, [projectId, selectedPath, editedCode, settings, fetchSyncTex, withProject]);
-
-  // Reload current file content
-  const refreshCurrentFile = useCallback(async () => {
-    if (!selectedPath) return;
-    // Skip binary files — PDFs and images are served as raw bytes, not JSON
-    const mode = getViewMode(selectedPath);
-    if (mode === "pdf-standalone" || mode === "image") return;
-    try {
-      const res = await fetch(withProject(`/api/files?path=${encodeURIComponent(selectedPath)}`));
-      const data = await res.json();
-      if (data.content !== undefined) {
-        setCurrentCode(data.content);
-        setEditedCode(data.content);
-        setCurrentLanguage(getLanguageFromPath(selectedPath));
-        setSaveStatus("saved");
-      }
-    } catch (err) {
-      console.error("Failed to reload file content", err);
-    }
-  }, [selectedPath, withProject]);
+  }, [projectId, selectedPath, editedCode, settings, fetchSyncTex, withProject, toProjectRelative]);
 
   // Load tree on mount
   useEffect(() => {
@@ -1339,7 +1490,7 @@ const Example = () => {
   const completedTasks = tasks.filter((t) => t.status === "completed");
   const pendingTasks = tasks.filter((t) => t.status !== "completed");
 
-
+  if (!mounted) return <EditorSkeleton />;
 
   return (
     <div className="relative flex flex-col h-screen w-screen bg-background overflow-hidden">
@@ -1857,16 +2008,26 @@ const Example = () => {
 
       {/* Center Panel - Code + Terminal */}
       <div className="flex flex-1 flex-col overflow-hidden">
-        <ResizablePanelGroup orientation="vertical">
+        <ResizablePanelGroup
+          orientation="vertical"
+          defaultLayout={verticalLayout.defaultLayout}
+          onLayoutChanged={verticalLayout.onLayoutChanged}
+        >
           <ResizablePanel
+            id="editor-main"
             defaultSize={75}
             minSize={30}
             className={cn(isAnimatingTerminal && "panel-transition")}
           >
             {/* Editor + PDF Split Pane */}
-            <ResizablePanelGroup orientation="horizontal">
+            <ResizablePanelGroup
+              orientation="horizontal"
+              defaultLayout={horizontalLayout.defaultLayout}
+              onLayoutChanged={horizontalLayout.onLayoutChanged}
+            >
               {/* Left: CodeMirror Editor */}
               <ResizablePanel
+                id="code"
                 panelRef={codePanelRef}
                 collapsible
                 collapsedSize={2}
@@ -1896,24 +2057,26 @@ const Example = () => {
                         <span className="opacity-60">PDF displayed in preview pane →</span>
                       </div>
                     ) : selectedPath && viewMode === "code" ? (
-                      <CodeMirror
-                        value={editedCode}
-                        height="100%"
-                        theme="dark"
-                        extensions={extensions}
-                        basicSetup={{
-                          foldGutter: false,
-                          bracketMatching: false,
-                          autocompletion: false,
-                        }}
-                        onChange={(value) => setEditedCode(value)}
-                        onCreateEditor={(view) => {
-                          // eslint-disable-next-line react-hooks/immutability -- storing the imperative CodeMirror EditorView handle in a ref
-                          editorViewRef.current = view;
-                        }}
-                        onUpdate={handleUpdate}
-                        className="absolute inset-0 w-full h-full text-sm font-mono border-none focus:outline-none"
-                      />
+                      <div className="absolute inset-0" onDoubleClick={handleSyncToPdf}>
+                        <CodeMirror
+                          value={editedCode}
+                          height="100%"
+                          theme="dark"
+                          extensions={extensions}
+                          basicSetup={{
+                            foldGutter: false,
+                            bracketMatching: false,
+                            autocompletion: false,
+                          }}
+                          onChange={(value) => setEditedCode(value)}
+                          onCreateEditor={(view) => {
+                            // eslint-disable-next-line react-hooks/immutability -- storing the imperative CodeMirror EditorView handle in a ref
+                            editorViewRef.current = view;
+                          }}
+                          onUpdate={handleUpdate}
+                          className="absolute inset-0 w-full h-full text-sm font-mono border-none focus:outline-none"
+                        />
+                      </div>
                     ) : (
                       <div className="flex items-center justify-center h-full text-muted-foreground text-sm font-mono bg-background">
                         {"// Select a file from the sidebar to edit"}
@@ -1932,6 +2095,7 @@ const Example = () => {
 
               {/* Right: PDF Preview */}
               <ResizablePanel
+                id="pdf"
                 panelRef={pdfPanelRef}
                 collapsible
                 collapsedSize={0}
@@ -1957,7 +2121,7 @@ const Example = () => {
                               pdfUrl={pdfUrl}
                               synctexData={synctexData}
                               selectedPath={selectedPath}
-                              currentLineNumber={currentLineNumber}
+                              pdfSyncRequest={pdfSyncRequest}
                               onSelectLine={handleSelectMatch}
                             />
                           </EmbedPDF>
@@ -1986,6 +2150,7 @@ const Example = () => {
           />
 
           <ResizablePanel
+            id="terminal"
             panelRef={terminalPanelRef}
             collapsible
             collapsedSize={0}
@@ -2039,7 +2204,8 @@ interface SynctexRecord {
   line: number;
   page: number;
   x: number;
-  y: number;
+  y: number; // first (top-most) baseline of the source line
+  y2?: number; // last (bottom-most) baseline — wrapped paragraphs span y..y2
   w: number;
   h: number;
 }
@@ -2052,7 +2218,7 @@ interface HeadlessPdfViewerProps {
   pdfUrl: string | null;
   synctexData: SynctexData | null;
   selectedPath: string;
-  currentLineNumber: number;
+  pdfSyncRequest: { line: number; frac: number; nonce: number } | null;
   onSelectLine: (filePath: string, line: number) => void;
 }
 
@@ -2060,7 +2226,7 @@ const HeadlessPdfViewer = ({
   pdfUrl,
   synctexData,
   selectedPath,
-  currentLineNumber,
+  pdfSyncRequest,
   onSelectLine,
 }: HeadlessPdfViewerProps) => {
   const docManagerCap = useDocumentManagerCapability();
@@ -2108,7 +2274,7 @@ const HeadlessPdfViewer = ({
       documentId={activeDocumentId}
       synctexData={synctexData}
       selectedPath={selectedPath}
-      currentLineNumber={currentLineNumber}
+      pdfSyncRequest={pdfSyncRequest}
       onSelectLine={onSelectLine}
     />
   );
@@ -2119,7 +2285,7 @@ interface HeadlessPdfViewerInnerProps {
   documentId: string;
   synctexData: SynctexData | null;
   selectedPath: string;
-  currentLineNumber: number;
+  pdfSyncRequest: { line: number; frac: number; nonce: number } | null;
   onSelectLine: (filePath: string, line: number) => void;
 }
 
@@ -2128,7 +2294,7 @@ const HeadlessPdfViewerInner = ({
   documentId,
   synctexData,
   selectedPath,
-  currentLineNumber,
+  pdfSyncRequest,
   onSelectLine,
 }: HeadlessPdfViewerInnerProps) => {
   const scrollHook = useScroll(documentId);
@@ -2137,9 +2303,24 @@ const HeadlessPdfViewerInner = ({
   const searchHook = useSearch(documentId);
   const selectionCap = useSelectionCapability();
 
-  // Cursor synchronization hook
+  // Highlight box (raw SyncTeX scaled points) flashed on the target line after a forward sync.
+  // nonce keys the flash element so a re-sync remounts it and the CSS animation restarts —
+  // otherwise re-syncing the same line renders an identical element whose finished
+  // animation (forwards => opacity 0) never replays, and the highlight seems to "not show".
+  const [syncHighlight, setSyncHighlight] = useState<{ page: number; x: number; y: number; w: number; h: number; nonce: number } | null>(null);
+  const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Forward SyncTeX: scroll the PDF to the editor line ONLY on an explicit
+  // double-click (pdfSyncRequest), never on plain cursor movement.
+  const lastSyncNonceRef = useRef<number | null>(null);
   useEffect(() => {
-    if (!synctexData || !selectedPath || !scrollHook?.provides) return;
+    if (!pdfSyncRequest || !synctexData || !selectedPath || !scrollHook?.provides) return;
+    // One-shot per double-click. scrollHook.provides changes identity on every manual
+    // scroll, which re-runs this effect; without the nonce guard it would re-scroll to
+    // the sync target each time and the preview would feel stuck.
+    if (pdfSyncRequest.nonce === lastSyncNonceRef.current) return;
+    lastSyncNonceRef.current = pdfSyncRequest.nonce;
+    const targetLine = pdfSyncRequest.line;
 
     // Find fileId
     const fileIdStr = Object.keys(synctexData.files).find(
@@ -2149,30 +2330,42 @@ const HeadlessPdfViewerInner = ({
     const fileId = parseInt(fileIdStr, 10);
 
     // Look up record matching fileId and closest line
-    let match = synctexData.records.find((r: SynctexRecord) => r.fileId === fileId && r.line === currentLineNumber);
+    let match = synctexData.records.find((r: SynctexRecord) => r.fileId === fileId && r.line === targetLine);
     if (!match) {
       // Find the closest line match
       const fileRecords = synctexData.records.filter((r: SynctexRecord) => r.fileId === fileId);
       if (fileRecords.length > 0) {
         match = fileRecords.reduce((prev: SynctexRecord, curr: SynctexRecord) => {
-          return Math.abs(curr.line - currentLineNumber) < Math.abs(prev.line - currentLineNumber) ? curr : prev;
+          return Math.abs(curr.line - targetLine) < Math.abs(prev.line - targetLine) ? curr : prev;
         });
       }
     }
 
     if (match) {
+      // A wrapped paragraph is one source line spanning y..y2 in the PDF; interpolate
+      // by the click's fraction within the source line to land on the right typeset line.
+      const y2 = match.y2 ?? match.y;
+      const targetY = match.y + (y2 - match.y) * Math.min(1, Math.max(0, pdfSyncRequest.frac ?? 0));
       try {
         // Records are in scaled points (65536 sp = 1 pt); pageCoordinates wants pt from the top-left.
         scrollHook.provides.scrollToPage({
           pageNumber: match.page,
-          pageCoordinates: { x: match.x / 65536, y: match.y / 65536 },
+          pageCoordinates: { x: match.x / 65536, y: targetY / 65536 },
           alignY: 50,
         });
       } catch (e) {
         console.warn("Failed to scroll to page:", e);
       }
+      // Flash a highlight on the synced line, then fade it out.
+      setSyncHighlight({ page: match.page, x: match.x, y: targetY, w: match.w, h: match.h, nonce: pdfSyncRequest.nonce });
+      if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+      highlightTimerRef.current = setTimeout(() => setSyncHighlight(null), 2200);
     }
-  }, [currentLineNumber, selectedPath, synctexData, scrollHook?.provides]);
+  }, [pdfSyncRequest, selectedPath, synctexData, scrollHook?.provides]);
+
+  useEffect(() => () => {
+    if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+  }, []);
 
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
 
@@ -2511,12 +2704,17 @@ const HeadlessPdfViewerInner = ({
 
                     for (const r of pageRecords) {
                       // Records are in scaled points (65536 sp = 1 pt); convert to pt before normalizing.
+                      // A record spans y..y2 (wrapped paragraph = one source line); clicks inside
+                      // that band count as zero vertical distance, so clicking the bottom of a
+                      // paragraph resolves to that paragraph, not a neighboring line.
                       const rxRelative = r.x / 65536 / estimatedWidth;
-                      const ryRelative = r.y / 65536 / estimatedHeight;
+                      const ryTop = (r.y - r.h) / 65536 / estimatedHeight;
+                      const ryBottom = (r.y2 ?? r.y) / 65536 / estimatedHeight;
                       const clickXRelative = clickX / rect.width;
                       const clickYRelative = clickY / rect.height;
-                      
-                      const dist = Math.pow(rxRelative - clickXRelative, 2) + Math.pow(ryRelative - clickYRelative, 2);
+
+                      const dy = clickYRelative < ryTop ? ryTop - clickYRelative : clickYRelative > ryBottom ? clickYRelative - ryBottom : 0;
+                      const dist = Math.pow(rxRelative - clickXRelative, 2) + Math.pow(dy, 2);
                       if (dist < minDistance) {
                         minDistance = dist;
                         closestRecord = r;
@@ -2541,6 +2739,32 @@ const HeadlessPdfViewerInner = ({
                         className="shadow-md bg-background border border-border/40 rounded-sm overflow-hidden"
                         onDoubleClick={handleDoubleClick}
                       >
+                        {syncHighlight && syncHighlight.page === pageIndex + 1 && (() => {
+                          // SyncTeX is line-granular: a record boxes some fragment of the source
+                          // line, not the clicked word, so a box-accurate highlight often lands on
+                          // the wrong word. Highlight the full-width line band instead (à la
+                          // Overleaf): vertical position from the record, horizontal spans the page.
+                          const zoom = zoomHook?.state?.currentZoomLevel ?? 1;
+                          const sp = zoom / 65536; // scaled points -> css px at current zoom
+                          // Band spans ~3 text lines, centered on the target line, to absorb
+                          // SyncTeX's line-level (not word-level) imprecision.
+                          const lineH = Math.max(syncHighlight.h * sp, zoom * 11);
+                          return (
+                            <div
+                              key={syncHighlight.nonce}
+                              className="synctex-flash"
+                              style={{
+                                position: "absolute",
+                                left: 6,
+                                right: 6,
+                                top: Math.max(0, (syncHighlight.y - syncHighlight.h) * sp - lineH),
+                                height: lineH * 3,
+                                pointerEvents: "none",
+                                zIndex: 30,
+                              }}
+                            />
+                          );
+                        })()}
                         <PagePointerProvider
                           documentId={documentId}
                           pageIndex={pageIndex}
