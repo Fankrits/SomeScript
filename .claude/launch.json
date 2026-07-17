@@ -8,6 +8,12 @@
       "port": 3000
     },
     {
+      "name": "editor",
+      "runtimeExecutable": "env",
+      "runtimeArgs": ["PATH=/usr/local/bin:/Users/fankrits/.bun/bin:/opt/homebrew/bin:/usr/bin:/bin", "bun", "--cwd=apps/editor", "run", "dev"],
+      "port": 3002
+    },
+    {
       "name": "web-only",
       "runtimeExecutable": "bun",
       "runtimeArgs": ["--cwd=apps/web", "run", "dev"],
