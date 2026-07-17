@@ -63,7 +63,8 @@ interface SyncTexData {
     line: number;
     page: number;
     x: number;
-    y: number;
+    y: number; // first (top-most) box baseline for this source line
+    y2: number; // last (bottom-most) box baseline — a wrapped paragraph is one source line spanning y..y2
     w: number;
     h: number;
   }>;
@@ -95,22 +96,31 @@ function parseSyncTex(rawText: string): SyncTexData {
         const h = parseFloat(parts[5]);
         
         if (!isNaN(fileId) && !isNaN(lineNum)) {
-          records.push({ fileId, line: lineNum, page: currentPage, x, y, w, h });
+          records.push({ fileId, line: lineNum, page: currentPage, x, y, y2: y, w, h });
         }
       }
     }
   }
 
-  // ponytail: Deduplicate line records to keep payload small
-  const seen = new Set<string>();
-  const uniqueRecords = records.filter(r => {
+  // Aggregate boxes per (file, source line, page) into one record spanning the line's
+  // full y-range. A wrapped paragraph is a single source line typeset across many PDF
+  // lines; keeping only the first box would always map it to the paragraph top.
+  const byKey = new Map<string, SyncTexData["records"][number]>();
+  for (const r of records) {
     const key = `${r.fileId}:${r.line}:${r.page}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+    const ex = byKey.get(key);
+    if (!ex) {
+      byKey.set(key, r);
+    } else {
+      ex.x = Math.min(ex.x, r.x);
+      ex.y = Math.min(ex.y, r.y);
+      ex.y2 = Math.max(ex.y2, r.y);
+      ex.w = Math.max(ex.w, r.w);
+      ex.h = Math.max(ex.h, r.h);
+    }
+  }
 
-  return { files, records: uniqueRecords };
+  return { files, records: [...byKey.values()] };
 }
 
 const server = Bun.serve({
