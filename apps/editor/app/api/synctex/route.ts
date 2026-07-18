@@ -3,7 +3,7 @@ import { NextRequest } from "next/server";
 
 export async function POST(req: NextRequest) {
   try {
-    const { projectId: rawProjectId, path: fileRelativePath } = await req.json();
+    const { projectId: rawProjectId, path: fileRelativePath, ...query } = await req.json();
     if (!fileRelativePath) throw new ApiError(400, "Path parameter is required");
 
     const projectId = await requireProject(rawProjectId);
@@ -31,6 +31,7 @@ export async function POST(req: NextRequest) {
         localProjectPath: projectPath,
         projectId,
         fileRelativePath,
+        ...query,
       }),
     });
 

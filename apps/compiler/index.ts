@@ -1,8 +1,17 @@
 import { spawn } from "child_process";
+import { existsSync } from "fs";
 import fs from "fs/promises";
 import path from "path";
 
 const PORT = process.env.PORT || 3001;
+
+// Official SyncTeX CLI (jlaurens/synctex). Built by scripts/build-synctex.sh into
+// bin/synctex; falls back to a system-wide install (e.g. TeX Live) on PATH.
+const SYNCTEX_BIN =
+  process.env.SYNCTEX_BIN ||
+  (existsSync(path.join(import.meta.dir, "bin", "synctex"))
+    ? path.join(import.meta.dir, "bin", "synctex")
+    : "synctex");
 
 const COMPILER_SECRET = process.env.COMPILER_SECRET;
 // Local mode reads arbitrary caller-supplied filesystem paths — dev only unless explicitly enabled.
@@ -56,71 +65,36 @@ async function cleanupStaleWorkspaces() {
 setInterval(cleanupStaleWorkspaces, 3600000); // run hourly
 cleanupStaleWorkspaces();
 
-interface SyncTexData {
-  files: Record<string, string>;
-  records: Array<{
-    fileId: number;
-    line: number;
-    page: number;
-    x: number;
-    y: number; // first (top-most) box baseline for this source line
-    y2: number; // last (bottom-most) box baseline — a wrapped paragraph is one source line spanning y..y2
-    w: number;
-    h: number;
-  }>;
+// Parse the `synctex view`/`synctex edit` CLI output: blocks of `Key:value` lines,
+// one block per result, each starting with an `Output:` line. Coordinates are in
+// PDF points (72 dpi) measured from the top-left of the page.
+function parseSynctexCliOutput(text: string): Array<Record<string, string>> {
+  const blocks: Array<Record<string, string>> = [];
+  let current: Record<string, string> | null = null;
+  for (const line of text.split(/\r?\n/)) {
+    const sep = line.indexOf(":");
+    if (sep < 0) continue;
+    const key = line.slice(0, sep);
+    if (key === "Output") {
+      current = {};
+      blocks.push(current);
+    } else if (current) {
+      current[key] = line.slice(sep + 1);
+    }
+  }
+  return blocks;
 }
 
-function parseSyncTex(rawText: string): SyncTexData {
-  const files: Record<string, string> = {};
-  const records: SyncTexData["records"] = [];
-  let currentPage = 1;
-
-  const lines = rawText.split(/\r?\n/);
-  for (const line of lines) {
-    if (line.startsWith("Input:")) {
-      const parts = line.split(":");
-      if (parts.length >= 3) {
-        files[parts[1]] = parts.slice(2).join(":");
-      }
-    } else if (line.startsWith("{")) {
-      currentPage = parseInt(line.substring(1), 10);
-    } else if (line.startsWith("h") || line.startsWith("v") || line.startsWith("[") || line.startsWith("(")) {
-      const content = line.substring(1);
-      const parts = content.replace(/:/g, ",").split(",");
-      if (parts.length >= 6) {
-        const fileId = parseInt(parts[0], 10);
-        const lineNum = parseInt(parts[1], 10);
-        const x = parseFloat(parts[2]);
-        const y = parseFloat(parts[3]);
-        const w = parseFloat(parts[4]);
-        const h = parseFloat(parts[5]);
-        
-        if (!isNaN(fileId) && !isNaN(lineNum)) {
-          records.push({ fileId, line: lineNum, page: currentPage, x, y, y2: y, w, h });
-        }
-      }
-    }
-  }
-
-  // Aggregate boxes per (file, source line, page) into one record spanning the line's
-  // full y-range. A wrapped paragraph is a single source line typeset across many PDF
-  // lines; keeping only the first box would always map it to the paragraph top.
-  const byKey = new Map<string, SyncTexData["records"][number]>();
-  for (const r of records) {
-    const key = `${r.fileId}:${r.line}:${r.page}`;
-    const ex = byKey.get(key);
-    if (!ex) {
-      byKey.set(key, r);
-    } else {
-      ex.x = Math.min(ex.x, r.x);
-      ex.y = Math.min(ex.y, r.y);
-      ex.y2 = Math.max(ex.y2, r.y);
-      ex.w = Math.max(ex.w, r.w);
-      ex.h = Math.max(ex.h, r.h);
-    }
-  }
-
-  return { files, records: [...byKey.values()] };
+function runSynctex(args: string[], cwd: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(SYNCTEX_BIN, args, { cwd });
+    let stdout = "";
+    child.stdout.on("data", (d) => (stdout += d));
+    child.stderr.resume();
+    child.on("error", reject);
+    // Non-zero exit just means "no match" — resolve with whatever was printed.
+    child.on("close", () => resolve(stdout));
+  });
 }
 
 const server = Bun.serve({
@@ -139,32 +113,56 @@ const server = Bun.serve({
     if (url.pathname === "/synctex" && req.method === "POST") {
       try {
         const body = await req.json();
-        const { mode, localProjectPath, projectId, fileRelativePath } = body;
-        
-        let synctexPath = "";
+        const { mode, localProjectPath, projectId, fileRelativePath, type, texRelativePath, line, page, x, y } = body;
+
+        let base = "";
         if (mode === "local") {
           if (!ALLOW_LOCAL) return Response.json({ error: "local mode disabled" }, { status: 403 });
-          const base = path.resolve(localProjectPath);
-          synctexPath = path.resolve(base, fileRelativePath.replace(/\.tex$/, ".synctex.gz"));
-          const rel = path.relative(base, synctexPath);
-          if (rel.startsWith("..") || path.isAbsolute(rel)) {
-            return Response.json({ error: "Access denied" }, { status: 403 });
-          }
+          base = path.resolve(localProjectPath);
         } else {
           const workspacesDir = path.resolve(process.cwd(), "workspaces");
-          synctexPath = path.resolve(workspacesDir, projectId, fileRelativePath.replace(/\.tex$/, ".synctex.gz"));
-          const rel = path.relative(workspacesDir, synctexPath);
-          if (rel.startsWith("..") || path.isAbsolute(rel) || !rel.includes(path.sep)) {
+          base = path.resolve(workspacesDir, projectId);
+          const rel = path.relative(workspacesDir, base);
+          if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) {
             return Response.json({ error: "Access denied" }, { status: 403 });
           }
         }
+        const inBase = (p: string) => {
+          const rel = path.relative(base, p);
+          return !rel.startsWith("..") && !path.isAbsolute(rel);
+        };
 
-        const fileBuffer = await fs.readFile(synctexPath);
-        const decompressed = Bun.gunzipSync(fileBuffer);
-        const text = new TextDecoder().decode(decompressed);
-        const parsedData = parseSyncTex(text);
+        // The PDF the compile produced; the CLI finds its .synctex.gz next to it.
+        const pdfPath = path.resolve(base, fileRelativePath.replace(/\.tex$/, ".pdf"));
+        if (!inBase(pdfPath)) return Response.json({ error: "Access denied" }, { status: 403 });
 
-        return Response.json(parsedData);
+        if (type === "edit") {
+          // Reverse sync: PDF (page, x, y in pt from top-left) -> source file:line.
+          const output = await runSynctex(["edit", "-o", `${page}:${x}:${y}:${pdfPath}`], base);
+          const block = parseSynctexCliOutput(output)[0];
+          if (!block?.Input || !block.Line) {
+            return Response.json({ error: "No SyncTeX match" }, { status: 404 });
+          }
+          const input = path.isAbsolute(block.Input) ? path.relative(base, block.Input) : block.Input;
+          return Response.json({ input, line: parseInt(block.Line, 10), column: parseInt(block.Column ?? "-1", 10) });
+        }
+
+        // Forward sync: source file:line -> typeset boxes on a PDF page.
+        const texPath = path.resolve(base, texRelativePath || fileRelativePath);
+        if (!inBase(texPath)) return Response.json({ error: "Access denied" }, { status: 403 });
+        const output = await runSynctex(["view", "-i", `${line}:0:${texPath}`, "-o", pdfPath], base);
+        const records = parseSynctexCliOutput(output)
+          .filter((b) => b.Page)
+          .map((b) => ({
+            page: parseInt(b.Page, 10),
+            x: parseFloat(b.x),
+            y: parseFloat(b.y),
+            h: parseFloat(b.h),
+            v: parseFloat(b.v),
+            W: parseFloat(b.W),
+            H: parseFloat(b.H),
+          }));
+        return Response.json({ records });
       } catch (err: any) {
         return Response.json({ error: err.message }, { status: 500 });
       }
