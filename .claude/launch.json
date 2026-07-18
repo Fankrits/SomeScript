@@ -14,6 +14,12 @@
       "port": 3002
     },
     {
+      "name": "compiler",
+      "runtimeExecutable": "env",
+      "runtimeArgs": ["PATH=/usr/local/bin:/Users/fankrits/.bun/bin:/opt/homebrew/bin:/usr/bin:/bin", "PORT=3101", "bun", "--cwd=apps/compiler", "--watch", "index.ts"],
+      "port": 3101
+    },
+    {
       "name": "web-only",
       "runtimeExecutable": "bun",
       "runtimeArgs": ["--cwd=apps/web", "run", "dev"],
