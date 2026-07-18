@@ -539,10 +539,9 @@ const Example = () => {
   const [editedCode, setEditedCode] = useState<string>("");
   const [newItemName, setNewItemName] = useState<string>("");
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
-  const [synctexData, setSynctexData] = useState<{
-    files: Record<string, string>;
-    records: Array<{ fileId: number; line: number; page: number; x: number; y: number; y2?: number; w: number; h: number; }>;
-  } | null>(null);
+  // Project-relative path of the last successfully compiled root .tex — SyncTeX
+  // queries resolve the PDF/.synctex.gz from it. null until the first compile.
+  const [compiledPath, setCompiledPath] = useState<string | null>(null);
   // Set only on an explicit editor double-click — the PDF scrolls to this line then, not on cursor moves.
   const [pdfSyncRequest, setPdfSyncRequest] = useState<{ line: number; frac: number; nonce: number } | null>(null);
   const [isCompiling, setIsCompiling] = useState<boolean>(false);
@@ -752,27 +751,23 @@ const Example = () => {
     return files;
   }, []);
 
-  const fetchSyncTex = useCallback(async (compilePath: string) => {
+  // Query the official synctex CLI (via /api/synctex -> compiler) per sync request.
+  // type "view": { texRelativePath, line } -> { records }; type "edit": { page, x, y } -> { input, line }.
+  const synctexQuery = useCallback(async (query: Record<string, unknown>): Promise<any | null> => {
+    if (!compiledPath) return null;
     try {
       const res = await fetch("/api/synctex", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId, path: compilePath }),
+        body: JSON.stringify({ projectId, path: compiledPath, ...query }),
       });
-      if (res.ok) {
-        const data = await res.json();
-        // SyncTeX "Input:" paths are absolute container paths — relativize so reverse-sync and
-        // PDF-preview lookups hit /api/files correctly instead of 404ing.
-        const files: Record<string, string> = {};
-        for (const [id, raw] of Object.entries((data.files ?? {}) as Record<string, string>)) {
-          files[id] = toProjectRelative(raw);
-        }
-        setSynctexData({ ...data, files });
-      }
+      if (!res.ok) return null;
+      return await res.json();
     } catch (err) {
-      console.warn("Failed to fetch SyncTeX map:", err);
+      console.warn("SyncTeX query failed:", err);
+      return null;
     }
-  }, [projectId, toProjectRelative]);
+  }, [projectId, compiledPath]);
 
   // Chat History / Multi-thread states
   const [threads, setThreads] = useState<Array<{ id: string; title: string; createdAt: number }>>([]);
@@ -1343,7 +1338,7 @@ const Example = () => {
             pdfPath = `.preview-cache/${derivedPdf}`;
           }
           setPdfUrl(withProject(`${window.location.origin}/api/files?path=${encodeURIComponent(pdfPath)}&t=${Date.now()}`));
-          fetchSyncTex(compilePath);
+          setCompiledPath(compilePath);
         }
       }
     } catch (err) {
@@ -1355,7 +1350,7 @@ const Example = () => {
       setIsCompiling(false);
       setIsTerminalStreaming(false);
     }
-  }, [projectId, selectedPath, editedCode, settings, fetchSyncTex, withProject, toProjectRelative]);
+  }, [projectId, selectedPath, editedCode, settings, withProject, toProjectRelative]);
 
   // Load tree on mount
   useEffect(() => {
@@ -2129,8 +2124,8 @@ const Example = () => {
                           >
                             <HeadlessPdfViewer
                               pdfUrl={pdfUrl}
-                              synctexData={synctexData}
-                              selectedPath={selectedPath}
+                              synctexQuery={synctexQuery}
+                              selectedPath={toProjectRelative(selectedPath)}
                               pdfSyncRequest={pdfSyncRequest}
                               onSelectLine={handleSelectMatch}
                             />
@@ -2209,24 +2204,22 @@ const Example = () => {
   );
 };
 
-interface SynctexRecord {
-  fileId: number;
-  line: number;
+// One `synctex view` result box, in PDF points from the page's top-left:
+// (x, y) visual box origin, (h, v) box left edge / baseline, W x H box size.
+interface SynctexViewRecord {
   page: number;
   x: number;
-  y: number; // first (top-most) baseline of the source line
-  y2?: number; // last (bottom-most) baseline — wrapped paragraphs span y..y2
-  w: number;
+  y: number;
   h: number;
+  v: number;
+  W: number;
+  H: number;
 }
-interface SynctexData {
-  files: Record<string, string>;
-  records: SynctexRecord[];
-}
+type SynctexQuery = (query: Record<string, unknown>) => Promise<any | null>;
 
 interface HeadlessPdfViewerProps {
   pdfUrl: string | null;
-  synctexData: SynctexData | null;
+  synctexQuery: SynctexQuery;
   selectedPath: string;
   pdfSyncRequest: { line: number; frac: number; nonce: number } | null;
   onSelectLine: (filePath: string, line: number) => void;
@@ -2234,7 +2227,7 @@ interface HeadlessPdfViewerProps {
 
 const HeadlessPdfViewer = ({
   pdfUrl,
-  synctexData,
+  synctexQuery,
   selectedPath,
   pdfSyncRequest,
   onSelectLine,
@@ -2282,7 +2275,7 @@ const HeadlessPdfViewer = ({
     <HeadlessPdfViewerInner
       pdfUrl={pdfUrl}
       documentId={activeDocumentId}
-      synctexData={synctexData}
+      synctexQuery={synctexQuery}
       selectedPath={selectedPath}
       pdfSyncRequest={pdfSyncRequest}
       onSelectLine={onSelectLine}
@@ -2293,7 +2286,7 @@ const HeadlessPdfViewer = ({
 interface HeadlessPdfViewerInnerProps {
   pdfUrl: string;
   documentId: string;
-  synctexData: SynctexData | null;
+  synctexQuery: SynctexQuery;
   selectedPath: string;
   pdfSyncRequest: { line: number; frac: number; nonce: number } | null;
   onSelectLine: (filePath: string, line: number) => void;
@@ -2302,7 +2295,7 @@ interface HeadlessPdfViewerInnerProps {
 const HeadlessPdfViewerInner = ({
   pdfUrl,
   documentId,
-  synctexData,
+  synctexQuery,
   selectedPath,
   pdfSyncRequest,
   onSelectLine,
@@ -2313,65 +2306,61 @@ const HeadlessPdfViewerInner = ({
   const searchHook = useSearch(documentId);
   const selectionCap = useSelectionCapability();
 
-  // Highlight box (raw SyncTeX scaled points) flashed on the target line after a forward sync.
+  // Highlight box (PDF points from page top-left) flashed on the target line after a forward sync.
   // nonce keys the flash element so a re-sync remounts it and the CSS animation restarts —
   // otherwise re-syncing the same line renders an identical element whose finished
   // animation (forwards => opacity 0) never replays, and the highlight seems to "not show".
-  const [syncHighlight, setSyncHighlight] = useState<{ page: number; x: number; y: number; w: number; h: number; nonce: number } | null>(null);
+  const [syncHighlight, setSyncHighlight] = useState<{ page: number; y: number; h: number; nonce: number } | null>(null);
   const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Forward SyncTeX: scroll the PDF to the editor line ONLY on an explicit
-  // double-click (pdfSyncRequest), never on plain cursor movement.
+  // Forward SyncTeX (`synctex view`): scroll the PDF to the editor line ONLY on an
+  // explicit double-click (pdfSyncRequest), never on plain cursor movement.
   const lastSyncNonceRef = useRef<number | null>(null);
   useEffect(() => {
-    if (!pdfSyncRequest || !synctexData || !selectedPath || !scrollHook?.provides) return;
+    if (!pdfSyncRequest || !selectedPath || !scrollHook?.provides) return;
     // One-shot per double-click. scrollHook.provides changes identity on every manual
     // scroll, which re-runs this effect; without the nonce guard it would re-scroll to
     // the sync target each time and the preview would feel stuck.
     if (pdfSyncRequest.nonce === lastSyncNonceRef.current) return;
     lastSyncNonceRef.current = pdfSyncRequest.nonce;
-    const targetLine = pdfSyncRequest.line;
+    const scroll = scrollHook.provides;
 
-    // Find fileId
-    const fileIdStr = Object.keys(synctexData.files).find(
-      (key: string) => synctexData.files[key].endsWith(selectedPath)
-    );
-    if (!fileIdStr) return;
-    const fileId = parseInt(fileIdStr, 10);
+    let cancelled = false;
+    (async () => {
+      const data = await synctexQuery({ type: "view", texRelativePath: selectedPath, line: pdfSyncRequest.line });
+      const records: SynctexViewRecord[] = data?.records ?? [];
+      if (cancelled || records.length === 0) return;
 
-    // Look up record matching fileId and closest line
-    let match = synctexData.records.find((r: SynctexRecord) => r.fileId === fileId && r.line === targetLine);
-    if (!match) {
-      // Find the closest line match
-      const fileRecords = synctexData.records.filter((r: SynctexRecord) => r.fileId === fileId);
-      if (fileRecords.length > 0) {
-        match = fileRecords.reduce((prev: SynctexRecord, curr: SynctexRecord) => {
-          return Math.abs(curr.line - targetLine) < Math.abs(prev.line - targetLine) ? curr : prev;
-        });
-      }
-    }
-
-    if (match) {
-      // A wrapped paragraph is one source line spanning y..y2 in the PDF; interpolate
-      // by the click's fraction within the source line to land on the right typeset line.
-      const y2 = match.y2 ?? match.y;
-      const targetY = match.y + (y2 - match.y) * Math.min(1, Math.max(0, pdfSyncRequest.frac ?? 0));
+      // A wrapped paragraph is one source line typeset across several PDF lines (one
+      // record per box); interpolate by the click's fraction within the source line
+      // across the records' baseline range to land on the right typeset line.
+      const page = records[0].page;
+      const baselines = records.filter((r) => r.page === page).map((r) => r.v);
+      const minV = Math.min(...baselines);
+      const maxV = Math.max(...baselines);
+      const targetY = minV + (maxV - minV) * Math.min(1, Math.max(0, pdfSyncRequest.frac ?? 0));
       try {
-        // Records are in scaled points (65536 sp = 1 pt); pageCoordinates wants pt from the top-left.
-        scrollHook.provides.scrollToPage({
-          pageNumber: match.page,
-          pageCoordinates: { x: match.x / 65536, y: targetY / 65536 },
+        // Coordinates are already PDF points from the top-left, as pageCoordinates expects.
+        // behavior "instant": the plugin's default smooth scroll is silently cancelled by
+        // Chromium on any competing scroll/input, leaving the viewport unmoved on long
+        // jumps — the highlight then lands off-screen. Instant is deterministic (and what
+        // Overleaf does for sync jumps).
+        scroll.scrollToPage({
+          pageNumber: page,
+          pageCoordinates: { x: records[0].h, y: targetY },
           alignY: 50,
+          behavior: "instant",
         });
       } catch (e) {
         console.warn("Failed to scroll to page:", e);
       }
       // Flash a highlight on the synced line, then fade it out.
-      setSyncHighlight({ page: match.page, x: match.x, y: targetY, w: match.w, h: match.h, nonce: pdfSyncRequest.nonce });
+      setSyncHighlight({ page, y: targetY, h: records[0].H, nonce: pdfSyncRequest.nonce });
       if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
       highlightTimerRef.current = setTimeout(() => setSyncHighlight(null), 2200);
-    }
-  }, [pdfSyncRequest, selectedPath, synctexData, scrollHook?.provides]);
+    })();
+    return () => { cancelled = true; };
+  }, [pdfSyncRequest, selectedPath, synctexQuery, scrollHook?.provides]);
 
   useEffect(() => () => {
     if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
@@ -2675,67 +2664,19 @@ const HeadlessPdfViewerInner = ({
               <Scroller
                 documentId={documentId}
                 renderPage={({ pageIndex, width, height }) => {
-                  const handleDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
-                    if (!synctexData) return;
+                  const handleDoubleClick = async (e: React.MouseEvent<HTMLDivElement>) => {
                     const rect = e.currentTarget.getBoundingClientRect();
-                    const clickX = e.clientX - rect.left;
-                    const clickY = e.clientY - rect.top;
-                    
-                    // Convert display coordinates to TeX points (72 DPI)
-                    // The PDF standard uses 72 points per inch.
-                    // Map display coordinates relative to width/height to TeX coordinates.
-                    // According to compile data or SyncTeX, records have page, x, y coordinates.
-                    // SyncTeX coordinates on pages are usually measured from the top-left (or bottom-left depending on convention, but let's check).
-                    // Actually, SyncTeX coordinates are 72 DPI, and they are usually defined relative to page dimensions:
-                    // x_tex = (clickX / rect.width) * page_width_in_tex_points
-                    // y_tex = (clickY / rect.height) * page_height_in_tex_points
-                    // Let's find the page dimensions in TeX points or match records by page and relative distance.
-                    
-                    const pageNumber = pageIndex + 1;
-                    const pageRecords = synctexData.records.filter((r: SynctexRecord) => r.page === pageNumber);
-                    if (pageRecords.length === 0) return;
-
-                    // Calculate distance in normalized coordinate space or TeX point space.
-                    // Since we don't have page width/height in TeX points explicitly, we can compute normalized distance:
-                    // SyncTeX record coordinates (x, y) are in scaled points (65536 sp = 1 pt), y from the top.
-                    // Standard TeX pages are 8.5x11 inches (Letter = 612x792 pt) or A4 (595x842 pt).
-                    // In either case, we can find the maximum x and y of the records on the page to estimate the page width/height in TeX points,
-                    // or use standard fallback (e.g. A4/Letter size approximation), or calculate the closest record using normalized coords.
-                    // Even simpler: since both the click coordinate (clickX / rect.width) and SyncTeX records can be normalized,
-                    // let's estimate the bounds of SyncTeX records. Or, we can just use the fact that SyncTeX y is measured from top-left or bottom-left.
-                    // Usually, PDF y increases upwards, but SyncTeX/UI y increases downwards.
-                    // Estimate standard page dimensions in TeX points (72 DPI)
-                    // For Letter: 612 x 792. For A4: 595 x 842.
-                    const estimatedWidth = 612;
-                    const estimatedHeight = 792;
-                    
-                    let closestRecord: SynctexRecord | null = null;
-                    let minDistance = Infinity;
-
-                    for (const r of pageRecords) {
-                      // Records are in scaled points (65536 sp = 1 pt); convert to pt before normalizing.
-                      // A record spans y..y2 (wrapped paragraph = one source line); clicks inside
-                      // that band count as zero vertical distance, so clicking the bottom of a
-                      // paragraph resolves to that paragraph, not a neighboring line.
-                      const rxRelative = r.x / 65536 / estimatedWidth;
-                      const ryTop = (r.y - r.h) / 65536 / estimatedHeight;
-                      const ryBottom = (r.y2 ?? r.y) / 65536 / estimatedHeight;
-                      const clickXRelative = clickX / rect.width;
-                      const clickYRelative = clickY / rect.height;
-
-                      const dy = clickYRelative < ryTop ? ryTop - clickYRelative : clickYRelative > ryBottom ? clickYRelative - ryBottom : 0;
-                      const dist = Math.pow(rxRelative - clickXRelative, 2) + Math.pow(dy, 2);
-                      if (dist < minDistance) {
-                        minDistance = dist;
-                        closestRecord = r;
-                      }
-                    }
-
-                    if (closestRecord) {
-                      const fileRelativePath = synctexData.files[closestRecord.fileId];
-                      if (fileRelativePath) {
-                        onSelectLine(fileRelativePath, closestRecord.line);
-                      }
+                    // Reverse SyncTeX (`synctex edit`) wants PDF points from the page's
+                    // top-left. The page renders at `zoom` css px per pt, so divide it out.
+                    const zoom = zoomHook?.state?.currentZoomLevel ?? 1;
+                    const data = await synctexQuery({
+                      type: "edit",
+                      page: pageIndex + 1,
+                      x: (e.clientX - rect.left) / zoom,
+                      y: (e.clientY - rect.top) / zoom,
+                    });
+                    if (data?.input && data.line) {
+                      onSelectLine(data.input, data.line);
                     }
                   };
 
@@ -2754,11 +2695,10 @@ const HeadlessPdfViewerInner = ({
                           // line, not the clicked word, so a box-accurate highlight often lands on
                           // the wrong word. Highlight the full-width line band instead (à la
                           // Overleaf): vertical position from the record, horizontal spans the page.
-                          const zoom = zoomHook?.state?.currentZoomLevel ?? 1;
-                          const sp = zoom / 65536; // scaled points -> css px at current zoom
+                          const zoom = zoomHook?.state?.currentZoomLevel ?? 1; // pt -> css px
                           // Band spans ~3 text lines, centered on the target line, to absorb
                           // SyncTeX's line-level (not word-level) imprecision.
-                          const lineH = Math.max(syncHighlight.h * sp, zoom * 11);
+                          const lineH = Math.max(syncHighlight.h * zoom, zoom * 11);
                           return (
                             <div
                               key={syncHighlight.nonce}
@@ -2767,7 +2707,7 @@ const HeadlessPdfViewerInner = ({
                                 position: "absolute",
                                 left: 6,
                                 right: 6,
-                                top: Math.max(0, (syncHighlight.y - syncHighlight.h) * sp - lineH),
+                                top: Math.max(0, (syncHighlight.y - syncHighlight.h) * zoom - lineH),
                                 height: lineH * 3,
                                 pointerEvents: "none",
                                 zIndex: 30,
