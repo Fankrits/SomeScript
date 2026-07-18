@@ -1014,6 +1014,7 @@ const Example = () => {
     }
 
     setSelectedPath(path);
+    localStorage.setItem(`somescript-last-file-${projectId}`, path);
 
     const mode = getViewMode(path);
     setViewMode(mode);
@@ -1361,6 +1362,15 @@ const Example = () => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- data load: fetches the workspace tree on mount
     refreshWorkspace();
   }, [refreshWorkspace]);
+
+  // Reopen the file the user last had open in this project (persisted like the layout).
+  const didRestoreFile = useRef(false);
+  useEffect(() => {
+    if (didRestoreFile.current) return;
+    didRestoreFile.current = true;
+    const last = localStorage.getItem(`somescript-last-file-${projectId}`);
+    if (last) handleFileSelect(last);
+  }, [projectId, handleFileSelect]);
 
   // Reload current file when selectedPath changes
   useEffect(() => {
