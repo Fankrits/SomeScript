@@ -15,6 +15,21 @@ OpenWiki includes repository overview, architecture notes, workflows, domain con
 
 When working in this repository, read the OpenWiki quickstart first, then follow its links to the relevant architecture, workflow, domain, operation, and testing notes.
 
+## 0. Implementation Policy: Find the Official Source First
+
+Before writing custom logic for any non-trivial feature (parsers, protocol handling, format encoders/decoders, algorithms with a spec), **search for the official/upstream open-source implementation and port or vendor it instead of hand-rolling it.**
+
+**Precedent**: SyncTeX support was originally a ~50-line hand-rolled `.synctex.gz` text parser in `apps/compiler/index.ts`. It was replaced with the official `synctex` CLI (github.com/jlaurens/synctex — the same tool TeX Live ships), built from source via `apps/compiler/scripts/build-synctex.sh` into `apps/compiler/bin/synctex`, and invoked as a subprocess (`synctex view` / `synctex edit`) instead of reimplementing the record format.
+
+**Checklist for new implementation work:**
+1. Identify the spec/format/protocol involved (e.g., SyncTeX, PDF, BibTeX, LaTeX macro expansion, S3 multipart uploads).
+2. Search for the canonical open-source project — the reference implementation, or the tool the relevant ecosystem actually ships (e.g. what TeX Live bundles) — or a well-maintained library. Prefer an engine already in this repo's dependency tree (Tectonic, `@embedpdf/react-pdf-viewer`, etc.) over introducing a new one.
+3. Prefer porting/vendoring/shelling out to that source over writing the parser or algorithm from scratch. A small build script that compiles or fetches the upstream tool (see `apps/compiler/scripts/build-synctex.sh`) is preferable to reimplementing its logic in TypeScript.
+4. Only write custom code when no suitable official implementation exists, or vendoring it is impractical (license conflict, excessive size, no matching platform support) — state this explicitly rather than silently reinventing the wheel.
+5. Record the upstream source (repo URL + version/commit) next to the vendoring code so it can be updated later.
+
+This applies across the whole monorepo — LaTeX-adjacent parsing in the editor, citation/bibliography handling, PDF text extraction, etc. — not just the compiler.
+
 ## 1. Monorepo Project Structure
 
 This is a Bun-managed monorepo with workspaces mapped under `apps/*`.

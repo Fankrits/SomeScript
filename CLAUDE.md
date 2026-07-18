@@ -13,6 +13,19 @@ This is a Bun-managed Turbo monorepo. The root workspace is intentionally small;
 
 For high-level architecture, request flow, and storage model, see [OpenWiki architecture overview](openwiki/architecture.md).
 
+## Implementation Policy: Find the Official Source First
+
+Before writing custom logic for any non-trivial feature (parsers, protocol handling, format encoders/decoders, algorithms with a spec), search for the official/upstream open-source implementation and port or vendor it instead of hand-rolling it. Precedent: SyncTeX was originally a ~50-line hand-rolled `.synctex.gz` parser in `apps/compiler/index.ts`; it was replaced with the official `synctex` CLI (github.com/jlaurens/synctex, the same one TeX Live ships), built via `apps/compiler/scripts/build-synctex.sh` into `apps/compiler/bin/synctex`.
+
+Checklist for new implementation work:
+1. **Identify the spec/format/protocol involved** (e.g., SyncTeX, PDF, BibTeX, LaTeX macro expansion, S3 multipart, etc.).
+2. **Search for the canonical open-source project** — the reference implementation, the tool the ecosystem actually uses (check what TeX Live / the relevant ecosystem ships), or a well-maintained library already solving it. Prefer the same engine already in this repo's dependency tree (Tectonic, embedpdf, etc.) over a new one.
+3. **Prefer porting/vendoring/shelling out to that source** over writing a parser or algorithm from scratch. A small build script (see `apps/compiler/scripts/build-synctex.sh`) that compiles or vendors the upstream tool is preferable to reimplementing its logic.
+4. **Only write custom code** when no suitable official implementation exists, or the official one is impractical to vendor (license, size, missing platform support) — and say so explicitly rather than silently reinventing it.
+5. Document the upstream source (repo URL, version/commit) next to the vendoring code so it can be updated later.
+
+This applies to every app in the monorepo, not just the compiler — e.g. LaTeX-adjacent parsing in the editor, citation/bibliography handling, PDF text extraction, etc.
+
 ## Critical Scope and Constraints
 
 ### You (Workspace Developer)
