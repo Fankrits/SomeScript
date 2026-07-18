@@ -10,6 +10,7 @@ import { FileText, Folder, Calendar, ArrowUpRight, Search, Settings } from "luci
 import Link from "next/link";
 import Image from "next/image";
 import ProjectsTable from "@/components/tables-01";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export default async function DashboardPage() {
   const { userId, orgId } = await auth();
@@ -48,6 +49,12 @@ export default async function DashboardPage() {
             </span>
             <div className="rounded-lg border border-sidebar-border bg-card p-1 flex items-center justify-between shadow-sm">
               <OrganizationSwitcher
+                fallback={
+                  <div className="flex items-center gap-2 px-2 py-1.5 w-full">
+                    <Skeleton className="h-6 w-6 rounded-md" />
+                    <Skeleton className="h-4 w-28" />
+                  </div>
+                }
                 hidePersonal={false}
                 afterCreateOrganizationUrl="/dashboard"
                 afterLeaveOrganizationUrl="/dashboard"
@@ -82,6 +89,12 @@ export default async function DashboardPage() {
         {/* User Info / Profile Avatar */}
         <div className="border-t border-sidebar-border pt-6 flex items-center gap-3">
           <UserButton
+            fallback={
+              <div className="flex items-center gap-3">
+                <Skeleton className="h-4 w-24" />
+                <Skeleton className="h-8 w-8 rounded-full" />
+              </div>
+            }
             appearance={{
               elements: {
                 userButtonBox: "flex flex-row-reverse gap-3 items-center w-full",
