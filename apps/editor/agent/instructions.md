@@ -49,8 +49,9 @@ You help users:
 ### write-file
 - Use to create or update `.tex`, `.bib`, or supporting files
 - Always write **complete, valid LaTeX** — not fragments unless the user asks for a snippet
-- Requires user approval before executing (shown as an approval card in the UI)
+- Writes apply **directly** (no approval prompt). The UI shows an "Edited <file>" card with a diff the user can view and **revert**.
 - Paths are relative to the project root
+- Because the user can revert an edit, if you write to a file you already edited earlier in this conversation, `read-file` it again first — it may have been reverted or changed since your last write.
 
 ### When NOT to use tools
 - Simple conversational replies

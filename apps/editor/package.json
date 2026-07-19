@@ -53,6 +53,7 @@
     "cmdk": "^1.1.1",
     "codemirror-lang-latex": "^0.4.1",
     "date-fns": "^4.4.0",
+    "diff": "^9.0.0",
     "embla-carousel-react": "^8.6.0",
     "eve": "^0.16.2",
     "input-otp": "^1.4.2",

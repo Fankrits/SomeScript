@@ -359,6 +359,10 @@ const AssistantMessage: FC = () => {
               (part.toolName === "__hitl__" ||
                 part.toolName === "ask_question" ||
                 part.toolName === "__oauth__" ||
+                // File edits render as a standalone "code changes" chip in the
+                // message flow — never buried inside the collapsed tool group.
+                part.toolName === "write-file" ||
+                part.toolName === "write_file" ||
                 part.args?.state === "approval-requested" ||
                 part.args?.state === "approval-responded")
             ) {

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   ShieldAlert,
   Bot,
@@ -10,10 +10,58 @@ import {
   Terminal,
   FileText,
   CheckSquare,
+  RotateCcw,
+  Undo2,
 } from "lucide-react";
+import { structuredPatch } from "diff";
 import { Button } from "@/components/ui/button";
 import { useEveAgentCtx } from "@/components/chat/eve-agent-context";
 import { makeAssistantToolUI } from "@assistant-ui/react";
+import { DiffViewer } from "@/components/diff-viewer";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+
+// Shape of the write-file tool's structured input/output as it reaches the UI.
+type WriteFileInput = { projectId?: string; path?: string; content?: string };
+type WriteFileOutput = {
+  ok?: boolean;
+  path?: string;
+  before?: string | null;
+  created?: boolean;
+  error?: string;
+};
+
+async function fetchFileContent(projectId: string, path: string): Promise<string | null> {
+  try {
+    const res = await fetch(
+      `/api/files?projectId=${encodeURIComponent(projectId)}&path=${encodeURIComponent(path)}`
+    );
+    if (!res.ok) return null; // 404 => file doesn't exist (treated as empty/new)
+    const data = await res.json();
+    return typeof data.content === "string" ? data.content : null;
+  } catch {
+    return null;
+  }
+}
+
+async function postFiles(body: Record<string, unknown>): Promise<boolean> {
+  try {
+    const res = await fetch("/api/files", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
 
 // Loosely-structured args carried by Eve tool calls; every field is optional
 // because each card reads only the subset relevant to its tool.
@@ -268,25 +316,190 @@ function ReadFileCard({ args, result }: { args: ToolCardArgs; result?: unknown }
   );
 }
 
-function WriteFileCard({ args, result }: { args: ToolCardArgs; result?: unknown }) {
-  return (
-    <div className="rounded-lg border p-3 bg-muted/10 mt-1 space-y-1.5">
-      <div className="flex items-center gap-2 text-xs text-muted-foreground font-medium">
-        <FileText className="size-3.5 text-emerald-500" />
-        <span>
-          Write File:{" "}
-          <code className="bg-muted px-1.5 py-0.5 rounded text-foreground text-[11px]">
-            {args?.path || ""}
-          </code>
+// Line-level +/− counts for the chip label; same jsdiff engine the DiffViewer uses,
+// so the numbers match the modal's header stats.
+function diffStats(before: string, after: string): { added: number; removed: number } {
+  const { hunks } = structuredPatch("", "", before, after, undefined, undefined, { context: 0 });
+  let added = 0;
+  let removed = 0;
+  for (const hunk of hunks) {
+    for (const line of hunk.lines) {
+      if (line.startsWith("+")) added++;
+      else if (line.startsWith("-")) removed++;
+    }
+  }
+  return { added, removed };
+}
+
+const chipClass =
+  "inline-flex w-fit max-w-full self-start items-center gap-1.5 rounded-md border bg-muted/20 px-2.5 py-1.5 text-xs my-1";
+
+export function WriteFileCard({ args, result }: { args: ToolCardArgs; result?: unknown }) {
+  const input = (args.input ?? {}) as WriteFileInput;
+  const out = result as WriteFileOutput | undefined;
+  const path = input.path || out?.path || args.path || "";
+  const next = input.content ?? "";
+
+  const [reverted, setReverted] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const before = out?.before ?? null;
+  const created = Boolean(out?.created);
+  // Need a baseline to diff/revert. A created file diffs against "" and reverts by delete.
+  const hasBaseline = before !== null || created;
+
+  const stats = useMemo(
+    () => (out && out.ok !== false && hasBaseline ? diffStats(before ?? "", next) : null),
+    [out, hasBaseline, before, next]
+  );
+
+  // Write in progress — no result yet.
+  if (!out) {
+    return (
+      <div className={chipClass}>
+        <FileText className="size-3.5 shrink-0 text-emerald-500" />
+        <span className="text-muted-foreground animate-pulse">
+          Editing{" "}
+          <code className="text-foreground font-mono">{path || "file…"}</code>
         </span>
       </div>
-      {!!result && (
-        <div className="text-xs text-emerald-600 dark:text-emerald-400 font-medium pl-5">
-          ✓ Written successfully.
+    );
+  }
+
+  // Execution error.
+  if (out.ok === false) {
+    return (
+      <div className={cnChip("border-red-500/40")}>
+        <XCircle className="size-3.5 shrink-0 text-red-500" />
+        <span className="text-muted-foreground truncate">
+          Edit failed: <code className="text-foreground font-mono">{path}</code>
+          <span className="text-red-500 ml-1.5">{out.error || "unknown error"}</span>
+        </span>
+      </div>
+    );
+  }
+
+  // No baseline snapshot (file was too large) — edit applied, but no diff/revert.
+  if (!hasBaseline || !stats) {
+    return (
+      <div className={chipClass}>
+        <FileText className="size-3.5 shrink-0 text-emerald-500" />
+        <span className="text-muted-foreground truncate">
+          Edited <code className="text-foreground font-mono">{path}</code> · diff unavailable
+        </span>
+      </div>
+    );
+  }
+
+  const doRevert = async () => {
+    if (!input.projectId || !path) return;
+    setBusy(true);
+    setError(null);
+    try {
+      // Guard against clobbering edits made after this write (by the user or a later turn).
+      const current = await fetchFileContent(input.projectId, path);
+      if (current !== null && next && current !== next) {
+        const ok = window.confirm(
+          "This file changed since Eve's edit. Revert anyway and overwrite the current content?"
+        );
+        if (!ok) return;
+      }
+      const success = created
+        ? await postFiles({ projectId: input.projectId, action: "delete", path })
+        : await postFiles({ projectId: input.projectId, action: "save", path, content: before ?? "" });
+      if (!success) {
+        setError("Revert failed.");
+        return;
+      }
+      window.dispatchEvent(new CustomEvent("somescript:refresh-workspace"));
+      setReverted(true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const doReapply = async () => {
+    if (!input.projectId || !path) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const success = await postFiles({
+        projectId: input.projectId,
+        action: "save",
+        path,
+        content: next,
+      });
+      if (!success) {
+        setError("Re-apply failed.");
+        return;
+      }
+      window.dispatchEvent(new CustomEvent("somescript:refresh-workspace"));
+      setReverted(false);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog>
+      {/* The whole chip is the trigger: [ code changes · main.tex · +11 -9 ] */}
+      <DialogTrigger asChild>
+        <button
+          type="button"
+          className={cnChip(
+            "hover:bg-muted/60 focus-visible:ring-ring/50 cursor-pointer transition-colors focus-visible:ring-2 focus-visible:outline-none"
+          )}
+        >
+          <FileText className="size-3.5 shrink-0 text-emerald-500" />
+          <span className="text-muted-foreground shrink-0 font-medium">Code changes</span>
+          <code className="text-foreground truncate font-mono">{path}</code>
+          <span className="shrink-0 font-mono text-emerald-600 dark:text-emerald-400">
+            +{stats.added}
+          </span>
+          <span className="shrink-0 font-mono text-red-600 dark:text-red-400">
+            -{stats.removed}
+          </span>
+          {created && <span className="shrink-0 text-emerald-500/80">new file</span>}
+          {reverted && <span className="shrink-0 text-amber-500/90">reverted</span>}
+        </button>
+      </DialogTrigger>
+
+      <DialogContent className="sm:max-w-4xl">
+        <DialogHeader>
+          <DialogTitle className="font-mono text-sm">{path}</DialogTitle>
+        </DialogHeader>
+        <div className="max-h-[65vh] overflow-auto">
+          <DiffViewer
+            oldCode={before ?? ""}
+            newCode={next}
+            layout="split"
+            language="latex"
+            oldTitle="Original"
+            newTitle={created ? "New file" : "Edited"}
+          />
         </div>
-      )}
-    </div>
+        <DialogFooter className="items-center">
+          {error && <span className="mr-auto text-xs text-red-500">{error}</span>}
+          {reverted ? (
+            <Button size="sm" variant="outline" onClick={doReapply} disabled={busy}>
+              <RotateCcw className="mr-1.5 size-3.5" />
+              Re-apply
+            </Button>
+          ) : (
+            <Button size="sm" variant="outline" onClick={doRevert} disabled={busy}>
+              <Undo2 className="mr-1.5 size-3.5" />
+              Revert
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
+}
+
+function cnChip(extra: string): string {
+  return `${chipClass} ${extra}`;
 }
 
 function TodoCard({ args, result }: { args: ToolCardArgs; result?: unknown }) {
