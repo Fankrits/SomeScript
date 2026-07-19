@@ -443,7 +443,7 @@ export function WriteFileCard({ args, result }: { args: ToolCardArgs; result?: u
 
   return (
     <Dialog>
-      {/* The whole chip is the trigger: [ code changes · main.tex · +11 -9 ] */}
+      {/* The whole chip is the trigger: [ main.tex · +11 -9 ] */}
       <DialogTrigger asChild>
         <button
           type="button"
@@ -452,7 +452,6 @@ export function WriteFileCard({ args, result }: { args: ToolCardArgs; result?: u
           )}
         >
           <FileText className="size-3.5 shrink-0 text-emerald-500" />
-          <span className="text-muted-foreground shrink-0 font-medium">Code changes</span>
           <code className="text-foreground truncate font-mono">{path}</code>
           <span className="shrink-0 font-mono text-emerald-600 dark:text-emerald-400">
             +{stats.added}
