@@ -1678,7 +1678,7 @@ const Example = () => {
             )}
           >
             <Sparkles className="size-3.5" />
-            <span>AI Assistant</span>
+            <span>Agent</span>
           </button>
           <button
             onClick={() => setActiveTab("search")}
