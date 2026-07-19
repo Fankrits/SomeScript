@@ -6,7 +6,9 @@ import { DiffViewerCopyButton } from "@/components/diff-viewer-client"
 type DiffLayout = "unified" | "split"
 
 interface DiffLine {
-  type: "added" | "removed" | "context"
+  // "separator" is a local addition (not from @jalco/diff-viewer): a divider row
+  // between non-contiguous change sections. `content` holds the gap label.
+  type: "added" | "removed" | "context" | "separator"
   content: string
   oldNumber: number | null
   newNumber: number | null
@@ -55,7 +57,19 @@ function computeLines(input: DiffInput): DiffLine[] {
 
   const lines: DiffLine[] = []
 
+  let prevOldEnd: number | null = null
   for (const hunk of hunks) {
+    // Divider between change sections that skip unchanged lines (separate hunks).
+    if (prevOldEnd !== null) {
+      const skipped = hunk.oldStart - prevOldEnd
+      lines.push({
+        type: "separator",
+        content: skipped > 0 ? `${skipped} unchanged line${skipped === 1 ? "" : "s"}` : "",
+        oldNumber: null,
+        newNumber: null,
+      })
+    }
+
     let oldNum = hunk.oldStart
     let newNum = hunk.newStart
 
@@ -83,6 +97,8 @@ function computeLines(input: DiffInput): DiffLine[] {
         })
       }
     }
+
+    prevOldEnd = hunk.oldStart + hunk.oldLines
   }
 
   return lines
@@ -123,11 +139,27 @@ function linePrefix(type: DiffLine["type"]) {
   return " "
 }
 
+function SeparatorRow({ colSpan, label }: { colSpan: number; label: string }) {
+  return (
+    <tr aria-hidden>
+      <td
+        colSpan={colSpan}
+        className="border-border/50 bg-muted/30 text-muted-foreground/60 select-none border-y border-dashed px-3 py-1 text-center text-[11px]"
+      >
+        {label ? `⋯ ${label}` : "⋯"}
+      </td>
+    </tr>
+  )
+}
+
 function UnifiedView({ lines, numWidth }: { lines: DiffLine[]; numWidth: number }) {
   return (
     <table className="w-full border-collapse font-mono text-[13px] leading-relaxed">
       <tbody>
-        {lines.map((line, i) => (
+        {lines.map((line, i) =>
+          line.type === "separator" ? (
+            <SeparatorRow key={i} colSpan={4} label={line.content} />
+          ) : (
           <tr key={i} className={cn(lineColor(line.type, "bg"))}>
             <td
               className={cn(
@@ -159,7 +191,8 @@ function UnifiedView({ lines, numWidth }: { lines: DiffLine[]; numWidth: number 
               {line.content || "\u00A0"}
             </td>
           </tr>
-        ))}
+          )
+        )}
       </tbody>
     </table>
   )
@@ -173,7 +206,12 @@ function SplitView({ lines, numWidth }: { lines: DiffLine[]; numWidth: number })
   while (i < lines.length) {
     const line = lines[i]
 
-    if (line.type === "context") {
+    if (line.type === "separator") {
+      // Keep the divider aligned across both columns.
+      leftLines.push(line)
+      rightLines.push(line)
+      i++
+    } else if (line.type === "context") {
       leftLines.push(line)
       rightLines.push(line)
       i++
@@ -208,7 +246,10 @@ function SplitView({ lines, numWidth }: { lines: DiffLine[]; numWidth: number })
       <div className="overflow-x-auto">
         <table className="w-full border-collapse font-mono text-[13px] leading-relaxed">
           <tbody>
-            {leftLines.map((line, idx) => (
+            {leftLines.map((line, idx) =>
+              line?.type === "separator" ? (
+                <SeparatorRow key={idx} colSpan={2} label={line.content} />
+              ) : (
               <tr key={idx} className={cn(line ? lineColor(line.type, "bg") : "")}>
                 <td
                   className={cn(
@@ -228,14 +269,18 @@ function SplitView({ lines, numWidth }: { lines: DiffLine[]; numWidth: number })
                   {line?.content || "\u00A0"}
                 </td>
               </tr>
-            ))}
+              )
+            )}
           </tbody>
         </table>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full border-collapse font-mono text-[13px] leading-relaxed">
           <tbody>
-            {rightLines.map((line, idx) => (
+            {rightLines.map((line, idx) =>
+              line?.type === "separator" ? (
+                <SeparatorRow key={idx} colSpan={2} label={line.content} />
+              ) : (
               <tr key={idx} className={cn(line ? lineColor(line.type, "bg") : "")}>
                 <td
                   className={cn(
@@ -255,7 +300,8 @@ function SplitView({ lines, numWidth }: { lines: DiffLine[]; numWidth: number })
                   {line?.content || "\u00A0"}
                 </td>
               </tr>
-            ))}
+              )
+            )}
           </tbody>
         </table>
       </div>
@@ -287,7 +333,10 @@ export function DiffViewer({
     { added: 0, removed: 0 }
   )
 
-  const fullCode = lines.map((l) => l.content).join("\n")
+  const fullCode = lines
+    .filter((l) => l.type !== "separator")
+    .map((l) => l.content)
+    .join("\n")
   const showHeader = oldTitle || newTitle
 
   return (

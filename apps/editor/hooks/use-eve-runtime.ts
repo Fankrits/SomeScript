@@ -244,16 +244,27 @@ export function useEveRuntime(threadId: string, projectId: string) {
         try {
           const list = JSON.parse(threadListRaw) as { id: string; title: string }[];
           const threadIndex = list.findIndex((t) => t.id === threadId);
-          if (threadIndex !== -1 && list[threadIndex].title === "New Chat") {
+          // Also repair threads whose title was previously saved as the raw
+          // "[projectId: ...]" marker before this fix.
+          const needsTitle =
+            threadIndex !== -1 &&
+            (list[threadIndex].title === "New Chat" ||
+              list[threadIndex].title.startsWith("[projectId:"));
+          if (needsTitle) {
             const firstUserMessage = agent.data?.messages?.find((m) => m.role === "user");
             const firstPart = firstUserMessage?.parts?.find(
               (p: { type: string; text?: string }) => p.type === "text"
             );
             if (firstPart && "text" in firstPart && firstPart.text) {
-              const cleanText = firstPart.text.trim();
-              list[threadIndex].title = cleanText.length > 25 ? cleanText.substring(0, 22) + "..." : cleanText;
-              localStorage.setItem("eve-threads-list", JSON.stringify(list));
-              window.dispatchEvent(new Event("storage"));
+              // Strip the injected "[projectId: ...]" context marker (same as
+              // convertEvePart) so the title shows the actual user message.
+              const cleanText = firstPart.text.replace(/^\[projectId: [^\]]*\]\n?/, "").trim();
+              if (cleanText) {
+                list[threadIndex].title =
+                  cleanText.length > 25 ? cleanText.substring(0, 22) + "..." : cleanText;
+                localStorage.setItem("eve-threads-list", JSON.stringify(list));
+                window.dispatchEvent(new Event("storage"));
+              }
             }
           }
         } catch (e) {
