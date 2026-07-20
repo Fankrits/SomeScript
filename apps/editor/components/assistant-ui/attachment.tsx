@@ -61,6 +61,44 @@ const useAttachmentSrc = () => {
   return useFileSrc(file) ?? src;
 };
 
+// Mirrors useFileSrc, but reads text instead of building an object URL —
+// composer-side attachments only hold the raw File until send() runs.
+const useFileText = (file: File | undefined) => {
+  const [text, setText] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    if (!file) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- text lifecycle tied to the file prop, same as useFileSrc
+      setText(undefined);
+      return;
+    }
+    let cancelled = false;
+    file.text().then((t) => {
+      if (!cancelled) setText(t);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [file]);
+
+  return text;
+};
+
+const useAttachmentText = () => {
+  const { file, text } = useAuiState(
+    useShallow((s): { file?: File; text?: string } => {
+      if (s.attachment.type === "image") return {};
+      if (s.attachment.file) return { file: s.attachment.file };
+      const text = s.attachment.content?.filter((c) => c.type === "text")[0]
+        ?.text;
+      if (!text) return {};
+      return { text };
+    }),
+  );
+
+  return useFileText(file) ?? text;
+};
+
 type AttachmentPreviewProps = {
   src: string;
 };
@@ -84,8 +122,9 @@ const AttachmentPreview: FC<AttachmentPreviewProps> = ({ src }) => {
 
 const AttachmentPreviewDialog: FC<PropsWithChildren> = ({ children }) => {
   const src = useAttachmentSrc();
+  const text = useAttachmentText();
 
-  if (!src) return children;
+  if (!src && text === undefined) return children;
 
   return (
     <Dialog>
@@ -95,14 +134,25 @@ const AttachmentPreviewDialog: FC<PropsWithChildren> = ({ children }) => {
       >
         {children}
       </DialogTrigger>
-      <DialogContent className="aui-attachment-preview-dialog-content [&>button]:bg-foreground/60 [&_svg]:text-background [&>button]:hover:[&_svg]:text-destructive p-2 sm:max-w-3xl [&>button]:rounded-full [&>button]:p-1 [&>button]:opacity-100 [&>button]:ring-0!">
-        <DialogTitle className="aui-sr-only sr-only">
-          Image Attachment Preview
-        </DialogTitle>
-        <div className="aui-attachment-preview bg-background relative mx-auto flex max-h-[80dvh] w-full items-center justify-center overflow-hidden">
-          <AttachmentPreview src={src} />
-        </div>
-      </DialogContent>
+      {src ? (
+        <DialogContent className="aui-attachment-preview-dialog-content [&>button]:bg-foreground/60 [&_svg]:text-background [&>button]:hover:[&_svg]:text-destructive p-2 sm:max-w-3xl [&>button]:rounded-full [&>button]:p-1 [&>button]:opacity-100 [&>button]:ring-0!">
+          <DialogTitle className="aui-sr-only sr-only">
+            <AttachmentPrimitive.Name />
+          </DialogTitle>
+          <div className="aui-attachment-preview bg-background relative mx-auto flex max-h-[80dvh] w-full items-center justify-center overflow-hidden">
+            <AttachmentPreview src={src} />
+          </div>
+        </DialogContent>
+      ) : (
+        <DialogContent className="aui-attachment-text-preview-dialog-content flex max-h-[80dvh] flex-col gap-3 overflow-hidden sm:max-w-2xl">
+          <DialogTitle className="pr-6 font-mono text-sm font-medium">
+            <AttachmentPrimitive.Name />
+          </DialogTitle>
+          <pre className="aui-attachment-text-preview min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words rounded-lg border bg-muted/30 p-3 font-mono text-xs leading-relaxed">
+            {text}
+          </pre>
+        </DialogContent>
+      )}
     </Dialog>
   );
 };
