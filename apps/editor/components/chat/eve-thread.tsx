@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { AssistantRuntimeProvider } from "@assistant-ui/react";
+import { AssistantRuntimeProvider, useComposerRuntime } from "@assistant-ui/react";
 import { Thread } from "@/components/assistant-ui/thread";
 import { useEveRuntime } from "@/hooks/use-eve-runtime";
 import { EveAgentContext } from "@/components/chat/eve-agent-context";
@@ -34,6 +34,26 @@ import {
  * - Voice dictation (via browser Speech API)
  * - Stop button, copy
  */
+/**
+ * Attaches text from elsewhere in the app (e.g. terminal output) to the
+ * composer as a file, so it shows up as a chip instead of filling the input.
+ */
+function ComposerInbox() {
+  const composer = useComposerRuntime();
+
+  React.useEffect(() => {
+    const onInsert = (e: Event) => {
+      const { name, text } = (e as CustomEvent<{ name: string; text: string }>).detail;
+      if (!text) return;
+      composer.addAttachment(new File([text], name, { type: "text/plain" }));
+    };
+    window.addEventListener("somescript:attach-to-chat", onInsert);
+    return () => window.removeEventListener("somescript:attach-to-chat", onInsert);
+  }, [composer]);
+
+  return null;
+}
+
 export function EveThread({ threadId, projectId }: { threadId: string; projectId: string }) {
   const { runtime, agent } = useEveRuntime(threadId, projectId);
 
@@ -54,6 +74,7 @@ export function EveThread({ threadId, projectId }: { threadId: string; projectId
         <ListFilesToolUI />
         <ListFilesSnakeToolUI />
         <TodoToolUI />
+        <ComposerInbox />
 
         <div className="h-full flex flex-col bg-background">
           <Thread />

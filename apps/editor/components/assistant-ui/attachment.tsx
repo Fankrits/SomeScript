@@ -111,13 +111,15 @@ const AttachmentThumb: FC = () => {
   const src = useAttachmentSrc();
 
   return (
-    <Avatar className="aui-attachment-tile-avatar h-full w-full rounded-none">
+    // Avatar is circular by default (incl. an after: ring); attachments are
+    // square tiles, so flatten the radius on every layer.
+    <Avatar className="aui-attachment-tile-avatar h-full w-full rounded-none after:hidden">
       <AvatarImage
         src={src}
         alt="Attachment preview"
-        className="aui-attachment-tile-image object-cover"
+        className="aui-attachment-tile-image rounded-none object-cover"
       />
-      <AvatarFallback>
+      <AvatarFallback className="rounded-none">
         <FileText className="aui-attachment-tile-fallback-icon text-muted-foreground size-8" />
       </AvatarFallback>
     </Avatar>

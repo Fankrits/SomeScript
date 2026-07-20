@@ -11,6 +11,17 @@ interface DifferentialFile {
   content: string;
 }
 
+// Images must round-trip as bytes: readFile() decodes as UTF-8, which silently
+// mangles binary. The compiler decodes these back from base64 (see writeFiles).
+const BINARY_UPLOAD = /\.(png|jpe?g|gif|webp)$/i;
+// Every text format a LaTeX build commonly \input's or loads: sources, custom
+// classes/styles, bibliography styles, plotted/tabulated data, SVG figures.
+const TEXT_UPLOAD = /\.(tex|bib|cls|sty|bst|csv|dat|svg|txt|md)$/i;
+// ponytail: .pdf/.eps figures still can't compile in upload mode — storage's
+// listProjectFiles skips .pdf keys entirely (lib/storage.ts), so they never
+// reach this route. Supporting them means changing the tree listing, which
+// also feeds the file-tree UI.
+
 // Recursively gather all project files via the unified storage provider
 async function getAllStorageFiles(projectId: string, nodes: FileNode[]): Promise<{ path: string; content: string }[]> {
   const files: { path: string; content: string }[] = [];
@@ -20,13 +31,12 @@ async function getAllStorageFiles(projectId: string, nodes: FileNode[]): Promise
       const subFiles = await getAllStorageFiles(projectId, node.children);
       files.push(...subFiles);
     } else if (!node.isDir) {
-      // Read file content
-      if (node.path.endsWith(".tex") || node.path.endsWith(".bib") || node.path.endsWith(".png") || node.path.endsWith(".jpg") || node.path.endsWith(".jpeg")) {
+      if (BINARY_UPLOAD.test(node.path)) {
+        const buffer = await storage.readBinaryFile(projectId, node.path);
+        files.push({ path: node.path, content: buffer.toString("base64") });
+      } else if (TEXT_UPLOAD.test(node.path)) {
         const content = await storage.readFile(projectId, node.path);
-        files.push({
-          path: node.path,
-          content,
-        });
+        files.push({ path: node.path, content });
       }
     }
   }

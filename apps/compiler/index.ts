@@ -2,6 +2,7 @@ import { spawn } from "child_process";
 import { existsSync } from "fs";
 import fs from "fs/promises";
 import path from "path";
+import { applyDraftMode } from "./draft-mode";
 
 const PORT = process.env.PORT || 3001;
 
@@ -30,7 +31,7 @@ async function writeFiles(baseDir: string, files: { path: string; content: strin
       throw new Error(`Invalid file path: ${file.path}`);
     }
     await fs.mkdir(path.dirname(resolvedPath), { recursive: true });
-    if (file.content.startsWith("data:") || file.path.endsWith(".pdf") || file.path.endsWith(".png") || file.path.endsWith(".jpg")) {
+    if (file.content.startsWith("data:") || /\.(pdf|png|jpe?g|gif|webp)$/i.test(file.path)) {
       const base64Data = file.content.split(";base64,").pop() || file.content;
       await fs.writeFile(resolvedPath, Buffer.from(base64Data, "base64"));
     } else {
@@ -225,22 +226,19 @@ const server = Bun.serve({
 
           (async () => {
             try {
-              // Compile flags
-              const flags = ["-C", "--synctex"];
-              if (draft) {
-                flags.push("-r", "0");
-              }
-              flags.push(resolvedTexPath);
+              // Local mode compiles the user's real file, so draft injection is
+              // strip-restored in the finally below. The strip only writes when
+              // the prefix is present, so an edit saved mid-compile (which has no
+              // prefix) is never clobbered — and a stale prefix from a crashed
+              // run gets cleaned by the next compile either way.
+              await applyDraftMode(resolvedTexPath, Boolean(draft));
+
+              const flags = ["-C", "--synctex", resolvedTexPath];
 
               let code = await runTectonic(flags);
               if (code !== 0) {
                 writer.write(encoder.encode(`\n[INFO] Cached compilation failed. Retrying with remote package fetching...\n`));
-                const fallbackFlags = ["--synctex"];
-                if (draft) {
-                  fallbackFlags.push("-r", "0");
-                }
-                fallbackFlags.push(resolvedTexPath);
-                code = await runTectonic(fallbackFlags);
+                code = await runTectonic(["--synctex", resolvedTexPath]);
               }
 
               if (code === 0) {
@@ -252,6 +250,11 @@ const server = Bun.serve({
             } catch (err: any) {
               writer.write(encoder.encode(`\n[ERROR] Compilation process error: ${err.message}\n`));
             } finally {
+              try {
+                await applyDraftMode(resolvedTexPath, false);
+              } catch {
+                // File unreadable — nothing to restore.
+              }
               writer.close();
             }
           })();
@@ -324,8 +327,22 @@ const server = Bun.serve({
           if (relativePathCheck.startsWith("..") || path.isAbsolute(relativePathCheck)) {
             return Response.json({ error: "Access denied" }, { status: 403 });
           }
+          // applyDraftMode reads the root file, so surface a clear error first
+          // rather than a raw ENOENT from inside it.
+          try {
+            await fs.access(resolvedTexPath);
+          } catch {
+            return Response.json(
+              { logs: `[ERROR] Root file not found in workspace: ${fileRelativePath}` },
+              { status: 404 }
+            );
+          }
+          // Safe here: projectDir is a scratch workspace synced from storage, not
+          // the user's own files.
+          await applyDraftMode(resolvedTexPath, Boolean(draft));
+
           let logs = "";
- 
+
           const runTectonicUpload = (args: string[]) => {
             return new Promise<number>((resolve) => {
               const child = spawn("tectonic", args, {
@@ -356,22 +373,14 @@ const server = Bun.serve({
             });
           };
  
-          // Compile flags
-          const flags = ["-C", "--synctex"];
-          if (draft) {
-            flags.push("-r", "0");
-          }
-          flags.push(resolvedTexPath);
- 
+          // Draft is handled by applyDraftMode above, not by cutting reruns —
+          // Tectonic's auto-rerun is what makes \ref, \cite and the TOC resolve.
+          const flags = ["-C", "--synctex", resolvedTexPath];
+
           let code = await runTectonicUpload(flags);
           if (code !== 0) {
             logs += `\n[INFO] Cached compilation failed or package missing. Retrying with remote package fetching...\n`;
-            const fallbackFlags = ["--synctex"];
-            if (draft) {
-              fallbackFlags.push("-r", "0");
-            }
-            fallbackFlags.push(resolvedTexPath);
-            code = await runTectonicUpload(fallbackFlags);
+            code = await runTectonicUpload(["--synctex", resolvedTexPath]);
           }
  
           if (code === 0) {

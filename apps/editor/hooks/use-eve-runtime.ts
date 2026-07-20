@@ -1,6 +1,9 @@
 "use client";
 
 import {
+  CompositeAttachmentAdapter,
+  SimpleImageAttachmentAdapter,
+  SimpleTextAttachmentAdapter,
   useExternalStoreRuntime,
   type ThreadMessageLike,
   type AppendMessage,
@@ -8,6 +11,14 @@ import {
 import { useEveAgent } from "eve/react";
 import { useCallback, useEffect, useState, useRef } from "react";
 import type { EveMessage, EveMessagePart } from "eve/react";
+import { extractAttachmentBlocks } from "@/lib/attachment-blocks";
+
+// Images inline as data URLs, text/markdown/csv/… wrapped in <attachment> tags.
+// Stateless, so one instance for the whole app.
+const attachmentAdapter = new CompositeAttachmentAdapter([
+  new SimpleImageAttachmentAdapter(),
+  new SimpleTextAttachmentAdapter(),
+]);
 
 export function useEveRuntime(threadId: string, projectId: string) {
   const completedToolCalls = useRef<Set<string>>(new Set());
@@ -37,6 +48,14 @@ export function useEveRuntime(threadId: string, projectId: string) {
       if (part.type === "text") {
         const text = part.text.replace(/^\[projectId: [^\]]*\]\n?/, "");
         return { type: "text" as const, text };
+      }
+
+      // 1b. Images the user attached — Eve echoes them back untyped.
+      if ((part as { type: string }).type === "image") {
+        return {
+          type: "image" as const,
+          image: (part as unknown as { image: string }).image,
+        };
       }
 
       // 2. Reasoning/thinking — assistant-ui native ReasoningMessagePart (renders
@@ -117,13 +136,44 @@ export function useEveRuntime(threadId: string, projectId: string) {
   );
 
   const convertEveMessage = useCallback(
-    (msg: EveMessage): ThreadMessageLike => ({
-      id: msg.id,
-      role: msg.role,
-      content: msg.parts
+    (msg: EveMessage): ThreadMessageLike => {
+      type UiPart = Exclude<ThreadMessageLike["content"], string>[number];
+      const parts = msg.parts
         .map((part, i) => convertEvePart(part, msg.id, i))
-        .filter((p): p is NonNullable<typeof p> => p !== null) as unknown as ThreadMessageLike["content"],
-    }),
+        .filter((p): p is NonNullable<typeof p> => p !== null) as UiPart[];
+
+      // Pull "<attachment name=…>" blocks out of the text and back into real
+      // attachments, so a pasted file or terminal log renders as a chip instead
+      // of a wall of text. The model still received the full inlined version.
+      // User messages only: assistant text merely *mentioning* the tag must not
+      // sprout chips (and assistant parts stream, so a block could match half-open).
+      const attachments: NonNullable<ThreadMessageLike["attachments"]>[number][] = [];
+      const content = parts
+        .map((part) => {
+          if (msg.role !== "user") return part;
+          if (part.type !== "text") return part;
+          const { text, blocks } = extractAttachmentBlocks(part.text);
+          for (const block of blocks) {
+            attachments.push({
+              id: `${msg.id}-attachment-${attachments.length}`,
+              type: "document",
+              name: block.name,
+              contentType: "text/plain",
+              status: { type: "complete" },
+              content: [{ type: "text", text: block.body }],
+            });
+          }
+          return { ...part, text };
+        })
+        .filter((part) => part.type !== "text" || part.text.length > 0);
+
+      return {
+        id: msg.id,
+        role: msg.role,
+        content: content as unknown as ThreadMessageLike["content"],
+        attachments,
+      };
+    },
     [convertEvePart],
   );
 
@@ -144,52 +194,19 @@ export function useEveRuntime(threadId: string, projectId: string) {
 
       type OutgoingPart =
         | { type: "text"; text: string }
-        | { type: "image"; image: string }
-        | { type: "file"; data: ArrayBuffer; mimeType: string };
+        | { type: "image"; image: string };
       const parts: OutgoingPart[] = [];
 
-      for (const part of message.content) {
+      // Attachments arrive already converted by the adapters above: text files
+      // as an <attachment> text part, images as a data URL.
+      for (const part of [
+        ...message.content,
+        ...(message.attachments ?? []).flatMap((a) => a.content),
+      ]) {
         if (part.type === "text") {
           parts.push({ type: "text", text: part.text });
         } else if (part.type === "image") {
           parts.push({ type: "image", image: part.image });
-        } else if (part.type === "file") {
-          try {
-            const filePart = part as { file?: File };
-            if (filePart.file) {
-              const fileObj = filePart.file;
-              const isText =
-                fileObj.type.startsWith("text/") ||
-                fileObj.name.endsWith(".tex") ||
-                fileObj.name.endsWith(".bib") ||
-                fileObj.name.endsWith(".txt") ||
-                fileObj.name.endsWith(".json") ||
-                fileObj.name.endsWith(".md");
-
-              if (isText) {
-                const text = await fileObj.text();
-                parts.push({
-                  type: "text",
-                  text: `Attached file [${fileObj.name}]:\n\`\`\`\n${text}\n\`\`\``,
-                });
-              } else if (fileObj.type.startsWith("image/")) {
-                const base64 = await new Promise<string>((resolve) => {
-                  const reader = new FileReader();
-                  reader.onloadend = () => resolve(reader.result as string);
-                  reader.readAsDataURL(fileObj);
-                });
-                parts.push({ type: "image", image: base64 });
-              } else {
-                parts.push({
-                  type: "file",
-                  data: await fileObj.arrayBuffer(),
-                  mimeType: fileObj.type,
-                });
-              }
-            }
-          } catch (e) {
-            console.error("Failed to read attached file", e);
-          }
         }
       }
 
@@ -225,6 +242,7 @@ export function useEveRuntime(threadId: string, projectId: string) {
     convertMessage: convertEveMessage,
     onNew,
     isDisabled: isBusy,
+    adapters: { attachments: attachmentAdapter },
   });
 
 
@@ -279,6 +297,9 @@ export function useEveRuntime(threadId: string, projectId: string) {
     if (!agent.data?.messages) return;
 
     let shouldRefresh = false;
+    // Last file Eve successfully wrote this pass — the editor jumps to it, so a
+    // multi-file turn lands on the file it finished with.
+    let wrotePath: string | null = null;
     for (const msg of agent.data.messages) {
       if (msg.role === "assistant" && msg.parts) {
         for (const part of msg.parts) {
@@ -296,6 +317,14 @@ export function useEveRuntime(threadId: string, projectId: string) {
               ) {
                 shouldRefresh = true;
               }
+              if (name === "write_file" || name === "write-file") {
+                const input = part.input as { path?: string } | undefined;
+                const output = part.output as
+                  | { ok?: boolean; path?: string }
+                  | undefined;
+                const path = input?.path ?? output?.path;
+                if (path && output?.ok !== false) wrotePath = path;
+              }
             }
           }
         }
@@ -304,6 +333,11 @@ export function useEveRuntime(threadId: string, projectId: string) {
 
     if (shouldRefresh) {
       window.dispatchEvent(new CustomEvent("somescript:refresh-workspace"));
+    }
+    if (wrotePath) {
+      window.dispatchEvent(
+        new CustomEvent("somescript:open-file", { detail: wrotePath })
+      );
     }
   }, [agent.data?.messages]);
 
