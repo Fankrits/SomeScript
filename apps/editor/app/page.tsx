@@ -16,6 +16,15 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuShortcut,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
+import { Scissors, Copy, ClipboardPaste, TextCursor, Undo2, Redo2, FileText } from "lucide-react";
 import { CheckCircle2Icon, ListTodoIcon, FilePlus, FolderPlus, PanelLeft, PanelRight, Sparkles, Loader2, Check, Home, ChevronRight, ArrowLeft, Clock, Trash2, Plus, Settings, Search, Download } from "lucide-react";
 import { nanoid } from "nanoid";
 import { useCallback, useEffect, useInsertionEffect, useRef, useState } from "react";
@@ -71,7 +80,7 @@ const LayoutIconRight = ({ active }: { active: boolean }) => (
   </svg>
 );
 import CodeMirror, { EditorView, type ViewUpdate } from "@uiw/react-codemirror";
-import { undo, redo, undoDepth, redoDepth } from "@codemirror/commands";
+import { undo, redo, undoDepth, redoDepth, selectAll } from "@codemirror/commands";
 import { EditorToolbar } from "@/components/editor/editor-toolbar";
 import { ImageViewer } from "@/components/editor/image-viewer";
 import { latex } from "codemirror-lang-latex";
@@ -921,6 +930,74 @@ const Example = () => {
       panel.collapse();
     }
     setTimeout(() => setIsAnimatingTerminal(false), 300);
+  }, []);
+
+  // Right-click → "Add to chat". Attaches the selection (or the whole file when
+  // nothing is selected) as a composer chip named "path:from-to", so the agent
+  // gets the code *and* where it lives instead of having to grep for it.
+  const [hasEditorSelection, setHasEditorSelection] = useState<boolean>(false);
+
+  const handleSendCodeToChat = useCallback(() => {
+    const view = editorViewRef.current;
+    if (!view || !selectedPath) return;
+
+    const { from, to } = view.state.selection.main;
+    const rel = toProjectRelative(selectedPath);
+    const text = from === to ? view.state.doc.toString() : view.state.sliceDoc(from, to);
+    if (!text.trim()) return;
+
+    // `to` sitting at column 0 belongs to the previous line, not the next one.
+    const name =
+      from === to
+        ? rel
+        : `${rel}:${view.state.doc.lineAt(from).number}-${view.state.doc.lineAt(Math.max(from, to - 1)).number}`;
+
+    setIsLeftSidebarOpen(true);
+    setActiveTab("chat");
+    window.dispatchEvent(
+      new CustomEvent("somescript:attach-to-chat", { detail: { name, text } })
+    );
+  }, [selectedPath, toProjectRelative]);
+
+  // The context menu replaces the browser's native one, so the clipboard basics
+  // have to be re-served on top of the async Clipboard API.
+  const handleClipboard = useCallback(async (cut: boolean) => {
+    const view = editorViewRef.current;
+    if (!view) return;
+    const { from, to } = view.state.selection.main;
+    if (from === to) return;
+    try {
+      // Delete only once the text is safely on the clipboard: a rejected write
+      // followed by an unconditional cut would destroy it with no copy anywhere.
+      await navigator.clipboard.writeText(view.state.sliceDoc(from, to));
+      if (cut) {
+        view.dispatch({ changes: { from, to, insert: "" }, userEvent: "delete.cut" });
+      }
+    } catch {
+      // Clipboard blocked: nothing copied, so nothing cut either.
+    }
+    view.focus();
+  }, []);
+
+  const handlePasteFromClipboard = useCallback(async () => {
+    const view = editorViewRef.current;
+    if (!view) return;
+    view.focus();
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) handleInsertText(text);
+    } catch {
+      // ponytail: readText needs the clipboard-read permission and Firefox never
+      // grants it to page scripts. Focus is already back in the editor, so the
+      // ⌘V the menu advertises still works. Revisit only if that trips people up.
+    }
+  }, [handleInsertText]);
+
+  const handleSelectAll = useCallback(() => {
+    const view = editorViewRef.current;
+    if (!view) return;
+    selectAll(view);
+    view.focus();
   }, []);
 
   const handleSendTerminalToChat = useCallback(() => {
@@ -2042,26 +2119,93 @@ const Example = () => {
                         <span className="opacity-60">PDF displayed in preview pane →</span>
                       </div>
                     ) : selectedPath && viewMode === "code" ? (
-                      <div className="absolute inset-0" onDoubleClick={handleSyncToPdf}>
-                        <CodeMirror
-                          value={editedCode}
-                          height="100%"
-                          theme="dark"
-                          extensions={extensions}
-                          basicSetup={{
-                            foldGutter: false,
-                            bracketMatching: false,
-                            autocompletion: false,
-                          }}
-                          onChange={(value) => setEditedCode(value)}
-                          onCreateEditor={(view) => {
-                            // eslint-disable-next-line react-hooks/immutability -- storing the imperative CodeMirror EditorView handle in a ref
-                            editorViewRef.current = view;
-                          }}
-                          onUpdate={handleUpdate}
-                          className="absolute inset-0 w-full h-full text-sm font-mono border-none focus:outline-none"
-                        />
-                      </div>
+                      <ContextMenu
+                        onOpenChange={(open) => {
+                          if (open) {
+                            setHasEditorSelection(
+                              !editorViewRef.current?.state.selection.main.empty
+                            );
+                          }
+                        }}
+                      >
+                        {/* `select-text` undoes the trigger's default select-none,
+                            which would otherwise make the editor unselectable. */}
+                        <ContextMenuTrigger asChild className="select-text">
+                          <div className="absolute inset-0" onDoubleClick={handleSyncToPdf}>
+                            <CodeMirror
+                              value={editedCode}
+                              height="100%"
+                              theme="dark"
+                              extensions={extensions}
+                              basicSetup={{
+                                foldGutter: false,
+                                bracketMatching: false,
+                                autocompletion: false,
+                              }}
+                              onChange={(value) => setEditedCode(value)}
+                              onCreateEditor={(view) => {
+                                // eslint-disable-next-line react-hooks/immutability -- storing the imperative CodeMirror EditorView handle in a ref
+                                editorViewRef.current = view;
+                              }}
+                              onUpdate={handleUpdate}
+                              className="absolute inset-0 w-full h-full text-sm font-mono border-none focus:outline-none"
+                            />
+                          </div>
+                        </ContextMenuTrigger>
+                        {/* Focus is handed back to CodeMirror by each action, so
+                            don't let the menu pull it onto the trigger on close. */}
+                        <ContextMenuContent
+                          className="w-56"
+                          onCloseAutoFocus={(e) => e.preventDefault()}
+                        >
+                          <ContextMenuItem onClick={handleSendCodeToChat}>
+                            <Sparkles className="size-3.5" />
+                            {hasEditorSelection ? "Add selection to chat" : "Add file to chat"}
+                          </ContextMenuItem>
+                          <ContextMenuItem onClick={handleSyncToPdf}>
+                            <FileText className="size-3.5" />
+                            Show in PDF
+                          </ContextMenuItem>
+                          <ContextMenuSeparator />
+                          <ContextMenuItem
+                            disabled={!hasEditorSelection}
+                            onClick={() => handleClipboard(true)}
+                          >
+                            <Scissors className="size-3.5" />
+                            Cut
+                            <ContextMenuShortcut>⌘X</ContextMenuShortcut>
+                          </ContextMenuItem>
+                          <ContextMenuItem
+                            disabled={!hasEditorSelection}
+                            onClick={() => handleClipboard(false)}
+                          >
+                            <Copy className="size-3.5" />
+                            Copy
+                            <ContextMenuShortcut>⌘C</ContextMenuShortcut>
+                          </ContextMenuItem>
+                          <ContextMenuItem onClick={handlePasteFromClipboard}>
+                            <ClipboardPaste className="size-3.5" />
+                            Paste
+                            <ContextMenuShortcut>⌘V</ContextMenuShortcut>
+                          </ContextMenuItem>
+                          <ContextMenuItem onClick={handleSelectAll}>
+                            <TextCursor className="size-3.5" />
+                            Select all
+                            <ContextMenuShortcut>⌘A</ContextMenuShortcut>
+                          </ContextMenuItem>
+                          <ContextMenuSeparator />
+                          <ContextMenuItem disabled={!canUndo} onClick={handleUndo}>
+                            <Undo2 className="size-3.5" />
+                            Undo
+                            <ContextMenuShortcut>⌘Z</ContextMenuShortcut>
+                          </ContextMenuItem>
+                          <ContextMenuItem disabled={!canRedo} onClick={handleRedo}>
+                            <Redo2 className="size-3.5" />
+                            Redo
+                            <ContextMenuShortcut>⇧⌘Z</ContextMenuShortcut>
+                          </ContextMenuItem>
+                        </ContextMenuContent>
+                      </ContextMenu>
                     ) : (
                       <div className="flex items-center justify-center h-full text-muted-foreground text-sm font-mono bg-background">
                         {"// Select a file from the sidebar to edit"}
@@ -2101,6 +2245,7 @@ const Example = () => {
                         selectedPath={toProjectRelative(selectedPath)}
                         pdfSyncRequest={pdfSyncRequest}
                         onSelectLine={handleSelectMatch}
+                        onDownload={handleDownloadPdf}
                       />
                     ) : (
                       <div className="absolute inset-0 flex items-center justify-center text-xs font-mono text-muted-foreground">
