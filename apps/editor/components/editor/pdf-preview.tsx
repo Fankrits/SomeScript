@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Hand, Loader2, Minus, MousePointer, Plus, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, Copy, Download, FileCode, Hand, Loader2, Maximize2, Minus, MousePointer, Plus, Scan, Search, SquareDashedMousePointer, ZoomIn, ZoomOut } from "lucide-react";
 import { createPluginRegistration } from "@embedpdf/core";
 import { EmbedPDF } from "@embedpdf/core/react";
 import { usePdfiumEngine } from "@embedpdf/engines/react";
@@ -15,6 +15,14 @@ import { SearchLayer, SearchPluginPackage, useSearch } from "@embedpdf/plugin-se
 import { SelectionLayer, SelectionPluginPackage, useSelectionCapability } from "@embedpdf/plugin-selection/react";
 import { GlobalPointerProvider, InteractionManagerPluginPackage, PagePointerProvider } from "@embedpdf/plugin-interaction-manager/react";
 import { Button } from "@/components/ui/button";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuShortcut,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { cn } from "@/lib/utils";
 
 const pdfPlugins = [
@@ -52,6 +60,7 @@ interface HeadlessPdfViewerProps {
   selectedPath: string;
   pdfSyncRequest: { line: number; frac: number; nonce: number } | null;
   onSelectLine: (filePath: string, line: number) => void;
+  onDownload: () => void;
 }
 
 const HeadlessPdfViewer = ({
@@ -60,6 +69,7 @@ const HeadlessPdfViewer = ({
   selectedPath,
   pdfSyncRequest,
   onSelectLine,
+  onDownload,
 }: HeadlessPdfViewerProps) => {
   const docManagerCap = useDocumentManagerCapability();
   const { activeDocumentId, activeDocument } = useActiveDocument();
@@ -107,6 +117,7 @@ const HeadlessPdfViewer = ({
       selectedPath={selectedPath}
       pdfSyncRequest={pdfSyncRequest}
       onSelectLine={onSelectLine}
+      onDownload={onDownload}
     />
   );
 };
@@ -117,6 +128,7 @@ interface HeadlessPdfViewerInnerProps {
   selectedPath: string;
   pdfSyncRequest: { line: number; frac: number; nonce: number } | null;
   onSelectLine: (filePath: string, line: number) => void;
+  onDownload: () => void;
 }
 
 const HeadlessPdfViewerInner = ({
@@ -125,6 +137,7 @@ const HeadlessPdfViewerInner = ({
   selectedPath,
   pdfSyncRequest,
   onSelectLine,
+  onDownload,
 }: HeadlessPdfViewerInnerProps) => {
   const scrollHook = useScroll(documentId);
   const zoomHook = useZoom(documentId);
@@ -192,7 +205,10 @@ const HeadlessPdfViewerInner = ({
     if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
   }, []);
 
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  // Both the right-click menu and its own state are read once, when the menu
+  // opens, so a right-click doesn't re-render the viewer on every pointer move.
+  const [hasSelection, setHasSelection] = useState(false);
+  const [contextPage, setContextPage] = useState<{ page: number; x: number; y: number } | null>(null);
 
   // Initialize zoom to 100% when a new document ID is loaded to trigger layout calculation
   useEffect(() => {
@@ -209,19 +225,15 @@ const HeadlessPdfViewerInner = ({
     }
   }, [documentId, zoomHook?.provides]);
 
-  const [isCopied, setIsCopied] = useState(false);
-
   const handleCopy = useCallback(() => {
     if (!selectionCap.provides) return;
     selectionCap.provides.getSelectedText(documentId).wait((textArray) => {
       if (textArray && textArray.length > 0) {
         navigator.clipboard.writeText(textArray.join("\n"))
           .then(() => {
-            setIsCopied(true);
-            setTimeout(() => {
-              selectionCap.provides?.clear(documentId);
-              setIsCopied(false);
-            }, 1200);
+            // Leave the highlight up briefly so the copy is visibly acknowledged,
+            // then drop it — the "Copied!" affordance that used to do that is gone.
+            setTimeout(() => selectionCap.provides?.clear(documentId), 1200);
           })
           .catch((err) => {
             console.error("Failed to copy PDF selection to clipboard:", err);
@@ -233,8 +245,34 @@ const HeadlessPdfViewerInner = ({
     }, () => {
       selectionCap.provides?.clear(documentId);
     });
-    setContextMenu(null);
   }, [selectionCap.provides, documentId]);
+
+  // Reverse SyncTeX (`synctex edit`) wants PDF points from the page's top-left.
+  // The page renders at `zoom` css px per pt, so divide it out. Resolving the page
+  // from the event target keeps double-click and right-click on one code path —
+  // and returns null off-page (the gutter), where there is no source to jump to.
+  const pointFromEvent = useCallback(
+    (e: React.MouseEvent) => {
+      const pageEl = (e.target as HTMLElement).closest<HTMLElement>("[data-page-index]");
+      if (!pageEl) return null;
+      const rect = pageEl.getBoundingClientRect();
+      const zoom = zoomHook?.state?.currentZoomLevel ?? 1;
+      return {
+        page: Number(pageEl.dataset.pageIndex) + 1,
+        x: (e.clientX - rect.left) / zoom,
+        y: (e.clientY - rect.top) / zoom,
+      };
+    },
+    [zoomHook?.state?.currentZoomLevel]
+  );
+
+  const syncToEditor = useCallback(
+    async (point: { page: number; x: number; y: number }) => {
+      const data = await synctexQuery({ type: "edit", ...point });
+      if (data?.input && data.line) onSelectLine(data.input, data.line);
+    },
+    [synctexQuery, onSelectLine]
+  );
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -411,241 +449,194 @@ const HeadlessPdfViewerInner = ({
       </div>
 
       {/* Headless Rendering Container */}
-      <div
-        className="flex-1 bg-muted/15 relative overflow-hidden"
-        onContextMenu={(e) => {
+      <ContextMenu
+        onOpenChange={(open) => {
+          if (!open) return;
           const state = selectionCap.provides?.getState(documentId);
-          const hasSelection = state?.selection !== null && state?.selection !== undefined;
-          if (!isPanning && hasSelection) {
-            e.preventDefault();
-            setContextMenu({ x: e.clientX, y: e.clientY });
-          }
+          setHasSelection(state?.selection !== null && state?.selection !== undefined);
         }}
-        onClick={() => setContextMenu(null)}
       >
-        {/* Floating Page Navigation */}
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-[40] flex items-center gap-1 bg-background/90 backdrop-blur-md px-2.5 py-1.5 rounded-full border border-border/80 shadow-lg select-none">
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            onClick={() => scrollHook?.provides?.scrollToPage({ pageNumber: currentPage - 1 })}
-            disabled={currentPage <= 1}
-            title="Previous Page"
-            className="h-6 w-6 rounded-full hover:bg-muted"
-          >
-            <ChevronLeft className="size-3.5" />
-          </Button>
-          <span className="text-[10px] font-semibold text-foreground px-2 whitespace-nowrap min-w-[36px] text-center font-mono">
-            {currentPage} / {totalPages}
-          </span>
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            onClick={() => scrollHook?.provides?.scrollToPage({ pageNumber: currentPage + 1 })}
-            disabled={currentPage >= totalPages}
-            title="Next Page"
-            className="h-6 w-6 rounded-full hover:bg-muted"
-          >
-            <ChevronRight className="size-3.5" />
-          </Button>
-        </div>
-
-        {/* Right-click copy context menu */}
-        {contextMenu && (
+        <ContextMenuTrigger asChild>
           <div
-            className="fixed z-[9999] min-w-[120px] bg-popover border border-border rounded-md shadow-lg py-1 text-sm"
-            style={{ left: contextMenu.x, top: contextMenu.y }}
-            onContextMenu={(e) => e.preventDefault()}
+            className="flex-1 bg-muted/15 relative overflow-hidden"
+            onContextMenu={(e) => setContextPage(pointFromEvent(e))}
           >
-            <button
-              className="flex w-full items-center gap-2 px-3 py-1.5 text-xs font-medium hover:bg-accent transition-colors"
-              onPointerDown={(e) => {
-                e.preventDefault();
-                handleCopy();
-              }}
+            {/* Floating Page Navigation */}
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-[40] flex items-center gap-1 bg-background/90 backdrop-blur-md px-2.5 py-1.5 rounded-full border border-border/80 shadow-lg select-none">
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                onClick={() => scrollHook?.provides?.scrollToPage({ pageNumber: currentPage - 1 })}
+                disabled={currentPage <= 1}
+                title="Previous Page"
+                className="h-6 w-6 rounded-full hover:bg-muted"
+              >
+                <ChevronLeft className="size-3.5" />
+              </Button>
+              <span className="text-[10px] font-semibold text-foreground px-2 whitespace-nowrap min-w-[36px] text-center font-mono">
+                {currentPage} / {totalPages}
+              </span>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                onClick={() => scrollHook?.provides?.scrollToPage({ pageNumber: currentPage + 1 })}
+                disabled={currentPage >= totalPages}
+                title="Next Page"
+                className="h-6 w-6 rounded-full hover:bg-muted"
+              >
+                <ChevronRight className="size-3.5" />
+              </Button>
+            </div>
+    
+            <Viewport
+              documentId={documentId}
+              className="w-full h-full overflow-auto"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>
-              Copy
-              <kbd className="ml-auto text-[9px] text-muted-foreground font-mono">⌘C</kbd>
-            </button>
-            <button
-              className="flex w-full items-center gap-2 px-3 py-1.5 text-xs font-medium hover:bg-accent transition-colors text-muted-foreground"
-              onPointerDown={(e) => {
-                e.preventDefault();
-                selectionCap.provides?.clear(documentId);
-                setContextMenu(null);
-              }}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-              Deselect
-            </button>
-          </div>
-        )}
-        <Viewport
-          documentId={documentId}
-          className="w-full h-full overflow-auto"
-        >
-          <GlobalPointerProvider documentId={documentId} className="w-full h-full">
-            <ZoomGestureWrapper documentId={documentId} className="w-full min-h-full">
-              <Scroller
-                documentId={documentId}
-                renderPage={({ pageIndex, width, height }) => {
-                  const handleDoubleClick = async (e: React.MouseEvent<HTMLDivElement>) => {
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    // Reverse SyncTeX (`synctex edit`) wants PDF points from the page's
-                    // top-left. The page renders at `zoom` css px per pt, so divide it out.
-                    const zoom = zoomHook?.state?.currentZoomLevel ?? 1;
-                    const data = await synctexQuery({
-                      type: "edit",
-                      page: pageIndex + 1,
-                      x: (e.clientX - rect.left) / zoom,
-                      y: (e.clientY - rect.top) / zoom,
-                    });
-                    if (data?.input && data.line) {
-                      onSelectLine(data.input, data.line);
-                    }
-                  };
-
-                  return (
-                    <div
-                      key={pageIndex}
-                      style={{ width: "100%", display: "flex", justifyContent: "center", paddingTop: pageIndex === 0 ? "16px" : "8px", paddingBottom: "8px" }}
-                    >
-                      <div
-                        style={{ width, height, position: "relative", display: "block", flexShrink: 0 }}
-                        className="shadow-md bg-background border border-border/40 rounded-sm overflow-hidden"
-                        onDoubleClick={handleDoubleClick}
-                      >
-                        {syncHighlight && syncHighlight.page === pageIndex + 1 && (() => {
-                          // SyncTeX is line-granular: a record boxes some fragment of the source
-                          // line, not the clicked word, so a box-accurate highlight often lands on
-                          // the wrong word. Highlight the full-width line band instead (à la
-                          // Overleaf): vertical position from the record, horizontal spans the page.
-                          const zoom = zoomHook?.state?.currentZoomLevel ?? 1; // pt -> css px
-                          // Band spans ~3 text lines, centered on the target line, to absorb
-                          // SyncTeX's line-level (not word-level) imprecision.
-                          const lineH = Math.max(syncHighlight.h * zoom, zoom * 11);
-                          return (
-                            <div
-                              key={syncHighlight.nonce}
-                              className="synctex-flash"
-                              style={{
-                                position: "absolute",
-                                left: 6,
-                                right: 6,
-                                top: Math.max(0, (syncHighlight.y - syncHighlight.h) * zoom - lineH),
-                                height: lineH * 3,
-                                pointerEvents: "none",
-                                zIndex: 30,
-                              }}
-                            />
-                          );
-                        })()}
-                        <PagePointerProvider
-                          documentId={documentId}
-                          pageIndex={pageIndex}
-                          style={{ width: "100%", height: "100%", position: "relative", display: "block", flexShrink: 0 }}
+              <GlobalPointerProvider documentId={documentId} className="w-full h-full">
+                <ZoomGestureWrapper documentId={documentId} className="w-full min-h-full">
+                  <Scroller
+                    documentId={documentId}
+                    renderPage={({ pageIndex, width, height }) => {
+                      const handleDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+                        const point = pointFromEvent(e);
+                        if (point) syncToEditor(point);
+                      };
+    
+                      return (
+                        <div
+                          key={pageIndex}
+                          style={{ width: "100%", display: "flex", justifyContent: "center", paddingTop: pageIndex === 0 ? "16px" : "8px", paddingBottom: "8px" }}
                         >
-                          <RenderLayer
-                          documentId={documentId}
-                          pageIndex={pageIndex}
-                          style={{ width: "100%", height: "100%", display: "block", userSelect: "none", pointerEvents: "none" }}
-                          draggable={false}
-                        />
-                        <SearchLayer
-                          documentId={documentId}
-                          pageIndex={pageIndex}
-                          style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
-                        />
-                        {!isPanning && (
-                          <SelectionLayer
-                            documentId={documentId}
-                            pageIndex={pageIndex}
-                            textStyle={{ background: "rgba(59, 130, 246, 0.35)" }}
-                            selectionMenu={(({ menuWrapperProps, placement }) => {
+                          <div
+                            data-page-index={pageIndex}
+                            style={{ width, height, position: "relative", display: "block", flexShrink: 0 }}
+                            className="shadow-md bg-background border border-border/40 rounded-sm overflow-hidden"
+                            onDoubleClick={handleDoubleClick}
+                          >
+                            {syncHighlight && syncHighlight.page === pageIndex + 1 && (() => {
+                              // SyncTeX is line-granular: a record boxes some fragment of the source
+                              // line, not the clicked word, so a box-accurate highlight often lands on
+                              // the wrong word. Highlight the full-width line band instead (à la
+                              // Overleaf): vertical position from the record, horizontal spans the page.
+                              const zoom = zoomHook?.state?.currentZoomLevel ?? 1; // pt -> css px
+                              // Band spans ~3 text lines, centered on the target line, to absorb
+                              // SyncTeX's line-level (not word-level) imprecision.
+                              const lineH = Math.max(syncHighlight.h * zoom, zoom * 11);
                               return (
                                 <div
-                                  {...menuWrapperProps}
-                                  className="z-50"
+                                  key={syncHighlight.nonce}
+                                  className="synctex-flash"
                                   style={{
-                                    ...menuWrapperProps.style,
-                                    pointerEvents: "auto",
+                                    position: "absolute",
+                                    left: 6,
+                                    right: 6,
+                                    top: Math.max(0, (syncHighlight.y - syncHighlight.h) * zoom - lineH),
+                                    height: lineH * 3,
+                                    pointerEvents: "none",
+                                    zIndex: 30,
                                   }}
-                                >
-                                  <div
-                                    className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center shrink-0"
-                                    style={{
-                                      ...(placement.suggestTop
-                                        ? { bottom: "100%", marginBottom: "6px" }
-                                        : { top: "100%", marginTop: "6px" }),
-                                    }}
-                                  >
-                                    <button
-                                      className={cn(
-                                        "flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium bg-popover text-popover-foreground border border-border rounded-md shadow-md hover:bg-accent transition-colors",
-                                        isCopied && "border-green-500/30 bg-green-500/10 text-green-600 dark:text-green-400"
-                                      )}
-                                      onClick={(e) => {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        if (!isCopied) handleCopy();
-                                      }}
-                                    >
-                                      {isCopied ? (
-                                        <>
-                                          <svg
-                                            xmlns="http://www.w3.org/2000/svg"
-                                            width="11"
-                                            height="11"
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            strokeWidth="3"
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                            className="size-3 text-green-500"
-                                          >
-                                            <polyline points="20 6 9 17 4 12" />
-                                          </svg>
-                                          Copied!
-                                        </>
-                                      ) : (
-                                        <>
-                                          <svg
-                                            xmlns="http://www.w3.org/2000/svg"
-                                            width="11"
-                                            height="11"
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            strokeWidth="2.5"
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                            className="size-3"
-                                          >
-                                            <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
-                                            <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
-                                          </svg>
-                                          Copy
-                                        </>
-                                      )}
-                                    </button>
-                                  </div>
-                                </div>
+                                />
                               );
-                            })}
-                          />
-                        )}
-                      </PagePointerProvider>
-                      </div>
-                    </div>
-                  );
-                }}
-              />
-            </ZoomGestureWrapper>
-          </GlobalPointerProvider>
-        </Viewport>
-      </div>
+                            })()}
+                            <PagePointerProvider
+                              documentId={documentId}
+                              pageIndex={pageIndex}
+                              style={{ width: "100%", height: "100%", position: "relative", display: "block", flexShrink: 0 }}
+                            >
+                              <RenderLayer
+                              documentId={documentId}
+                              pageIndex={pageIndex}
+                              style={{ width: "100%", height: "100%", display: "block", userSelect: "none", pointerEvents: "none" }}
+                              draggable={false}
+                            />
+                            <SearchLayer
+                              documentId={documentId}
+                              pageIndex={pageIndex}
+                              style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
+                            />
+                            {!isPanning && (
+                              <SelectionLayer
+                                documentId={documentId}
+                                pageIndex={pageIndex}
+                                textStyle={{ background: "rgba(59, 130, 246, 0.35)" }}
+                              />
+                            )}
+                          </PagePointerProvider>
+                          </div>
+                        </div>
+                      );
+                    }}
+                  />
+                </ZoomGestureWrapper>
+              </GlobalPointerProvider>
+            </Viewport>
+          </div>
+        </ContextMenuTrigger>
+        <ContextMenuContent className="w-56">
+          {/* ⌘C is the only shortcut listed because it is the only one actually
+              bound for the PDF pane (see the keydown handler above). */}
+          <ContextMenuItem disabled={!hasSelection} onClick={handleCopy}>
+            <Copy className="size-3.5" />
+            Copy
+            <ContextMenuShortcut>⌘C</ContextMenuShortcut>
+          </ContextMenuItem>
+          <ContextMenuItem
+            disabled={!hasSelection}
+            onClick={() => selectionCap.provides?.clear(documentId)}
+          >
+            <SquareDashedMousePointer className="size-3.5" />
+            Deselect
+          </ContextMenuItem>
+          <ContextMenuItem
+            disabled={!contextPage}
+            onClick={() => contextPage && syncToEditor(contextPage)}
+          >
+            <FileCode className="size-3.5" />
+            Show in editor
+          </ContextMenuItem>
+          <ContextMenuSeparator />
+          <ContextMenuItem onClick={() => zoomHook?.provides?.zoomIn()}>
+            <ZoomIn className="size-3.5" />
+            Zoom in
+          </ContextMenuItem>
+          <ContextMenuItem onClick={() => zoomHook?.provides?.zoomOut()}>
+            <ZoomOut className="size-3.5" />
+            Zoom out
+          </ContextMenuItem>
+          <ContextMenuItem onClick={() => zoomHook?.provides?.requestZoom(ZoomMode.FitWidth)}>
+            <Maximize2 className="size-3.5" />
+            Fit width
+          </ContextMenuItem>
+          <ContextMenuItem onClick={() => zoomHook?.provides?.requestZoom(1)}>
+            <Scan className="size-3.5" />
+            Actual size
+          </ContextMenuItem>
+          <ContextMenuSeparator />
+          <ContextMenuItem
+            disabled={currentPage <= 1}
+            onClick={() => scrollHook?.provides?.scrollToPage({ pageNumber: currentPage - 1 })}
+          >
+            <ChevronLeft className="size-3.5" />
+            Previous page
+          </ContextMenuItem>
+          <ContextMenuItem
+            disabled={currentPage >= totalPages}
+            onClick={() => scrollHook?.provides?.scrollToPage({ pageNumber: currentPage + 1 })}
+          >
+            <ChevronRight className="size-3.5" />
+            Next page
+          </ContextMenuItem>
+          <ContextMenuSeparator />
+          <ContextMenuItem onClick={() => setShowSearchInput(true)}>
+            <Search className="size-3.5" />
+            Find in document
+          </ContextMenuItem>
+          <ContextMenuItem onClick={onDownload}>
+            <Download className="size-3.5" />
+            Download PDF
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
     </div>
   );
 };
