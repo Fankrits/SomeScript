@@ -22,7 +22,6 @@ import { useCallback, useEffect, useInsertionEffect, useRef, useState } from "re
 import type { PanelImperativeHandle } from "react-resizable-panels";
 import { useDefaultLayout } from "react-resizable-panels";
 import { useEveAgent } from "eve/react";
-import { EveThread } from "@/components/chat/eve-thread";
 import { SearchPanel, SearchPanelHandle } from "@/components/editor/search-panel";
 import { search as searchExtension, SearchQuery, setSearchQuery } from "@codemirror/search";
 import nextDynamic from "next/dynamic";
@@ -37,6 +36,15 @@ const PdfPreview = nextDynamic(() => import("@/components/editor/pdf-preview"), 
     </div>
   ),
 });
+
+// assistant-ui + the Eve runtime are the heaviest imports on this page, and the chat
+// panel starts hidden behind a tab. Splitting them out lets the editor paint and
+// hydrate without them; the thread still mounts on its own right after, so the
+// "somescript:attach-to-chat" listener is in place before anything can fire it.
+const EveThread = nextDynamic(
+  () => import("@/components/chat/eve-thread").then((m) => m.EveThread),
+  { ssr: false }
+);
 
 // Custom VS Code style Layout Toggle Icons
 const LayoutIconLeft = ({ active }: { active: boolean }) => (
@@ -477,6 +485,10 @@ const Example = () => {
   // editedCode still holds the *previous* file (or "" on first mount). Writing
   // that to the new selectedPath truncates it, which is how main.tex hit 0 bytes.
   const loadedPathRef = useRef<string | null>(null);
+  // Set synchronously by handleFileSelect, which fetches the content itself. The
+  // selectedPath effect below would otherwise re-fetch the same file immediately —
+  // loadedPathRef can't gate that, since it's only set once the fetch lands.
+  const selectingPathRef = useRef<string | null>(null);
   const [newItemName, setNewItemName] = useState<string>("");
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   // Project-relative path of the last successfully compiled root .tex — SyncTeX
@@ -1005,6 +1017,7 @@ const Example = () => {
     await saveCurrentFile();
 
     setSelectedPath(path);
+    selectingPathRef.current = path;
     localStorage.setItem(`somescript-last-file-${projectId}`, path);
 
     const mode = getViewMode(path);
@@ -1370,8 +1383,12 @@ const Example = () => {
     if (last) handleFileSelect(last);
   }, [projectId, handleFileSelect]);
 
-  // Reload current file when selectedPath changes
+  // Reload current file when selectedPath changes — but not when handleFileSelect
+  // set it, since that already fetched the content. Renames (which set selectedPath
+  // directly) still land here, and need to: they leave loadedPathRef on the old
+  // name, which blocks autosave until the content is re-read under the new one.
   useEffect(() => {
+    if (selectingPathRef.current === selectedPath) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- data load: fetches file content when the selection changes
     refreshCurrentFile();
   }, [selectedPath, refreshCurrentFile]);
@@ -1406,33 +1423,14 @@ const Example = () => {
     };
   }, [refreshWorkspace, refreshCurrentFile, handleFileSelect, projectId]);
 
-  // Stream terminal output line by line
-  const streamTerminal = useCallback(async () => {
-    setIsTerminalStreaming(true);
-    let output = "";
-
-    for (const line of mockTerminalLines) {
-      output += `${line}\n`;
-      setTerminalOutput(output);
-      // oxlint-disable-next-line eslint-plugin-promise(avoid-new)
-      await new Promise((resolve) => {
-        setTimeout(resolve, 100);
-      });
-    }
-
-    setIsTerminalStreaming(false);
-  }, []);
-
-  // Animation sequence on mount
+  // Static boot banner. This used to be typed out a line at a time over 800ms, which
+  // re-rendered the whole editor eight times during the slowest part of startup — for
+  // text that is the same every session.
   useEffect(() => {
-    const runAnimation = async () => {
-      // Stream terminal output
-      await streamTerminal();
-      setShowCheckpoint(true);
-    };
-
-    runAnimation();
-  }, [streamTerminal]);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot mount banner
+    setTerminalOutput(`${mockTerminalLines.join("\n")}\n`);
+    setShowCheckpoint(true);
+  }, []);
 
   const handleChatTextChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => setChatText(e.target.value),
