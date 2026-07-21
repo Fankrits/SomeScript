@@ -14,13 +14,10 @@ import type { EveMessage, EveMessagePart } from "eve/react";
 import {
   attachmentsToParts,
   extractAttachmentBlocks,
-  imageMarkerFor,
-  mediaTypeOf,
-  parseImageMarker,
+  stripEventFileData,
   stripPartPlaceholders,
   type OutgoingPart,
 } from "@/lib/attachment-blocks";
-import { chatImages, newImageId, saveChatImages } from "@/lib/chat-images";
 
 // Images inline as data URLs, text/markdown/csv/… wrapped in <attachment> tags.
 // Stateless, so one instance for the whole app.
@@ -28,22 +25,6 @@ const attachmentAdapter = new CompositeAttachmentAdapter([
   new SimpleImageAttachmentAdapter(),
   new SimpleTextAttachmentAdapter(),
 ]);
-
-// The link between a message and its images is an id carried inside the same
-// "[projectId: …]" marker we already inject and already strip, because that
-// marker is a *text* part and text is the one thing Eve's flattening preserves
-// verbatim. Keying on it (rather than on message order, or on the placeholder,
-// which is spelled differently by each side) survives the optimistic message
-// being swapped for the server echo, and repeated sends of identical text.
-// The pixels themselves live in @/lib/chat-images.
-const imageIdOf = (msg: EveMessage): string | undefined => {
-  for (const part of msg.parts) {
-    if (part.type !== "text" || typeof part.text !== "string") continue;
-    const id = parseImageMarker(part.text);
-    if (id) return id;
-  }
-  return undefined;
-};
 
 export function useEveRuntime(threadId: string, projectId: string) {
   const completedToolCalls = useRef<Set<string>>(new Set());
@@ -186,19 +167,24 @@ export function useEveRuntime(threadId: string, projectId: string) {
         })
         .filter((part) => part.type !== "text" || part.text.length > 0);
 
-      // Re-attach the images this message was sent with. Missing entry (cleared
-      // storage, another device) simply renders no tile.
-      const imageId = msg.role === "user" ? imageIdOf(msg) : undefined;
-      if (imageId) {
-        chatImages(threadId, imageId).forEach((image, i) => {
-          attachments.push({
-            id: `${msg.id}-image-${i}`,
-            type: "image",
-            name: image.name,
-            contentType: mediaTypeOf(image.url),
-            status: { type: "complete" },
-            content: [{ type: "image", image: image.url }],
-          });
+      // Eve projects what the user attached back onto the message as `file`
+      // parts carrying the data URL it was sent with, so the tile is rebuilt
+      // from the message itself. A part without a `url` kept its bytes server
+      // side (a sandbox ref); there is nothing to render, so it is skipped.
+      for (const part of msg.parts) {
+        if (part.type !== "file" || !part.url) continue;
+        const isImage = part.mediaType.startsWith("image/");
+        attachments.push({
+          id: `${msg.id}-file-${attachments.length}`,
+          type: isImage ? "image" : "file",
+          name: part.filename ?? part.mediaType,
+          contentType: part.mediaType,
+          status: { type: "complete" },
+          content: [
+            isImage
+              ? { type: "image", image: part.url }
+              : { type: "file", data: part.url, mimeType: part.mediaType },
+          ],
         });
       }
 
@@ -209,11 +195,7 @@ export function useEveRuntime(threadId: string, projectId: string) {
         attachments,
       };
     },
-    // agent.data.messages is the change signal: assistant-ui caches one
-    // conversion per message object and only drops that cache when this
-    // callback's identity changes, so a just-sent image needs it to change.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- the message list is a signal here, not a value this callback reads
-    [convertEvePart, threadId, agent.data.messages],
+    [convertEvePart],
   );
 
   const onNew = useCallback(
@@ -238,18 +220,10 @@ export function useEveRuntime(threadId: string, projectId: string) {
       for (const part of message.content) {
         if (part.type === "text") parts.push({ type: "text", text: part.text });
       }
-      const { parts: attachmentParts, images } = attachmentsToParts(
-        message.attachments ?? [],
-      );
-      parts.push(...attachmentParts);
+      parts.push(...attachmentsToParts(message.attachments ?? []).parts);
 
       if (parts.length > 0) {
-        // Keep the pixels before sending: the send drops them, and the
-        // optimistic message renders immediately after.
-        const imageId = images.length > 0 ? newImageId() : undefined;
-        if (imageId) saveChatImages(threadId, imageId, images);
-
-        const marker = imageMarkerFor(projectId, imageId);
+        const marker = `[projectId: ${projectId}]`;
         const textPart = parts.find(
           (p): p is Extract<OutgoingPart, { type: "text" }> => p.type === "text"
         );
@@ -269,7 +243,7 @@ export function useEveRuntime(threadId: string, projectId: string) {
         }
       }
     },
-    [agent, projectId, threadId],
+    [agent, projectId],
   );
 
   const isBusy =
@@ -291,7 +265,7 @@ export function useEveRuntime(threadId: string, projectId: string) {
         localStorage.setItem(
           `eve-thread-${threadId}`,
           JSON.stringify({
-            events: agent.events,
+            events: stripEventFileData(agent.events),
             sessionState: agent.session,
           })
         );

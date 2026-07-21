@@ -2,10 +2,9 @@ import { expect, test } from "bun:test";
 import {
   attachmentsToParts,
   extractAttachmentBlocks,
+  stripEventFileData,
   stripPartPlaceholders,
-  imageMarkerFor,
   mediaTypeOf,
-  parseImageMarker,
 } from "./attachment-blocks";
 
 // The regex every consumer uses to hide the context marker from the user
@@ -82,42 +81,57 @@ test("inline mention of a placeholder mid-line is not stripped", () => {
   expect(stripPartPlaceholders(text)).toBe(text);
 });
 
-// --- image marker (the anchor linking a message to its kept image data) ---
+// --- projectId marker (hidden from the bubble and the thread title) ---
 
-test("marker round-trips the image id", () => {
-  const marker = imageMarkerFor("proj1", "img-abc");
-  expect(parseImageMarker(marker)).toBe("img-abc");
+test("the marker line is stripped from the visible message", () => {
+  expect(`[projectId: proj1]\nlook at this`.replace(STRIP_MARKER, "")).toBe("look at this");
 });
 
-test("marker without images carries no id", () => {
-  expect(parseImageMarker(imageMarkerFor("proj1"))).toBeUndefined();
-});
-
-// Regression: the marker must stay inside the [projectId: …] line, otherwise
-// the id leaks into the visible message and the thread title.
-test("existing strip regex removes the whole marker line", () => {
-  const text = `${imageMarkerFor("proj1", "img-abc")}\nlook at this`;
-  expect(text.replace(STRIP_MARKER, "")).toBe("look at this");
-});
-
-test("a plain projectId marker is unaffected by image parsing", () => {
-  const text = `${imageMarkerFor("proj1")}\nhello`;
-  expect(parseImageMarker(text)).toBeUndefined();
-  expect(text.replace(STRIP_MARKER, "")).toBe("hello");
-});
-
-// Regression for the real bug: each side spells the placeholder differently,
-// so it can never be the anchor. Both were captured from the actual library.
-test("marker survives the client-store spelling", () => {
-  const optimistic = `${imageMarkerFor("proj1", "img-abc")}\nlook at this\n[file: photo.png]`;
-  expect(parseImageMarker(optimistic)).toBe("img-abc");
+// The optimistic message Eve renders before the server answers still flattens
+// the attachment to a placeholder line; the echo that replaces it does not.
+test("optimistic placeholder is stripped alongside the marker", () => {
+  const optimistic = `[projectId: proj1]\nlook at this\n[file: photo.png]`;
   expect(stripPartPlaceholders(optimistic.replace(STRIP_MARKER, ""))).toBe("look at this");
 });
 
-test("marker survives the server-echo spelling", () => {
-  const echoed = `${imageMarkerFor("proj1", "img-abc")}\nlook at this\n[file: photo.png (image/png)]`;
-  expect(parseImageMarker(echoed)).toBe("img-abc");
-  expect(stripPartPlaceholders(echoed.replace(STRIP_MARKER, ""))).toBe("look at this");
+// --- stripEventFileData (what gets persisted as chat history) ---
+
+const receivedEvent = (url?: string) => ({
+  type: "message.received",
+  data: {
+    message: "look at this",
+    turnId: "t1",
+    parts: [
+      { type: "text", text: "look at this" },
+      { type: "file", mediaType: "image/png", filename: "photo.png", ...(url ? { url } : {}) },
+    ],
+  },
+});
+
+// A photo's data URL is most of the ~5MB localStorage quota; persisting it
+// would cost the conversation to keep a thumbnail.
+test("image bytes are dropped from the persisted event log", () => {
+  const [event] = stripEventFileData([receivedEvent("data:image/png;base64,AAAA")]);
+  const file = event.data.parts[1] as Record<string, unknown>;
+  expect(file.url).toBeUndefined();
+  expect(JSON.stringify(event)).not.toContain("base64");
+});
+
+test("the attachment still has its name and type after stripping", () => {
+  const [event] = stripEventFileData([receivedEvent("data:image/png;base64,AAAA")]);
+  expect(event.data.parts[1]).toEqual({
+    type: "file",
+    mediaType: "image/png",
+    filename: "photo.png",
+  });
+});
+
+test("text parts and other events pass through untouched", () => {
+  const other = { type: "turn.completed", data: { turnId: "t1", sequence: 3 } };
+  const events = [receivedEvent(), other];
+  const out = stripEventFileData(events);
+  expect(out[0]).toBe(events[0]); // nothing to strip: same reference
+  expect(out[1]).toBe(other);
 });
 
 test("mediaTypeOf reads the data URL prefix", () => {

@@ -39,45 +39,21 @@ export function extractAttachmentBlocks(text: string): {
 }
 
 /**
- * Eve carries an attached image as a *file* part (`text` and `file` are the
- * only part types it accepts — see parseMessagePart in
- * eve/dist/src/public/channels/eve.js), and both sides flatten that part to a
- * placeholder line, dropping the bytes:
+ * The optimistic message Eve renders before the server answers still flattens
+ * an attachment to a placeholder line, dropping the bytes:
  *
- *   client store  → "[file: photo.png]"          (eve-agent-store.js)
- *   server echo   → "[file: photo.png (image/png)]"  (protocol/message.js)
+ *   "[file: photo.png]"   (summarizeUserContent in eve-agent-store.js)
  *
- * Neither spelling is a usable anchor for finding the image again — they differ
- * per side and collide across identical filenames — so images are linked to
- * their message by {@link imageMarkerFor}, and these lines are only stripped.
+ * The echoed message that replaces it a moment later carries a real `file`
+ * part instead, so this only has to clean up the optimistic spelling. The
+ * older server-echo spelling ("[file: photo.png (image/png)]") is still
+ * matched, so threads saved before eve 0.21 keep rendering correctly.
  */
 const PART_PLACEHOLDER = /^\[(?:file|image)(?:: [^\]\n]*)?\]$/gm;
 
 /** Remove the placeholder lines Eve leaves where a file/image part was sent. */
 export function stripPartPlaceholders(text: string): string {
   return text.replace(PART_PLACEHOLDER, "").trim();
-}
-
-/**
- * Builds the leading context marker for an outgoing message.
- *
- * The image id rides *inside* the existing "[projectId: …]" marker rather than
- * on its own line, so every consumer that already strips that line — display
- * conversion, thread titles — keeps working untouched. Text is also the only
- * part type Eve's flattening is guaranteed to preserve, which is what makes
- * this a usable anchor when the image data itself is dropped.
- */
-export function imageMarkerFor(projectId: string, imageId?: string): string {
-  return imageId
-    ? `[projectId: ${projectId} | images: ${imageId}]`
-    : `[projectId: ${projectId}]`;
-}
-
-const IMAGE_MARKER = /^\[projectId: [^\]]*\|\s*images:\s*([^\]\s]+)\]/;
-
-/** Reads back the image id written by {@link imageMarkerFor}, if present. */
-export function parseImageMarker(text: string): string | undefined {
-  return IMAGE_MARKER.exec(text)?.[1];
 }
 
 /** "data:image/png;base64,…" → "image/png" */
@@ -129,4 +105,39 @@ export function attachmentsToParts(attachments: readonly AttachmentLike[]): {
     }
   }
   return { parts, images };
+}
+
+/**
+ * Drops attachment bytes from the event log before it is persisted.
+ *
+ * Eve projects a sent attachment back into `message.received` as a `file` part
+ * carrying the whole data URL, which is what makes the tile render without any
+ * client-side bookkeeping. One photo is also most of the ~5MB localStorage
+ * origin quota, so saving the log verbatim would cost the conversation to keep
+ * a thumbnail. The metadata stays; only `url` goes, leaving a reloaded message
+ * to render its text with no tile.
+ */
+export function stripEventFileData<T>(events: readonly T[]): T[] {
+  // Only `message.received` carries parts; the rest of the event union has no
+  // `data.parts` at all, so this reads through an unknown shape by design.
+  type PartLike = { type?: string; url?: string };
+  return events.map((event) => {
+    const data = (event as { data?: { parts?: PartLike[] } } | null)?.data;
+    const parts = data?.parts;
+    if (!parts?.some((part) => part.type === "file" && part.url !== undefined)) {
+      return event;
+    }
+    return {
+      ...event,
+      data: {
+        ...data,
+        parts: parts.map((part) => {
+          if (part.type !== "file") return part;
+          const stripped: PartLike = { ...part };
+          delete stripped.url;
+          return stripped;
+        }),
+      },
+    };
+  });
 }
