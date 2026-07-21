@@ -47,6 +47,11 @@ export default function ProjectsTable({ projects, editorUrl }: ProjectsTableProp
 
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
+  // The editor is a separate app, so opening a project is a full cross-origin
+  // navigation with no router transition to hang feedback off — without this the
+  // dashboard just sits there looking frozen while the editor boots.
+  const [openingId, setOpeningId] = useState<string | null>(null);
+
   const [sortConfig, setSortConfig] = useState<{
     key: "name" | "createdAt" | "updatedAt";
     direction: "asc" | "desc";
@@ -177,7 +182,10 @@ export default function ProjectsTable({ projects, editorUrl }: ProjectsTableProp
               return (
                 <TableRow
                   key={project.id}
-                  onClick={() => { window.location.href = `${editorUrl}/?projectId=${project.id}`; }}
+                  onClick={() => {
+                    setOpeningId(project.id);
+                    window.location.href = `${editorUrl}/?projectId=${project.id}`;
+                  }}
                   className="hover:bg-secondary/20 transition-colors group cursor-pointer"
                 >
                   <TableCell
@@ -185,7 +193,11 @@ export default function ProjectsTable({ projects, editorUrl }: ProjectsTableProp
                     className="px-6 py-4 font-medium text-foreground flex items-center gap-3"
                   >
                     <div className="h-8 w-8 rounded-lg bg-secondary border border-border flex items-center justify-center text-primary group-hover:text-primary-foreground group-hover:bg-primary transition-all shrink-0">
-                      <FileText className="h-4 w-4" />
+                      {openingId === project.id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <FileText className="h-4 w-4" />
+                      )}
                     </div>
                     <Editable
                       defaultValue={project.name}
@@ -227,6 +239,7 @@ export default function ProjectsTable({ projects, editorUrl }: ProjectsTableProp
                         <TooltipTrigger asChild>
                           <Link
                             href={`${editorUrl}/?projectId=${project.id}`}
+                            onClick={() => setOpeningId(project.id)}
                             className="inline-flex items-center justify-center h-8 w-8 text-xs font-semibold text-primary hover:text-primary-foreground hover:bg-primary transition-colors bg-secondary/50 rounded-lg border border-border"
                           >
                             <ArrowUpRight className="h-4 w-4" />

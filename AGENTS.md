@@ -102,3 +102,12 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - **Next.js 16 File Convention**: `middleware.ts` is deprecated/renamed to `proxy.ts`. Ensure any middleware logic (e.g., Clerk Middleware) is defined in `proxy.ts` (or `proxy.js`) instead of `middleware.ts`.
 - **Clerk Middleware in Next.js 16**: When using `clerkMiddleware()` inside `proxy.ts`, always ensure the configuration matcher array includes `'/__clerk/(.*)'` so that frontend sync requests are correctly intercepted and authenticated by the middleware. Otherwise, Clerk will fall into a login loop in development.
 
+<!-- OPENWIKI:START -->
+
+## OpenWiki
+
+This repository uses OpenWiki for recurring code documentation. Start with `openwiki/quickstart.md`, then follow its links to architecture, workflows, domain concepts, operations, integrations, testing guidance, and source maps.
+
+The scheduled OpenWiki GitHub Actions workflow refreshes the repository wiki. Do not hand-edit generated OpenWiki pages unless explicitly asked; prefer updating source code/docs and letting OpenWiki regenerate.
+
+<!-- OPENWIKI:END -->

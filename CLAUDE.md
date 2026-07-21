@@ -132,3 +132,13 @@ For deeper dives, see:
 - [Auth, dashboard, and web app](openwiki/auth-and-web.md) — Clerk setup, workspace boundaries
 
 See [AGENTS.md](AGENTS.md) for detailed agent guidance on scope, constraints, and Next.js 16 specifics.
+
+<!-- OPENWIKI:START -->
+
+## OpenWiki
+
+This repository uses OpenWiki for recurring code documentation. Start with `openwiki/quickstart.md`, then follow its links to architecture, workflows, domain concepts, operations, integrations, testing guidance, and source maps.
+
+The scheduled OpenWiki GitHub Actions workflow refreshes the repository wiki. Do not hand-edit generated OpenWiki pages unless explicitly asked; prefer updating source code/docs and letting OpenWiki regenerate.
+
+<!-- OPENWIKI:END -->
