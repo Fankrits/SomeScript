@@ -37,7 +37,7 @@ export default function AboutPage() {
               Typesetting for the Next Century
             </h2>
             <p className="text-white/80 font-light text-sm md:text-base leading-relaxed">
-              Writing research is hard enough. Manually compiling PDF packages, aligning matrices, and debugging missing bibtex citation links shouldn't add to the burden. 
+              Writing research is hard enough. Manually compiling PDF packages, aligning matrices, and debugging missing bibtex citation links shouldn&apos;t add to the burden.
               SomeScript is a modern, collaborative LaTeX environment combining a visual editor with instant cloud Tectonic compilation and context-aware AI tools. We help researchers submit to journals faster, with absolute layout perfection.
             </p>
           </div>

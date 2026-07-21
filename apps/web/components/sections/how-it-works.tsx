@@ -20,7 +20,7 @@ export function HowItWorks() {
               <span>input_prompt.tex</span>
             </div>
             <div className="space-y-1 text-white/80">
-              <p className="text-white/40">// Prompt: Write a matrix equation representing a 2D rotation</p>
+              <p className="text-white/40">{"// Prompt: Write a matrix equation representing a 2D rotation"}</p>
               <p><span className="text-[#c3c4f9]">\begin</span>&#123;equation&#125;</p>
               <p className="pl-4 text-[#8cedc4]">R = \begin&#123;pmatrix&#125; \cos\theta & -\sin\theta \\ \sin\theta & \cos\theta \end&#123;pmatrix&#125;</p>
               <p><span className="text-[#c3c4f9]">\end</span>&#123;equation&#125;</p>
