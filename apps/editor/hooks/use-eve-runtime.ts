@@ -287,13 +287,20 @@ export function useEveRuntime(threadId: string, projectId: string) {
 
   useEffect(() => {
     if (agent.session?.sessionId) {
-      localStorage.setItem(
-        `eve-thread-${threadId}`,
-        JSON.stringify({
-          events: agent.events,
-          sessionState: agent.session,
-        })
-      );
+      try {
+        localStorage.setItem(
+          `eve-thread-${threadId}`,
+          JSON.stringify({
+            events: agent.events,
+            sessionState: agent.session,
+          })
+        );
+      } catch (e) {
+        // Out of quota: a long turn's tool output can fill it on its own.
+        // Losing the saved history is survivable; throwing here is not — an
+        // error out of this effect unmounts the thread mid-conversation.
+        console.error("Failed to persist chat history", e);
+      }
 
       // Auto-update the title of the conversation in the threads list based on the first user message
       const threadListRaw = localStorage.getItem("eve-threads-list");

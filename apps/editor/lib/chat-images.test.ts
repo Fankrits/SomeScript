@@ -1,8 +1,8 @@
 import { expect, test, beforeEach } from "bun:test";
 import { chatImages, newImageId, saveChatImages } from "./chat-images";
 
-// A localStorage that enforces a browser-sized quota, so the large-photo paths
-// are exercised rather than assumed.
+// A localStorage that enforces a browser-sized quota, so a store that reached
+// for it would be caught here rather than in the browser.
 const QUOTA = 5 * 1024 * 1024;
 let store = new Map<string, string>();
 
@@ -55,34 +55,36 @@ test("images are scoped to their thread", () => {
   expect(chatImages(b, id)).toEqual([]);
 });
 
-// The bug this store replaced: a photo too big to persist made the write fail,
-// which wiped every other image already shown in the thread.
-test("a photo too large to persist still shows, and spares the others", () => {
+// The regression that made a sent message flash and vanish: a photo parked in
+// localStorage ate the ~5MB origin quota, so the `eve-thread-<id>` session
+// write threw QuotaExceededError out of a useEffect and unmounted the thread.
+test("images never consume localStorage, leaving the quota for chat history", () => {
   const t = nextThread();
-  const small = newImageId();
-  saveChatImages(t, small, [image(50 * 1024, "small.png")]);
+  saveChatImages(t, newImageId(), [image(3 * 1024 * 1024)]);
+  expect(store.size).toBe(0);
 
-  const huge = newImageId();
-  saveChatImages(t, huge, [image(8 * 1024 * 1024, "huge.jpg")]);
-
-  expect(chatImages(t, huge).map((i) => i.name)).toEqual(["huge.jpg"]);
-  expect(chatImages(t, small).map((i) => i.name)).toEqual(["small.png"]);
+  // A full turn's history still fits afterwards.
+  expect(() =>
+    localStorage.setItem(`eve-thread-${t}`, JSON.stringify({ events: "x".repeat(2_000_000) })),
+  ).not.toThrow();
 });
 
-test("images survive a reload when they fit in storage", () => {
+test("a photo far larger than any storage quota still shows", () => {
   const t = nextThread();
   const id = newImageId();
-  saveChatImages(t, id, [image(20 * 1024, "kept.png")]);
-
-  // Same origin, fresh page: only what localStorage holds is available.
-  const persisted = JSON.parse(store.get(`eve-thread-images-${t}`)!);
-  expect(persisted[id][0].name).toBe("kept.png");
+  saveChatImages(t, id, [image(20 * 1024 * 1024, "huge.jpg")]);
+  expect(chatImages(t, id).map((i) => i.name)).toEqual(["huge.jpg"]);
 });
 
-test("corrupt stored JSON degrades to no tile", () => {
+test("images do not accumulate without bound", () => {
   const t = nextThread();
-  store.set(`eve-thread-images-${t}`, "{not json");
-  expect(chatImages(t, "anything")).toEqual([]);
+  const ids = Array.from({ length: 40 }, () => newImageId());
+  for (const id of ids) saveChatImages(t, id, [image(1024)]);
+
+  const alive = ids.filter((id) => chatImages(t, id).length > 0);
+  expect(alive.length).toBeLessThanOrEqual(24);
+  // The most recent sends are the ones still on screen, so they must survive.
+  expect(chatImages(t, ids.at(-1)!)).toHaveLength(1);
 });
 
 test("id generation works without a secure context", () => {
