@@ -54,8 +54,30 @@ function ComposerInbox() {
   return null;
 }
 
+/**
+ * A failed send clears the composer and leaves no message behind, so without
+ * this the whole turn just disappears with nothing to explain it.
+ */
+function ChatError({ message, onDismiss }: { message: string; onDismiss: () => void }) {
+  return (
+    <div
+      role="alert"
+      className="mx-2 mb-2 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+    >
+      <span className="min-w-0 flex-1 wrap-break-word">{message}</span>
+      <button
+        type="button"
+        onClick={onDismiss}
+        className="shrink-0 rounded px-1 text-xs underline underline-offset-2 hover:opacity-70"
+      >
+        Dismiss
+      </button>
+    </div>
+  );
+}
+
 export function EveThread({ threadId, projectId }: { threadId: string; projectId: string }) {
-  const { runtime, agent } = useEveRuntime(threadId, projectId);
+  const { runtime, agent, error, dismissError } = useEveRuntime(threadId, projectId);
 
   return (
     <EveAgentContext.Provider value={agent}>
@@ -77,7 +99,12 @@ export function EveThread({ threadId, projectId }: { threadId: string; projectId
         <ComposerInbox />
 
         <div className="h-full flex flex-col bg-background">
-          <Thread />
+          {/* Thread is h-full, so it needs its own flex box to shrink for the
+              error banner instead of pushing it out of view. */}
+          <div className="min-h-0 flex-1">
+            <Thread />
+          </div>
+          {error && <ChatError message={error} onDismiss={dismissError} />}
         </div>
       </AssistantRuntimeProvider>
     </EveAgentContext.Provider>

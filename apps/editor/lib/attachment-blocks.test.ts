@@ -185,6 +185,17 @@ test("no attachments produces nothing to send", () => {
   expect(attachmentsToParts([])).toEqual({ parts: [], images: [] });
 });
 
+// An attachment whose adapter never filled in content must not throw: onNew
+// would reject, and a rejected send clears the composer leaving no message.
+test("an attachment with no content is skipped, not thrown on", () => {
+  const { parts } = attachmentsToParts([
+    { name: "pending.png" },
+    { name: "photo.png", content: [{ type: "image", image: PNG }] },
+  ]);
+  expect(parts).toHaveLength(1);
+  expect(parts[0].type).toBe("file");
+});
+
 test("a text file and an image in one message: both extract", () => {
   const msg = `check these\n${wrap("notes.txt", "some notes")}\n[file: photo.png]`;
   const blocks = extractAttachmentBlocks(msg);

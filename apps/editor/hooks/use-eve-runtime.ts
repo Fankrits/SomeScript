@@ -26,16 +26,29 @@ const attachmentAdapter = new CompositeAttachmentAdapter([
   new SimpleTextAttachmentAdapter(),
 ]);
 
+// Stamped into saved threads. Bump on any eve upgrade, or any change to what
+// is persisted, so state the current client cannot replay is discarded.
+const HISTORY_VERSION = "eve-0.26";
+
 export function useEveRuntime(threadId: string, projectId: string) {
   const completedToolCalls = useRef<Set<string>>(new Set());
+  // A send that throws leaves no message behind — the composer has already
+  // cleared — so the failure has to be surfaced or it looks like nothing
+  // happened at all.
+  const [sendError, setSendError] = useState<string | null>(null);
 
-  // Load initial state synchronously on mount/remount
+  // Load initial state synchronously on mount/remount. A blob written by a
+  // different eve client is replayed into this one's reducer and session, so a
+  // shape change between versions can wedge the whole thread; bump the stamp
+  // whenever eve is upgraded and the mismatched blob is dropped for a fresh
+  // session instead.
   const [initialData] = useState(() => {
     if (typeof window === "undefined") return null;
     const saved = localStorage.getItem(`eve-thread-${threadId}`);
     if (!saved) return null;
     try {
-      return JSON.parse(saved);
+      const parsed = JSON.parse(saved);
+      return parsed?.version === HISTORY_VERSION ? parsed : null;
     } catch {
       return null;
     }
@@ -234,12 +247,20 @@ export function useEveRuntime(threadId: string, projectId: string) {
         }
 
         const firstPart = parts[0];
-        if (parts.length === 1 && firstPart.type === "text") {
-          await agent.send({ message: firstPart.text });
-        } else {
-          await agent.send({
-            message: parts as unknown as Parameters<typeof agent.send>[0]["message"],
-          });
+        try {
+          setSendError(null);
+          if (parts.length === 1 && firstPart.type === "text") {
+            await agent.send({ message: firstPart.text });
+          } else {
+            await agent.send({
+              message: parts as unknown as Parameters<typeof agent.send>[0]["message"],
+            });
+          }
+        } catch (e) {
+          // Rethrowing would reject into assistant-ui's send handler and vanish
+          // silently, leaving a cleared composer and no message on screen.
+          setSendError(e instanceof Error ? e.message : String(e));
+          console.error("Failed to send message to Eve", e);
         }
       }
     },
@@ -265,6 +286,7 @@ export function useEveRuntime(threadId: string, projectId: string) {
         localStorage.setItem(
           `eve-thread-${threadId}`,
           JSON.stringify({
+            version: HISTORY_VERSION,
             events: stripEventFileData(agent.events),
             sessionState: agent.session,
           })
@@ -368,5 +390,7 @@ export function useEveRuntime(threadId: string, projectId: string) {
     }
   }, [agent.status]);
 
-  return { runtime, agent };
+  const error = sendError ?? (agent.error ? agent.error.message : null);
+
+  return { runtime, agent, error, dismissError: () => setSendError(null) };
 }

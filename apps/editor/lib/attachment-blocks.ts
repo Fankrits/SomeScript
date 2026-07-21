@@ -68,7 +68,9 @@ export type OutgoingPart =
 
 interface AttachmentLike {
   name: string;
-  content: readonly { type: string; text?: string; image?: string }[];
+  // Optional in practice: the composer only fills this in once the adapter's
+  // send() resolves, and iterating it blind would throw the whole turn away.
+  content?: readonly { type: string; text?: string; image?: string }[];
 }
 
 /**
@@ -90,7 +92,7 @@ export function attachmentsToParts(attachments: readonly AttachmentLike[]): {
   const parts: OutgoingPart[] = [];
   const images: { url: string; name: string }[] = [];
   for (const attachment of attachments) {
-    for (const part of attachment.content) {
+    for (const part of attachment.content ?? []) {
       if (part.type === "text" && part.text !== undefined) {
         parts.push({ type: "text", text: part.text });
       } else if (part.type === "image" && part.image !== undefined) {
