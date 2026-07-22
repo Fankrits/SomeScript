@@ -1,228 +1,201 @@
 "use client"
 
 import {
-  Bold,
-  BookOpen,
-  Braces,
   ChevronDown,
-  Code,
-  FileText,
-  Hash,
-  Heading1,
-  Heading2,
-  Image as ImageIcon,
-  Italic,
-  Link,
-  List,
-  ListOrdered,
   type LucideIcon,
-  Pi,
-  Quote,
+  MoreHorizontal,
   Redo2,
-  Sigma,
-  Table,
-  Underline,
+  Search,
   Undo2,
 } from "lucide-react"
-import { memo, useEffect, useRef, useState, createContext, useContext } from "react"
-import { createPortal } from "react-dom"
+import { createContext, Fragment, memo, useContext, useEffect, useMemo, useRef, useState } from "react"
 import { cn } from "@/lib/utils"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuShortcut,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Kbd } from "@/components/ui/kbd"
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { GROUPS, type ToolGroup, type ToolItem } from "./toolbar-config"
 
 const ToolbarContext = createContext({ tooltipsEnabled: true })
 
+type Insert = (text: string, cursorOffset?: number) => void
+
 interface EditorToolbarProps {
-  onInsert: (text: string, cursorOffset?: number) => void
+  onInsert: Insert
   onUndo?: () => void
   onRedo?: () => void
   canUndo?: boolean
   canRedo?: boolean
   tooltipsEnabled?: boolean
+  /** Comma-joined active formats at the caret (see activeFormats), e.g. "bold,math". */
+  active?: string
+  /** Opens the ⌘K command palette. */
+  onOpenPalette?: () => void
 }
 
-interface ToolItem {
-  icon?: LucideIcon
-  label: string
-  text?: string
-  cursorOffset?: number
-  shortcut?: string
-}
+const ToolDivider = () => <div className="w-px h-4 bg-border/60 mx-1 shrink-0" />
 
-// Dropdown component for grouped actions
-const ToolDropdown = memo(
-  ({
-    icon: Icon,
-    label,
-    items,
-    onInsert,
-  }: {
-    icon: LucideIcon
-    label: string
-    items: ToolItem[]
-    onInsert: (text: string, cursorOffset?: number) => void
-  }) => {
-    const { tooltipsEnabled } = useContext(ToolbarContext)
-    const [isOpen, setIsOpen] = useState(false)
-    const dropdownRef = useRef<HTMLDivElement>(null)
-    const buttonRef = useRef<HTMLButtonElement>(null)
-    const [position, setPosition] = useState({ top: 0, left: 0 })
-
-    // Close on click outside
-    useEffect(() => {
-      const handleClickOutside = (event: MouseEvent) => {
-        if (
-          dropdownRef.current &&
-          !dropdownRef.current.contains(event.target as Node) &&
-          buttonRef.current &&
-          !buttonRef.current.contains(event.target as Node)
-        ) {
-          setIsOpen(false)
-        }
-      }
-      document.addEventListener("mousedown", handleClickOutside)
-      return () => document.removeEventListener("mousedown", handleClickOutside)
-    }, [])
-
-    // Calculate position when opening
-    useEffect(() => {
-      if (isOpen && buttonRef.current) {
-        const rect = buttonRef.current.getBoundingClientRect()
-        setPosition({
-          top: rect.bottom + window.scrollY,
-          left: rect.left + window.scrollX,
-        })
-      }
-    }, [isOpen])
-
-    const button = (
-      <button
-        type="button"
-        ref={buttonRef}
-        onClick={() => setIsOpen(!isOpen)}
-        className={cn(
-          "flex items-center gap-0.5 p-1.5 rounded-md transition-colors cursor-pointer text-xs font-medium",
-          isOpen
-            ? "bg-muted text-foreground"
-            : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
-        )}
-      >
-        <Icon className="size-3.5" />
-        <ChevronDown className="size-3" />
-      </button>
-    )
-
-    return (
-      <div className="relative shrink-0">
-        {tooltipsEnabled ? (
-          <Tooltip>
-            <TooltipTrigger asChild>{button}</TooltipTrigger>
-            <TooltipContent side="bottom" align="center" className="text-xs">
-              {label}
-            </TooltipContent>
-          </Tooltip>
-        ) : (
-          button
-        )}
-
-        {isOpen &&
-          createPortal(
-            <div
-              ref={dropdownRef}
-              style={{
-                top: `${position.top + 4}px`,
-                left: `${position.left}px`,
-                position: "absolute",
-              }}
-              className="z-[9999] min-w-[180px] bg-popover border border-border rounded-lg shadow-lg py-1 animate-in fade-in-0 zoom-in-95"
-            >
-              {items.map((item) => {
-                const ItemIcon = item.icon
-                return (
-                  <button
-                    type="button"
-                    key={item.label}
-                    onClick={() => {
-                      if (item.text) {
-                        onInsert(item.text, item.cursorOffset)
-                      }
-                      setIsOpen(false)
-                    }}
-                    className="w-full flex items-center justify-between px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors group cursor-pointer"
-                  >
-                    <div className="flex items-center gap-2">
-                      {ItemIcon && <ItemIcon className="size-3.5" />}
-                      <span>{item.label}</span>
-                    </div>
-                    {item.shortcut && (
-                      <span className="text-[10px] opacity-40 group-hover:opacity-60 font-mono font-normal">
-                        {item.shortcut}
-                      </span>
-                    )}
-                  </button>
-                )
-              })}
-            </div>,
-            document.body,
-          )}
-      </div>
-    )
-  },
-)
-ToolDropdown.displayName = "ToolDropdown"
-
-// Single tool button
+// A single icon button. Always renders through Tooltip so there's one code path
+// (the old toolbar duplicated every button for the tooltips-on/off cases).
 const ToolButton = memo(
   ({
     icon: Icon,
     label,
-    text,
-    cursorOffset = 0,
     shortcut,
-    onInsert,
+    disabled,
+    active,
+    onClick,
   }: {
     icon: LucideIcon
     label: string
-    text: string
-    cursorOffset?: number
     shortcut?: string
-    onInsert: (text: string, cursorOffset?: number) => void
+    disabled?: boolean
+    active?: boolean
+    onClick?: () => void
   }) => {
     const { tooltipsEnabled } = useContext(ToolbarContext)
     const button = (
       <button
         type="button"
-        onClick={() => onInsert(text, cursorOffset)}
-        className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-md transition-colors shrink-0 cursor-pointer"
+        onClick={onClick}
+        disabled={disabled}
+        aria-label={label}
+        aria-pressed={active}
+        className={cn(
+          "p-1.5 rounded-md transition-colors shrink-0 cursor-pointer",
+          active
+            ? "bg-primary/15 text-primary"
+            : disabled
+              ? "text-muted-foreground/30 cursor-not-allowed"
+              : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
+        )}
       >
         <Icon className="size-3.5" />
       </button>
     )
-
-    return tooltipsEnabled ? (
+    if (!tooltipsEnabled) return button
+    return (
       <Tooltip>
         <TooltipTrigger asChild>{button}</TooltipTrigger>
         <TooltipContent side="bottom" align="center" className="text-xs">
           {shortcut ? `${label} (${shortcut})` : label}
         </TooltipContent>
       </Tooltip>
-    ) : (
-      button
     )
   },
 )
 ToolButton.displayName = "ToolButton"
 
-// Divider
-const ToolDivider = () => (
-  <div className="w-px h-4 bg-border/60 mx-1 flex-shrink-0" />
+// Renders one dropdown's items. Reused by both the per-group caret menu and the
+// "More" overflow menu.
+const MenuItems = ({ items, onInsert }: { items: ToolItem[]; onInsert: Insert }) => (
+  <>
+    {items.map((item) => {
+      const Icon = item.icon
+      return (
+        <DropdownMenuItem key={item.label} onClick={() => onInsert(item.text, item.cursorOffset)}>
+          {Icon ? <Icon className="size-3.5" /> : <span className="size-3.5" />}
+          <span>{item.label}</span>
+          {item.shortcut && <DropdownMenuShortcut>{item.shortcut}</DropdownMenuShortcut>}
+        </DropdownMenuItem>
+      )
+    })}
+  </>
 )
 
-// Helper for LaTeX commands
-const cmd = (name: string) => `\\${name}`
+// One group: its primary icon buttons plus (optionally) a caret dropdown.
+const ToolGroupView = ({
+  group,
+  onInsert,
+  activeSet,
+}: {
+  group: ToolGroup
+  onInsert: Insert
+  activeSet: Set<string>
+}) => {
+  const { tooltipsEnabled } = useContext(ToolbarContext)
+  const TriggerIcon = group.menuTriggerIcon
+  return (
+    <div className="flex items-center">
+      {group.primary?.map((item) => (
+        <ToolButton
+          key={item.label}
+          icon={item.icon as LucideIcon}
+          label={item.label}
+          shortcut={item.shortcut}
+          active={item.activeId ? activeSet.has(item.activeId) : false}
+          onClick={() => onInsert(item.text, item.cursorOffset)}
+        />
+      ))}
+      {group.menu && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              title={tooltipsEnabled ? group.menuLabel : undefined}
+              aria-label={group.menuLabel}
+              className={cn(
+                "flex items-center gap-0.5 p-1.5 rounded-md transition-colors cursor-pointer text-xs font-medium shrink-0 text-muted-foreground hover:text-foreground hover:bg-muted/50 data-[state=open]:bg-muted data-[state=open]:text-foreground",
+                group.menuTriggerLabel && "px-2 gap-1",
+              )}
+            >
+              {TriggerIcon && <TriggerIcon className="size-3.5" />}
+              {group.menuTriggerLabel && <span>{group.menuTriggerLabel}</span>}
+              <ChevronDown className="size-3 opacity-60" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="min-w-[200px]">
+            <MenuItems items={group.menu} onInsert={onInsert} />
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+    </div>
+  )
+}
+
+// Collapses the low-priority groups into a single overflow menu when the bar is
+// too narrow — replaces the old silent `overflow-x-auto scrollbar-hide` where
+// trailing tools just scrolled off-screen with no affordance.
+const MoreMenu = ({ groups, onInsert }: { groups: ToolGroup[]; onInsert: Insert }) => {
+  const { tooltipsEnabled } = useContext(ToolbarContext)
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          title={tooltipsEnabled ? "More tools" : undefined}
+          aria-label="More tools"
+          className="flex items-center p-1.5 rounded-md transition-colors cursor-pointer shrink-0 text-muted-foreground hover:text-foreground hover:bg-muted/50 data-[state=open]:bg-muted data-[state=open]:text-foreground"
+        >
+          <MoreHorizontal className="size-3.5" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-[200px]">
+        {groups.map((group, i) => (
+          <Fragment key={group.id}>
+            {i > 0 && <DropdownMenuSeparator />}
+            <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground/70">
+              {group.menuLabel ?? group.title}
+            </DropdownMenuLabel>
+            {group.primary && <MenuItems items={group.primary} onInsert={onInsert} />}
+            {group.menu && <MenuItems items={group.menu} onInsert={onInsert} />}
+          </Fragment>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
 
 export const EditorToolbar = memo(
   ({
@@ -232,359 +205,70 @@ export const EditorToolbar = memo(
     canUndo = true,
     canRedo = true,
     tooltipsEnabled = true,
+    active = "",
+    onOpenPalette,
   }: EditorToolbarProps) => {
-    const sectionItems: ToolItem[] = [
-      { icon: BookOpen, label: "Part", text: cmd("part{}"), cursorOffset: -1 },
-      {
-        icon: Heading1,
-        label: "Chapter",
-        text: cmd("chapter{}"),
-        cursorOffset: -1,
-      },
-      { label: "Paragraph", text: cmd("paragraph{}"), cursorOffset: -1 },
-    ]
+    const barRef = useRef<HTMLDivElement>(null)
+    const [compact, setCompact] = useState(false)
+    const activeSet = useMemo(() => new Set(active ? active.split(",") : []), [active])
 
-    const mathItems: ToolItem[] = [
-      {
-        label: "Display Math",
-        text: "\\[\n  \n\\]",
-        cursorOffset: -3,
-        shortcut: "Ctrl+Shift+M",
-      },
-      {
-        label: "Align",
-        text: "\\begin{align}\n  \n\\end{align}",
-        cursorOffset: -12,
-      },
-      { label: "Fraction", text: cmd("frac{}{}"), cursorOffset: -3 },
-      { label: "Square Root", text: cmd("sqrt{}"), cursorOffset: -1 },
-      { label: "Subscript", text: "_{}", cursorOffset: -1 },
-      { label: "Superscript", text: "^{}", cursorOffset: -1 },
-      { label: "Sum", text: cmd("sum_{i=1}^{n}"), cursorOffset: 0 },
-      { label: "Integral", text: cmd("int_{a}^{b}"), cursorOffset: 0 },
-      { label: "Limit", text: cmd("lim_{x \\to \\infty}"), cursorOffset: 0 },
-    ]
+    // Track the toolbar's own width (not the viewport) so the fold reacts to the
+    // editor pane shrinking under the PDF split, which Tailwind breakpoints miss.
+    useEffect(() => {
+      const el = barRef.current
+      if (!el) return
+      const ro = new ResizeObserver(([entry]) => {
+        // ponytail: single threshold, not per-pixel group measuring. 620px keeps
+        // the full bar until the split pane is genuinely cramped; revisit if the
+        // fold trips too early on some layout.
+        setCompact(entry.contentRect.width < 620)
+      })
+      ro.observe(el)
+      return () => ro.disconnect()
+    }, [])
 
-    const refItems: ToolItem[] = [
-      { icon: Hash, label: "Label", text: cmd("label{}"), cursorOffset: -1 },
-      { label: "Page Reference", text: cmd("pageref{}"), cursorOffset: -1 },
-      { label: "Equation Reference", text: cmd("eqref{}"), cursorOffset: -1 },
-      { label: "Footnote", text: cmd("footnote{}"), cursorOffset: -1 },
-    ]
-
-    const envItems: ToolItem[] = [
-      {
-        label: "Description",
-        text: "\\begin{description}\n  \\item[] \n\\end{description}",
-        cursorOffset: -18,
-      },
-      {
-        icon: Quote,
-        label: "Quote",
-        text: "\\begin{quote}\n\n\\end{quote}",
-        cursorOffset: -12,
-      },
-      {
-        icon: Code,
-        label: "Verbatim",
-        text: "\\begin{verbatim}\n\n\\end{verbatim}",
-        cursorOffset: -14,
-      },
-      {
-        label: "Center",
-        text: "\\begin{center}\n\n\\end{center}",
-        cursorOffset: -13,
-      },
-      {
-        label: "Figure",
-        text: "\\begin{figure}[htbp]\n  \\centering\n  \\includegraphics{}\n  \\caption{}\n  \\label{fig:}\n\\end{figure}",
-        cursorOffset: -38,
-      },
-      {
-        label: "Theorem",
-        text: "\\begin{theorem}\n\n\\end{theorem}",
-        cursorOffset: -14,
-      },
-      {
-        label: "Proof",
-        text: "\\begin{proof}\n\n\\end{proof}",
-        cursorOffset: -12,
-      },
-      {
-        label: "Abstract",
-        text: "\\begin{abstract}\n\n\\end{abstract}",
-        cursorOffset: -15,
-      },
-    ]
-
-    const formatItems: ToolItem[] = [
-      {
-        icon: Underline,
-        label: "Underline",
-        text: cmd("underline{}"),
-        cursorOffset: -1,
-        shortcut: "Ctrl+U",
-      },
-      {
-        icon: Code,
-        label: "Typewriter",
-        text: cmd("texttt{}"),
-        cursorOffset: -1,
-      },
-      { label: "Small Caps", text: cmd("textsc{}"), cursorOffset: -1 },
-      { label: "Emphasis", text: cmd("emph{}"), cursorOffset: -1 },
-    ]
-
-    const insertItems: ToolItem[] = [
-      {
-        icon: ImageIcon,
-        label: "Image",
-        text: "\\includegraphics[width=\\textwidth]{}",
-        cursorOffset: -1,
-      },
-      {
-        icon: Table,
-        label: "Table",
-        text: "\\begin{table}[htbp]\n  \\centering\n  \\begin{tabular}{|c|c|}\n    \\hline\n    Header 1 & Header 2 \\\\\n    \\hline\n    Cell 1 & Cell 2 \\\\\n    \\hline\n  \\end{tabular}\n  \\caption{}\n  \\label{tab:}\n\\end{table}",
-        cursorOffset: -15,
-      },
-      {
-        icon: Link,
-        label: "Hyperlink",
-        text: cmd("href{url}{text}"),
-        cursorOffset: -5,
-      },
-      {
-        icon: FileText,
-        label: "Input File",
-        text: cmd("input{}"),
-        cursorOffset: -1,
-      },
-    ]
+    const inlineGroups = compact ? GROUPS.filter((g) => !g.low) : GROUPS
+    const foldedGroups = compact ? GROUPS.filter((g) => g.low) : []
 
     return (
       <ToolbarContext.Provider value={{ tooltipsEnabled }}>
-        <div className="relative z-20 flex flex-nowrap overflow-x-auto scrollbar-hide items-center gap-0.5 px-2 border-b bg-muted/10 h-11 w-full select-none">
-          {/* Undo/Redo */}
+        <div
+          ref={barRef}
+          className="relative z-20 flex flex-nowrap items-center gap-0.5 px-2 border-b bg-muted/10 h-11 w-full select-none overflow-x-auto"
+        >
+          {/* History */}
           <div className="flex items-center">
-            {tooltipsEnabled ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    onClick={onUndo}
-                    disabled={!canUndo}
-                    className={cn(
-                      "p-1.5 rounded-md transition-colors cursor-pointer",
-                      canUndo
-                        ? "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                        : "text-muted-foreground/30 cursor-not-allowed",
-                    )}
-                  >
-                    <Undo2 className="size-3.5" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom" align="center" className="text-xs">
-                  Undo (Ctrl+Z)
-                </TooltipContent>
-              </Tooltip>
-            ) : (
-              <button
-                type="button"
-                onClick={onUndo}
-                disabled={!canUndo}
-                className={cn(
-                  "p-1.5 rounded-md transition-colors cursor-pointer",
-                  canUndo
-                    ? "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                    : "text-muted-foreground/30 cursor-not-allowed",
-                )}
-              >
-                <Undo2 className="size-3.5" />
-              </button>
-            )}
+            <ToolButton icon={Undo2} label="Undo" shortcut="⌘Z" disabled={!canUndo} onClick={onUndo} />
+            <ToolButton icon={Redo2} label="Redo" shortcut="⌘⇧Z" disabled={!canRedo} onClick={onRedo} />
+          </div>
 
-            {tooltipsEnabled ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    onClick={onRedo}
-                    disabled={!canRedo}
-                    className={cn(
-                      "p-1.5 rounded-md transition-colors cursor-pointer",
-                      canRedo
-                        ? "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                        : "text-muted-foreground/30 cursor-not-allowed",
-                    )}
-                  >
-                    <Redo2 className="size-3.5" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom" align="center" className="text-xs">
-                  Redo (Ctrl+Y)
-                </TooltipContent>
-              </Tooltip>
-            ) : (
-              <button
-                type="button"
-                onClick={onRedo}
-                disabled={!canRedo}
-                className={cn(
-                  "p-1.5 rounded-md transition-colors cursor-pointer",
-                  canRedo
-                    ? "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                    : "text-muted-foreground/30 cursor-not-allowed",
-                )}
-              >
-                <Redo2 className="size-3.5" />
-              </button>
-            )}
+          {inlineGroups.map((group) => (
+            <Fragment key={group.id}>
+              <ToolDivider />
+              <ToolGroupView group={group} onInsert={onInsert} activeSet={activeSet} />
+            </Fragment>
+          ))}
+
+          {foldedGroups.length > 0 && (
+            <>
+              <ToolDivider />
+              <MoreMenu groups={foldedGroups} onInsert={onInsert} />
+            </>
+          )}
+
+          {onOpenPalette && (
+            <button
+              type="button"
+              onClick={onOpenPalette}
+              aria-label="Search commands"
+              title={tooltipsEnabled ? "Search commands and symbols (⌘K)" : undefined}
+              className="ml-auto flex items-center gap-1.5 px-2 py-1 rounded-md border border-border/60 text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors shrink-0 cursor-pointer"
+            >
+              <Search className="size-3.5" />
+              <Kbd className="text-[10px]">⌘K</Kbd>
+            </button>
+          )}
         </div>
-
-        <ToolDivider />
-
-        {/* Basic Formatting */}
-        <div className="flex items-center">
-          <ToolButton
-            icon={Bold}
-            label="Bold"
-            text={cmd("textbf{}")}
-            cursorOffset={-1}
-            shortcut="Ctrl+B"
-            onInsert={onInsert}
-          />
-          <ToolButton
-            icon={Italic}
-            label="Italic"
-            text={cmd("textit{}")}
-            cursorOffset={-1}
-            shortcut="Ctrl+I"
-            onInsert={onInsert}
-          />
-          <ToolDropdown
-            icon={ChevronDown}
-            label="More Formatting"
-            items={formatItems}
-            onInsert={onInsert}
-          />
-        </div>
-
-        <ToolDivider />
-
-        {/* Document Structure */}
-        <div className="flex items-center">
-          <ToolButton
-            icon={Heading1}
-            label="Section"
-            text={cmd("section{}")}
-            cursorOffset={-1}
-            onInsert={onInsert}
-          />
-          <ToolDropdown
-            icon={ChevronDown}
-            label="More Structure"
-            items={[
-              {
-                icon: Heading2,
-                label: "Subsection",
-                text: "\\subsection{}",
-                cursorOffset: -1,
-              },
-              ...sectionItems,
-            ]}
-            onInsert={onInsert}
-          />
-        </div>
-
-        <ToolDivider />
-
-        {/* Math */}
-        <div className="flex items-center">
-          <ToolButton
-            icon={Sigma}
-            label="Inline Math"
-            text="$ $"
-            cursorOffset={-1}
-            shortcut="Ctrl+M"
-            onInsert={onInsert}
-          />
-          <ToolDropdown
-            icon={Pi}
-            label="Math Environments"
-            items={[
-              {
-                label: "Equation",
-                text: "\\begin{equation}\n  \n\\end{equation}",
-                cursorOffset: -15,
-              },
-              ...mathItems,
-            ]}
-            onInsert={onInsert}
-          />
-        </div>
-
-        <ToolDivider />
-
-        {/* Lists & Environments */}
-        <div className="flex items-center">
-          <ToolButton
-            icon={List}
-            label="Itemize"
-            text="\\begin{itemize}\n  \\item \n\\end{itemize}"
-            cursorOffset={-14}
-            onInsert={onInsert}
-          />
-          <ToolDropdown
-            icon={Braces}
-            label="More Environments"
-            items={[
-              {
-                icon: ListOrdered,
-                label: "Enumerate",
-                text: "\\begin{enumerate}\n  \\item \n\\end{enumerate}",
-                cursorOffset: -16,
-              },
-              ...envItems,
-            ]}
-            onInsert={onInsert}
-          />
-        </div>
-
-        <ToolDivider />
-
-        {/* References & Citation */}
-        <div className="flex items-center">
-          <ToolButton
-            icon={BookOpen}
-            label="Citation"
-            text="\\cite{}"
-            cursorOffset={-1}
-            onInsert={onInsert}
-          />
-          <ToolDropdown
-            icon={Hash}
-            label="References"
-            items={[
-              { label: "Reference", text: "\\ref{}", cursorOffset: -1 },
-              ...refItems,
-            ]}
-            onInsert={onInsert}
-          />
-        </div>
-
-        <ToolDivider />
-
-        {/* General Insert */}
-        <div className="flex items-center">
-          <ToolDropdown
-            icon={ImageIcon}
-            label="Insert"
-            items={insertItems}
-            onInsert={onInsert}
-          />
-        </div>
-      </div>
       </ToolbarContext.Provider>
     )
   },

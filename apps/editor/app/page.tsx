@@ -81,7 +81,9 @@ const LayoutIconRight = ({ active }: { active: boolean }) => (
 );
 import CodeMirror, { EditorView, type ViewUpdate } from "@uiw/react-codemirror";
 import { undo, redo, undoDepth, redoDepth, selectAll } from "@codemirror/commands";
+import { wrapInsert, activeFormats } from "@/lib/latex-insert";
 import { EditorToolbar } from "@/components/editor/editor-toolbar";
+import { CommandPalette } from "@/components/editor/command-palette";
 import { ImageViewer } from "@/components/editor/image-viewer";
 import { latex } from "codemirror-lang-latex";
 import { useCodeMirrorExtensions } from "@/hooks/use-codemirror-extensions";
@@ -614,6 +616,10 @@ const Example = () => {
           searchPanelRef.current?.focusSearch();
         }, 50);
       }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen((v) => !v);
+      }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
@@ -839,6 +845,10 @@ const Example = () => {
   const editorViewRef = useRef<EditorView | null>(null);
   const [canUndo, setCanUndo] = useState<boolean>(false);
   const [canRedo, setCanRedo] = useState<boolean>(false);
+  // Comma-joined formats the caret sits inside (e.g. "bold,math"); a stable string
+  // so React skips re-rendering the toolbar when the format context is unchanged.
+  const [activeFormatKey, setActiveFormatKey] = useState<string>("");
+  const [paletteOpen, setPaletteOpen] = useState<boolean>(false);
 
   const handleUpdate = useCallback((update: ViewUpdate) => {
     if (update.docChanged || update.selectionSet) {
@@ -846,6 +856,7 @@ const Example = () => {
       if (view) {
         setCanUndo(undoDepth(view.state) > 0);
         setCanRedo(redoDepth(view.state) > 0);
+        setActiveFormatKey(activeFormats(view.state));
       }
     }
   }, []);
@@ -884,17 +895,7 @@ const Example = () => {
   const handleInsertText = useCallback((text: string, cursorOffset = 0) => {
     const view = editorViewRef.current;
     if (!view) return;
-
-    const { state } = view;
-    const range = state.selection.main;
-    
-    view.dispatch({
-      changes: { from: range.from, to: range.to, insert: text },
-      selection: { anchor: range.from + text.length + cursorOffset },
-      userEvent: "input",
-    });
-    
-    view.focus();
+    wrapInsert(view, text, cursorOffset);
   }, []);
 
   const handlePdfDoubleClick = useCallback(() => {
@@ -1693,6 +1694,12 @@ const Example = () => {
         </div>
       </header>
 
+      <CommandPalette
+        open={paletteOpen}
+        onOpenChange={setPaletteOpen}
+        onInsert={handleInsertText}
+      />
+
       {/* Main body wrapper */}
       <div className="relative flex flex-1 w-full overflow-hidden">
         {/* Backdrops for mobile view */}
@@ -2109,6 +2116,8 @@ const Example = () => {
                       canUndo={canUndo}
                       canRedo={canRedo}
                       tooltipsEnabled={true}
+                      active={activeFormatKey}
+                      onOpenPalette={() => setPaletteOpen(true)}
                     />
                   )}
                   <div className="flex-1 relative overflow-auto">
