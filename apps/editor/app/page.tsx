@@ -1706,7 +1706,7 @@ const Example = () => {
         {isLeftSidebarOpen && (
         <div
           onClick={() => setIsLeftSidebarOpen(false)}
-          className="lg:hidden fixed inset-0 z-10 bg-background/80 backdrop-blur-sm"
+          className="lg:hidden absolute inset-0 z-10 bg-background/80 backdrop-blur-sm"
         />
       )}
 
