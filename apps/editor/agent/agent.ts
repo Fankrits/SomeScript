@@ -1,15 +1,16 @@
 import { defineAgent, defineDynamic } from "eve";
-import { MODE_MODEL_IDS, DEFAULT_MODE, isEveMode } from "../lib/eve-modes";
+import { DEFAULT_MODE, isEveMode, type EveMode } from "../lib/eve-modes";
+import { primaryModelFor, fallbackModelsFor } from "./model-config";
 
 // The client injects a "[mode: lite|pro|expert]" marker into each user message
 // (see onNew in hooks/use-eve-runtime.ts), mirroring the existing "[projectId: …]"
-// marker. The resolver reads the most recent user message to pick the model, so
+// marker. The resolver reads the most recent user message to pick the mode, so
 // switching modes mid-conversation takes effect on the next turn.
 const MODE_RE = /\[mode:\s*(lite|pro|expert)\]/i;
 
-function modeModelFromMessages(
+function modeFromMessages(
   messages: readonly { role: string; content: unknown }[],
-): string {
+): EveMode {
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i];
     if (m.role !== "user") continue;
@@ -27,16 +28,27 @@ function modeModelFromMessages(
           : "";
     const hit = MODE_RE.exec(text);
     const mode = hit?.[1].toLowerCase();
-    if (isEveMode(mode)) return MODE_MODEL_IDS[mode];
+    if (isEveMode(mode)) return mode;
   }
-  return MODE_MODEL_IDS[DEFAULT_MODE];
+  return DEFAULT_MODE;
 }
 
 export default defineAgent({
   model: defineDynamic({
-    fallback: MODE_MODEL_IDS[DEFAULT_MODE],
+    fallback: primaryModelFor(DEFAULT_MODE),
     events: {
-      "turn.started": (_event, ctx) => modeModelFromMessages(ctx.messages),
+      "turn.started": (_event, ctx) => {
+        const mode = modeFromMessages(ctx.messages);
+        const fallbackModels = fallbackModelsFor(mode);
+        if (fallbackModels.length === 0) return primaryModelFor(mode);
+        // Extra LITE_MODEL/PRO_MODEL/EXPERT_MODEL entries beyond the first
+        // become fallback models the AI Gateway retries in order if the
+        // primary model call fails.
+        return {
+          model: primaryModelFor(mode),
+          modelOptions: { providerOptions: { gateway: { models: fallbackModels } } },
+        };
+      },
     },
   }),
 });
