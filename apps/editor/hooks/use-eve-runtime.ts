@@ -9,7 +9,7 @@ import {
   type AppendMessage,
 } from "@assistant-ui/react";
 import { useEveAgent } from "eve/react";
-import { useCallback, useEffect, useState, useRef } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import type { EveMessage, EveMessagePart } from "eve/react";
 import {
   attachmentsToParts,
@@ -18,20 +18,43 @@ import {
   stripPartPlaceholders,
   type OutgoingPart,
 } from "@/lib/attachment-blocks";
+import type { EveMode } from "@/lib/eve-modes";
 
-// Images inline as data URLs, text/markdown/csv/… wrapped in <attachment> tags.
-// Stateless, so one instance for the whole app.
-const attachmentAdapter = new CompositeAttachmentAdapter([
-  new SimpleImageAttachmentAdapter(),
-  new SimpleTextAttachmentAdapter(),
-]);
+// Leading "[mode: …]" / "[projectId: …]" context markers we inject in onNew: the
+// model (and the dynamic model resolver) still receive them, but users shouldn't
+// see them in rendered text or thread titles.
+const MARKER_PREFIX = /^(?:\[(?:projectId|mode): [^\]]*\]\n?)+/;
 
 // Stamped into saved threads. Bump on any eve upgrade, or any change to what
 // is persisted, so state the current client cannot replay is discarded.
 const HISTORY_VERSION = "eve-0.26";
 
-export function useEveRuntime(threadId: string, projectId: string) {
+export function useEveRuntime(
+  threadId: string,
+  projectId: string,
+  mode: EveMode,
+) {
   const completedToolCalls = useRef<Set<string>>(new Set());
+  // Read inside onNew, which assistant-ui may hold across renders — a ref keeps
+  // the marker in sync with the live selection without rebuilding the runtime.
+  const modeRef = useRef(mode);
+  modeRef.current = mode;
+
+  // Lite is not a vision model, so its composer offers no image adapter: the
+  // file picker's `accept` (read live from the active adapter) drops images and
+  // drag/paste `add` rejects them. Pro/Expert keep image + text.
+  const attachmentAdapter = useMemo(
+    () =>
+      new CompositeAttachmentAdapter(
+        mode === "lite"
+          ? [new SimpleTextAttachmentAdapter()]
+          : [
+              new SimpleImageAttachmentAdapter(),
+              new SimpleTextAttachmentAdapter(),
+            ],
+      ),
+    [mode],
+  );
   // A send that throws leaves no message behind — the composer has already
   // cleared — so the failure has to be surfaced or it looks like nothing
   // happened at all.
@@ -62,10 +85,10 @@ export function useEveRuntime(threadId: string, projectId: string) {
   const convertEvePart = useCallback(
     (part: EveMessagePart, messageId: string, index: number) => {
       // 1. Plain text — assistant-ui TextMessagePart.
-      //    Hide the leading [projectId: ...] marker we inject in onNew: the model
-      //    still receives it (it's how tools learn the project), but users shouldn't see it.
+      //    Hide the leading [mode: …]/[projectId: …] markers we inject in onNew:
+      //    the model still receives them, but users shouldn't see them.
       if (part.type === "text") {
-        const text = part.text.replace(/^\[projectId: [^\]]*\]\n?/, "");
+        const text = part.text.replace(MARKER_PREFIX, "");
         return { type: "text" as const, text };
       }
 
@@ -233,10 +256,19 @@ export function useEveRuntime(threadId: string, projectId: string) {
       for (const part of message.content) {
         if (part.type === "text") parts.push({ type: "text", text: part.text });
       }
-      parts.push(...attachmentsToParts(message.attachments ?? []).parts);
+      let attachmentParts = attachmentsToParts(message.attachments ?? []).parts;
+      // Defensive: Lite is text-only, so drop any image that slipped through —
+      // e.g. attached in Pro, then switched to Lite before sending (the adapter
+      // swap doesn't remove already-pending attachments).
+      if (modeRef.current === "lite") {
+        attachmentParts = attachmentParts.filter(
+          (p) => !(p.type === "file" && p.mediaType.startsWith("image/")),
+        );
+      }
+      parts.push(...attachmentParts);
 
       if (parts.length > 0) {
-        const marker = `[projectId: ${projectId}]`;
+        const marker = `[mode: ${modeRef.current}]\n[projectId: ${projectId}]`;
         const textPart = parts.find(
           (p): p is Extract<OutgoingPart, { type: "text" }> => p.type === "text"
         );
@@ -316,9 +348,9 @@ export function useEveRuntime(threadId: string, projectId: string) {
               (p: { type: string; text?: string }) => p.type === "text"
             );
             if (firstPart && "text" in firstPart && firstPart.text) {
-              // Strip the injected "[projectId: ...]" context marker (same as
-              // convertEvePart) so the title shows the actual user message.
-              const cleanText = firstPart.text.replace(/^\[projectId: [^\]]*\]\n?/, "").trim();
+              // Strip the injected "[mode: …]"/"[projectId: …]" context markers
+              // (same as convertEvePart) so the title shows the actual message.
+              const cleanText = firstPart.text.replace(MARKER_PREFIX, "").trim();
               if (cleanText) {
                 list[threadIndex].title =
                   cleanText.length > 25 ? cleanText.substring(0, 22) + "..." : cleanText;

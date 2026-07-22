@@ -5,6 +5,8 @@ import { AssistantRuntimeProvider, useComposerRuntime } from "@assistant-ui/reac
 import { Thread } from "@/components/assistant-ui/thread";
 import { useEveRuntime } from "@/hooks/use-eve-runtime";
 import { EveAgentContext } from "@/components/chat/eve-agent-context";
+import { ModelModeContext } from "@/components/chat/model-mode-context";
+import { DEFAULT_MODE, isEveMode, type EveMode } from "@/lib/eve-modes";
 import {
   HitlToolUI,
   AskQuestionToolUI,
@@ -76,8 +78,31 @@ function ChatError({ message, onDismiss }: { message: string; onDismiss: () => v
   );
 }
 
-export function EveThread({ threadId, projectId }: { threadId: string; projectId: string }) {
-  const { runtime, agent, error, dismissError } = useEveRuntime(threadId, projectId);
+const MODE_STORAGE_KEY = "eve-model-mode";
+
+/**
+ * assistant-ui's ExternalStoreRuntime holds its composer-client snapshot
+ * (including `attachmentAccept`, which drives the file picker's native
+ * filter) on the stable runtime instance created by `useExternalStoreRuntime`,
+ * not on any consuming component — so remounting a leaf like the attachment
+ * button does not refresh it after a live adapter swap. Keying this whole
+ * inner subtree by `mode` forces `useEveRuntime` to build a brand new runtime
+ * (and re-run `useEveAgent`) on every switch, which is the one path proven to
+ * pick up the new adapter correctly. `useEveAgent` rehydrates from the same
+ * localStorage snapshot the existing autosave effect already writes on every
+ * turn, so the visible conversation is unaffected; only in-flight composer
+ * state (typed draft, staged attachments) resets, same as a page reload.
+ */
+function EveThreadInner({
+  threadId,
+  projectId,
+  mode,
+}: {
+  threadId: string;
+  projectId: string;
+  mode: EveMode;
+}) {
+  const { runtime, agent, error, dismissError } = useEveRuntime(threadId, projectId, mode);
 
   return (
     <EveAgentContext.Provider value={agent}>
@@ -108,5 +133,23 @@ export function EveThread({ threadId, projectId }: { threadId: string; projectId
         </div>
       </AssistantRuntimeProvider>
     </EveAgentContext.Provider>
+  );
+}
+
+export function EveThread({ threadId, projectId }: { threadId: string; projectId: string }) {
+  // Last-picked mode is remembered globally (one key), defaulting to Lite.
+  const [mode, setMode] = React.useState<EveMode>(() => {
+    if (typeof window === "undefined") return DEFAULT_MODE;
+    const saved = localStorage.getItem(MODE_STORAGE_KEY);
+    return isEveMode(saved) ? saved : DEFAULT_MODE;
+  });
+  React.useEffect(() => {
+    localStorage.setItem(MODE_STORAGE_KEY, mode);
+  }, [mode]);
+
+  return (
+    <ModelModeContext.Provider value={{ mode, setMode }}>
+      <EveThreadInner key={mode} threadId={threadId} projectId={projectId} mode={mode} />
+    </ModelModeContext.Provider>
   );
 }
