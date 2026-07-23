@@ -70,7 +70,13 @@ interface AttachmentLike {
   name: string;
   // Optional in practice: the composer only fills this in once the adapter's
   // send() resolves, and iterating it blind would throw the whole turn away.
-  content?: readonly { type: string; text?: string; image?: string }[];
+  content?: readonly {
+    type: string;
+    text?: string;
+    image?: string;
+    data?: string;
+    mimeType?: string;
+  }[];
 }
 
 /**
@@ -103,6 +109,16 @@ export function attachmentsToParts(attachments: readonly AttachmentLike[]): {
           filename: attachment.name,
         });
         images.push({ url: part.image, name: attachment.name });
+      } else if (part.type === "file" && part.data !== undefined) {
+        // Non-image documents (e.g. PDFs from SimplePdfAttachmentAdapter):
+        // already a data URL, just needs its mimeType renamed to mediaType
+        // for Eve's wire format.
+        parts.push({
+          type: "file",
+          mediaType: part.mimeType ?? mediaTypeOf(part.data),
+          data: part.data,
+          filename: attachment.name,
+        });
       }
     }
   }

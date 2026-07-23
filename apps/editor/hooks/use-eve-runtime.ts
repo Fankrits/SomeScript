@@ -5,6 +5,10 @@ import {
   SimpleImageAttachmentAdapter,
   SimpleTextAttachmentAdapter,
   useExternalStoreRuntime,
+  generateId,
+  type AttachmentAdapter,
+  type PendingAttachment,
+  type CompleteAttachment,
   type ThreadMessageLike,
   type AppendMessage,
 } from "@assistant-ui/react";
@@ -25,6 +29,50 @@ import type { EveMode } from "@/lib/eve-modes";
 // see them in rendered text or thread titles.
 const MARKER_PREFIX = /^(?:\[(?:projectId|mode): [^\]]*\]\n?)+/;
 
+// assistant-ui only ships Simple adapters for images and text. PDFs get the
+// same treatment: read as a data URL, forward as a generic `file` content
+// part — attachmentsToParts (lib/attachment-blocks.ts) already knows how to
+// route that to Eve's wire format, same as it does for images.
+class SimplePdfAttachmentAdapter implements AttachmentAdapter {
+  public accept = "application/pdf";
+
+  public async add(state: { file: File }): Promise<PendingAttachment> {
+    return {
+      id: generateId(),
+      type: "document",
+      name: state.file.name,
+      contentType: state.file.type,
+      file: state.file,
+      status: { type: "requires-action", reason: "composer-send" },
+    };
+  }
+
+  public async send(attachment: PendingAttachment): Promise<CompleteAttachment> {
+    const data = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(attachment.file);
+    });
+    return {
+      ...attachment,
+      status: { type: "complete" },
+      content: [
+        {
+          type: "file",
+          data,
+          mimeType: attachment.file.type || "application/pdf",
+          filename: attachment.name,
+        },
+      ],
+    };
+  }
+
+  public async remove() {
+    // noop
+  }
+}
+
 // Stamped into saved threads. Bump on any eve upgrade, or any change to what
 // is persisted, so state the current client cannot replay is discarded.
 const HISTORY_VERSION = "eve-0.26";
@@ -40,9 +88,9 @@ export function useEveRuntime(
   const modeRef = useRef(mode);
   modeRef.current = mode;
 
-  // Lite is not a vision model, so its composer offers no image adapter: the
-  // file picker's `accept` (read live from the active adapter) drops images and
-  // drag/paste `add` rejects them. Pro/Expert keep image + text.
+  // Lite is not a vision model, so its composer offers no image/PDF adapter:
+  // the file picker's `accept` (read live from the active adapter) drops them
+  // and drag/paste `add` rejects them. Pro/Expert keep image + PDF + text.
   const attachmentAdapter = useMemo(
     () =>
       new CompositeAttachmentAdapter(
@@ -50,6 +98,7 @@ export function useEveRuntime(
           ? [new SimpleTextAttachmentAdapter()]
           : [
               new SimpleImageAttachmentAdapter(),
+              new SimplePdfAttachmentAdapter(),
               new SimpleTextAttachmentAdapter(),
             ],
       ),
@@ -257,12 +306,16 @@ export function useEveRuntime(
         if (part.type === "text") parts.push({ type: "text", text: part.text });
       }
       let attachmentParts = attachmentsToParts(message.attachments ?? []).parts;
-      // Defensive: Lite is text-only, so drop any image that slipped through —
-      // e.g. attached in Pro, then switched to Lite before sending (the adapter
-      // swap doesn't remove already-pending attachments).
+      // Defensive: Lite is text-only, so drop any image/PDF that slipped
+      // through — e.g. attached in Pro, then switched to Lite before sending
+      // (the adapter swap doesn't remove already-pending attachments).
       if (modeRef.current === "lite") {
         attachmentParts = attachmentParts.filter(
-          (p) => !(p.type === "file" && p.mediaType.startsWith("image/")),
+          (p) =>
+            !(
+              p.type === "file" &&
+              (p.mediaType.startsWith("image/") || p.mediaType === "application/pdf")
+            ),
         );
       }
       parts.push(...attachmentParts);

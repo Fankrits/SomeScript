@@ -196,6 +196,19 @@ test("an attachment with no content is skipped, not thrown on", () => {
   expect(parts[0].type).toBe("file");
 });
 
+const PDF = "data:application/pdf;base64,JVBERi0=";
+
+test("a PDF attachment goes out as a file part with its mimeType renamed to mediaType", () => {
+  const { parts, images } = attachmentsToParts([
+    { name: "paper.pdf", content: [{ type: "file", data: PDF, mimeType: "application/pdf" }] },
+  ]);
+  expect(parts).toEqual([
+    { type: "file", mediaType: "application/pdf", data: PDF, filename: "paper.pdf" },
+  ]);
+  // PDFs aren't gallery pixels, unlike images.
+  expect(images).toEqual([]);
+});
+
 test("a text file and an image in one message: both extract", () => {
   const msg = `check these\n${wrap("notes.txt", "some notes")}\n[file: photo.png]`;
   const blocks = extractAttachmentBlocks(msg);
