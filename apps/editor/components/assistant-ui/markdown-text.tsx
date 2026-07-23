@@ -182,14 +182,20 @@ const defaultComponents = memoizeMarkdownComponents({
       {...props}
     />
   ),
+  // `overflow` is ignored on a `display: table` box, so the template's
+  // `overflow-y-auto` here was inert (and the wrong axis): a table wider than
+  // the chat column pushed the whole thread viewport sideways instead of
+  // scrolling itself. The scroll container has to be a block-level wrapper.
   table: ({ className, ...props }) => (
-    <table
-      className={cn(
-        "aui-md-table my-3 w-full border-separate border-spacing-0 overflow-y-auto",
-        className,
-      )}
-      {...props}
-    />
+    <div className="aui-md-table-wrapper my-3 max-w-full overflow-x-auto">
+      <table
+        className={cn(
+          "aui-md-table w-full border-separate border-spacing-0",
+          className,
+        )}
+        {...props}
+      />
+    </div>
   ),
   th: ({ className, ...props }) => (
     <th
