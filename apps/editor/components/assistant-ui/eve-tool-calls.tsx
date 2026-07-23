@@ -16,7 +16,8 @@ import {
 import { structuredPatch } from "diff";
 import { Button } from "@/components/ui/button";
 import { useEveAgentCtx } from "@/components/chat/eve-agent-context";
-import { makeAssistantToolUI } from "@assistant-ui/react";
+import { makeAssistantToolUI, type ToolCallMessagePartStatus } from "@assistant-ui/react";
+import { EveToolRow } from "@/components/assistant-ui/tool-fallback";
 import { DiffViewer } from "@/components/diff-viewer";
 import {
   Dialog,
@@ -85,6 +86,13 @@ interface ToolCardArgs {
   action?: string;
 }
 
+/** Props every ported tool card receives from `makeAssistantToolUI`'s render. */
+type EveCardProps = {
+  args: ToolCardArgs;
+  result?: unknown;
+  status?: ToolCallMessagePartStatus;
+};
+
 // ---------------------------------------------------------------------------
 // HITL — Human-in-the-Loop approval + ask_question prompt
 // ---------------------------------------------------------------------------
@@ -147,11 +155,12 @@ function HitlCard({ args }: { args: ToolCardArgs }) {
             </Button>
           ))
         ) : (
-          // Default approve / reject buttons for bare tool approvals
+          // Default approve / reject buttons for bare tool approvals. Mirrors
+          // the native ToolFallbackApproval bar (default + outline) so the two
+          // approval surfaces are indistinguishable.
           <>
             <Button
               size="sm"
-              className="bg-amber-600 hover:bg-amber-700 text-white"
               onClick={() => handleAnswer("approve")}
               disabled={submitted}
             >
@@ -230,89 +239,90 @@ function OAuthCard({ args }: { args: ToolCardArgs }) {
 // ---------------------------------------------------------------------------
 // Subagent delegation card
 // ---------------------------------------------------------------------------
-function SubagentCard({ args }: { args: ToolCardArgs }) {
-  const state = args.state;
-  const toolName = args.toolName;
-  const isDone = state === "output-available" || state === "output-error" || state === "output-denied";
-
+function SubagentCard({ args, status }: EveCardProps) {
+  // A one-line status row: no body, so it renders without a disclosure the
+  // user could click into and find empty. The shared shimmer carries "active".
   return (
-    <div className="flex items-center gap-2.5 rounded-lg border px-3.5 py-2 text-sm bg-muted/20 text-muted-foreground mt-1">
-      <Bot className="size-4 text-blue-500 shrink-0" />
-      <span>
-        Delegating to sub-agent: <b>{toolName}</b>
-      </span>
-      {isDone ? (
-        <CheckCircle className="size-3.5 text-green-500 ml-auto shrink-0" />
-      ) : (
-        <span className="animate-pulse text-xs text-blue-500 ml-auto font-medium shrink-0">
-          Active
-        </span>
-      )}
-    </div>
+    <EveToolRow
+      icon={Bot}
+      iconClassName="text-blue-500"
+      label={<>Sub-agent: {args?.toolName || "delegating…"}</>}
+      status={status}
+    />
   );
 }
 
 // ---------------------------------------------------------------------------
 // Harness tool cards
 // ---------------------------------------------------------------------------
-function WebSearchCard({ args, result }: { args: ToolCardArgs; result?: unknown }) {
+/** Shared output block, mirroring the native `ToolFallbackResult` look. */
+function ToolOutput({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
   return (
-    <div className="rounded-lg border p-3.5 bg-muted/10 mt-1 space-y-2">
-      <div className="flex items-center gap-2 text-xs text-muted-foreground font-medium">
-        <Search className="size-3.5 text-sky-500" />
-        <span>
-          Web Search: <b>{args?.query || "Searching…"}</b>
-        </span>
-      </div>
-      {!!result && (
-        <div className="text-xs text-foreground/80 pl-5 border-l border-muted-foreground/20 leading-relaxed max-h-32 overflow-y-auto">
-          {typeof result === "string" ? result : JSON.stringify(result, null, 2)}
-        </div>
-      )}
-    </div>
+    <pre
+      className={`bg-muted/50 text-foreground/90 max-h-60 overflow-auto rounded-md p-2.5 font-mono text-xs whitespace-pre-wrap ${className ?? ""}`}
+    >
+      {children}
+    </pre>
   );
 }
 
-function BashCard({ args, result }: { args: ToolCardArgs; result?: unknown }) {
+const asText = (v: unknown) =>
+  typeof v === "string" ? v : JSON.stringify(v, null, 2);
+
+function WebSearchCard({ args, result, status }: EveCardProps) {
   return (
-    <div className="rounded-lg border p-3 bg-neutral-900 text-neutral-100 font-mono text-xs mt-1 space-y-1.5 overflow-hidden">
-      <div className="flex items-center gap-2 text-neutral-400 border-b border-neutral-800 pb-1.5">
-        <Terminal className="size-3.5" />
-        <span className="font-semibold">Terminal</span>
-        <code className="text-[10px] bg-neutral-800 px-1.5 py-0.5 rounded text-neutral-300 ml-auto truncate max-w-[60%]">
-          {args?.command || "shell"}
-        </code>
-      </div>
-      <pre className="text-green-400 overflow-x-auto whitespace-pre-wrap max-h-48 py-1">
-        $ {args?.command || ""}
-      </pre>
-      {!!result && (
-        <pre className="text-neutral-300 overflow-x-auto whitespace-pre-wrap max-h-60 border-t border-neutral-800/50 pt-1.5">
-          {typeof result === "string" ? result : JSON.stringify(result, null, 2)}
-        </pre>
-      )}
-    </div>
+    <EveToolRow
+      icon={Search}
+      iconClassName="text-sky-500"
+      label={<>Web search: {args?.query || "…"}</>}
+      status={status}
+    >
+      {!!result && <ToolOutput>{asText(result)}</ToolOutput>}
+    </EveToolRow>
   );
 }
 
-function ReadFileCard({ args, result }: { args: ToolCardArgs; result?: unknown }) {
+function BashCard({ args, result, status }: EveCardProps) {
   return (
-    <div className="rounded-lg border p-3 bg-muted/10 mt-1 space-y-1.5">
-      <div className="flex items-center gap-2 text-xs text-muted-foreground font-medium">
-        <FileText className="size-3.5 text-violet-500" />
-        <span>
-          Read File:{" "}
-          <code className="bg-muted px-1.5 py-0.5 rounded text-foreground text-[11px]">
-            {args?.path || ""}
-          </code>
-        </span>
-      </div>
-      {!!result && (
-        <pre className="text-[11px] font-mono bg-muted/40 p-2 rounded border max-h-40 overflow-auto whitespace-pre">
-          {typeof result === "string" ? result : JSON.stringify(result, null, 2)}
+    <EveToolRow
+      icon={Terminal}
+      label={<>Terminal: {args?.command || "shell"}</>}
+      status={status}
+    >
+      {/* Terminal chrome matches components/ai-elements/terminal.tsx (the
+          editor's own terminal panel) so there's one terminal look in the app. */}
+      <div className="overflow-hidden rounded-md bg-zinc-950 p-2.5 font-mono text-xs text-zinc-100">
+        <pre className="max-h-48 overflow-x-auto whitespace-pre-wrap text-green-400">
+          $ {args?.command || ""}
         </pre>
+        {!!result && (
+          <pre className="mt-1.5 max-h-60 overflow-x-auto border-t border-zinc-800/50 pt-1.5 whitespace-pre-wrap text-zinc-300">
+            {asText(result)}
+          </pre>
+        )}
+      </div>
+    </EveToolRow>
+  );
+}
+
+function ReadFileCard({ args, result, status }: EveCardProps) {
+  return (
+    <EveToolRow
+      icon={FileText}
+      iconClassName="text-violet-500"
+      label={<>Read file: {args?.path || ""}</>}
+      status={status}
+    >
+      {!!result && (
+        <ToolOutput className="max-h-40 whitespace-pre">{asText(result)}</ToolOutput>
       )}
-    </div>
+    </EveToolRow>
   );
 }
 
@@ -359,7 +369,7 @@ export function WriteFileCard({ args, result }: { args: ToolCardArgs; result?: u
     return (
       <div className={chipClass}>
         <FileText className="size-3.5 shrink-0 text-emerald-500" />
-        <span className="text-muted-foreground animate-pulse">
+        <span className="text-muted-foreground animate-pulse motion-reduce:animate-none">
           Editing{" "}
           <code className="text-foreground font-mono">{path || "file…"}</code>
         </span>
@@ -501,37 +511,33 @@ function cnChip(extra: string): string {
   return `${chipClass} ${extra}`;
 }
 
-function TodoCard({ args, result }: { args: ToolCardArgs; result?: unknown }) {
+function TodoCard({ args, result, status }: EveCardProps) {
   return (
-    <div className="rounded-lg border p-3 bg-muted/10 mt-1 space-y-1.5">
-      <div className="flex items-center gap-2 text-xs text-muted-foreground font-medium">
-        <CheckSquare className="size-3.5 text-amber-500" />
-        <span>
-          Todo: <b>{args?.action || "update"}</b>
-        </span>
-      </div>
+    <EveToolRow
+      icon={CheckSquare}
+      iconClassName="text-amber-500"
+      label={<>Todo: {args?.action || "update"}</>}
+      status={status}
+    >
       {!!result && (
-        <pre className="text-xs bg-muted/40 p-2 rounded border max-h-32 overflow-auto font-mono">
-          {JSON.stringify(result, null, 2)}
-        </pre>
+        <ToolOutput className="max-h-32">{JSON.stringify(result, null, 2)}</ToolOutput>
       )}
-    </div>
+    </EveToolRow>
   );
 }
 
-function ListFilesCard({ result }: { result?: unknown }) {
+function ListFilesCard({ result, status }: EveCardProps) {
   return (
-    <div className="rounded-lg border p-3 bg-muted/10 mt-1 space-y-1.5">
-      <div className="flex items-center gap-2 text-xs text-muted-foreground font-medium">
-        <Search className="size-3.5 text-violet-500" />
-        <span>List Files in Project</span>
-      </div>
+    <EveToolRow
+      icon={Search}
+      iconClassName="text-violet-500"
+      label="List files"
+      status={status}
+    >
       {!!result && (
-        <pre className="text-[11px] font-mono bg-muted/40 p-2 rounded border max-h-40 overflow-auto whitespace-pre">
-          {typeof result === "string" ? result : JSON.stringify(result, null, 2)}
-        </pre>
+        <ToolOutput className="max-h-40 whitespace-pre">{asText(result)}</ToolOutput>
       )}
-    </div>
+    </EveToolRow>
   );
 }
 
@@ -555,27 +561,35 @@ export const OauthToolUI = makeAssistantToolUI({
 
 export const SubagentToolUI = makeAssistantToolUI({
   toolName: "__subagent__",
-  render: ({ args }) => <SubagentCard args={args} />,
+  render: ({ args, status }) => <SubagentCard args={args} status={status} />,
 });
 
 export const WebSearchToolUI = makeAssistantToolUI({
   toolName: "web_search",
-  render: ({ args, result }) => <WebSearchCard args={args} result={result} />,
+  render: ({ args, result, status }) => (
+    <WebSearchCard args={args} result={result} status={status} />
+  ),
 });
 
 export const BashToolUI = makeAssistantToolUI({
   toolName: "bash",
-  render: ({ args, result }) => <BashCard args={args} result={result} />,
+  render: ({ args, result, status }) => (
+    <BashCard args={args} result={result} status={status} />
+  ),
 });
 
 export const ReadFileToolUI = makeAssistantToolUI({
   toolName: "read_file",
-  render: ({ args, result }) => <ReadFileCard args={args} result={result} />,
+  render: ({ args, result, status }) => (
+    <ReadFileCard args={args} result={result} status={status} />
+  ),
 });
 
 export const ReadFileDashToolUI = makeAssistantToolUI({
   toolName: "read-file",
-  render: ({ args, result }) => <ReadFileCard args={args} result={result} />,
+  render: ({ args, result, status }) => (
+    <ReadFileCard args={args} result={result} status={status} />
+  ),
 });
 
 export const WriteFileToolUI = makeAssistantToolUI({
@@ -590,17 +604,23 @@ export const WriteFileDashToolUI = makeAssistantToolUI({
 
 export const ListFilesToolUI = makeAssistantToolUI({
   toolName: "list-files",
-  render: ({ result }) => <ListFilesCard result={result} />,
+  render: ({ args, result, status }) => (
+    <ListFilesCard args={args} result={result} status={status} />
+  ),
 });
 
 export const ListFilesSnakeToolUI = makeAssistantToolUI({
   toolName: "list_files",
-  render: ({ result }) => <ListFilesCard result={result} />,
+  render: ({ args, result, status }) => (
+    <ListFilesCard args={args} result={result} status={status} />
+  ),
 });
 
 export const TodoToolUI = makeAssistantToolUI({
   toolName: "todo",
-  render: ({ args, result }) => <TodoCard args={args} result={result} />,
+  render: ({ args, result, status }) => (
+    <TodoCard args={args} result={result} status={status} />
+  ),
 });
 
 

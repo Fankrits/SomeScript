@@ -139,7 +139,9 @@ function ReasoningFade({
         className={cn(
           "aui-reasoning-fade pointer-events-none absolute inset-x-0 top-0 z-10 h-8",
           "bg-[linear-gradient(to_bottom,var(--color-background),transparent)]",
-          "group-data-[variant=muted]/reasoning-root:bg-[linear-gradient(to_bottom,hsl(var(--muted)/0.5),transparent)]",
+          // `--muted` is an oklch() value, so `hsl(var(--muted))` is invalid
+          // CSS and computed to nothing. color-mix is the Tailwind v4 form.
+          "group-data-[variant=muted]/reasoning-root:bg-[linear-gradient(to_bottom,color-mix(in_oklab,var(--color-muted)_50%,transparent),transparent)]",
           "fade-in-0 animate-in",
           "duration-(--animation-duration)",
           className,
@@ -155,7 +157,8 @@ function ReasoningFade({
       className={cn(
         "aui-reasoning-fade pointer-events-none absolute inset-x-0 bottom-0 z-10 h-8",
         "bg-[linear-gradient(to_top,var(--color-background),transparent)]",
-        "group-data-[variant=muted]/reasoning-root:bg-[linear-gradient(to_top,hsl(var(--muted)/0.5),transparent)]",
+        // See the top-side fade above: hsl() cannot wrap an oklch() token.
+        "group-data-[variant=muted]/reasoning-root:bg-[linear-gradient(to_top,color-mix(in_oklab,var(--color-muted)_50%,transparent),transparent)]",
         "fade-in-0 animate-in",
         "duration-(--animation-duration)",
         className,

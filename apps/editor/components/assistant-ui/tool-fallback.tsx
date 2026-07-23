@@ -127,25 +127,54 @@ function ToolFallbackDuration({
 function ToolFallbackTrigger({
   toolName,
   status,
+  icon,
+  iconClassName,
+  label: labelOverride,
   className,
   ...props
 }: React.ComponentProps<typeof CollapsibleTrigger> & {
   toolName: string;
   status?: ToolCallMessagePartStatus;
+  /**
+   * Per-tool icon replacing the status icon. Ignored while the call is
+   * `incomplete` — a failure must always read as a failure, never as the
+   * tool's own glyph.
+   */
+  icon?: React.ElementType;
+  /** Accent hue for a custom `icon` (e.g. `text-violet-500`). */
+  iconClassName?: string;
+  /** Replaces the default `Used tool: <toolName>` content. */
+  label?: React.ReactNode;
 }) {
   const statusType = status?.type ?? "complete";
   const isRunning = statusType === "running";
   const isCancelled =
     status?.type === "incomplete" && status.reason === "cancelled";
 
-  const Icon = statusIconMap[statusType];
-  const label = isCancelled ? "Cancelled tool" : "Used tool";
+  // Errors keep the status glyph so they stay unmistakable; everything else
+  // may carry the tool's own identity.
+  const useCustomIcon = icon != null && statusType !== "incomplete";
+  const Icon = useCustomIcon ? icon : statusIconMap[statusType];
+  // Only the default LoaderIcon spins. A custom icon is not a spinner — the
+  // label shimmer below already carries the running state.
+  const spins = isRunning && !useCustomIcon;
+
+  const hasCustomLabel = labelOverride != null;
+  const content = labelOverride ?? (
+    <>
+      {isCancelled ? "Cancelled tool" : "Used tool"}: <b>{toolName}</b>
+    </>
+  );
 
   return (
     <CollapsibleTrigger
       data-slot="tool-fallback-trigger"
       className={cn(
-        "aui-tool-fallback-trigger group/trigger text-muted-foreground hover:text-foreground flex w-fit origin-left items-center gap-2 py-1.5 text-sm transition-[color,scale] active:scale-[0.98]",
+        "aui-tool-fallback-trigger group/trigger text-muted-foreground hover:text-foreground flex origin-left items-center gap-2 py-1.5 text-sm transition-[color,scale] active:scale-[0.98]",
+        // Custom labels carry paths and shell commands, so they need the full
+        // column width to truncate into. The default label is short: keep it
+        // hug-width so native ToolFallback rows look exactly as before.
+        hasCustomLabel ? "w-full min-w-0" : "w-fit",
         className,
       )}
       {...props}
@@ -155,26 +184,29 @@ function ToolFallbackTrigger({
         className={cn(
           "aui-tool-fallback-trigger-icon size-4 shrink-0",
           isCancelled && "text-muted-foreground",
-          isRunning && "animate-spin [animation-duration:0.6s]",
+          spins && "animate-spin [animation-duration:0.6s]",
+          useCustomIcon && iconClassName,
         )}
       />
       <span
         data-slot="tool-fallback-trigger-label"
         className={cn(
           "aui-tool-fallback-trigger-label-wrapper relative inline-block text-start leading-none",
+          hasCustomLabel && "min-w-0 truncate",
           isCancelled && "text-muted-foreground line-through",
         )}
       >
-        <span>
-          {label}: <b>{toolName}</b>
-        </span>
+        <span>{content}</span>
         {isRunning && (
           <span
             aria-hidden
             data-slot="tool-fallback-trigger-shimmer"
-            className="aui-tool-fallback-trigger-shimmer shimmer pointer-events-none absolute inset-0 motion-reduce:animate-none"
+            className={cn(
+              "aui-tool-fallback-trigger-shimmer shimmer pointer-events-none absolute inset-0 motion-reduce:animate-none",
+              hasCustomLabel && "truncate",
+            )}
           >
-            {label}: <b>{toolName}</b>
+            {content}
           </span>
         )}
       </span>
@@ -183,6 +215,7 @@ function ToolFallbackTrigger({
         data-slot="tool-fallback-trigger-chevron"
         className={cn(
           "aui-tool-fallback-trigger-chevron size-4 shrink-0",
+          hasCustomLabel && "ms-auto",
           "transition-transform duration-(--animation-duration) ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none",
           "group-data-[state=closed]/trigger:-rotate-90",
           "group-data-[state=open]/trigger:rotate-0",
@@ -571,6 +604,87 @@ const ToolFallbackImpl: ToolCallMessagePartComponent = ({
     </ToolFallbackRoot>
   );
 };
+
+/**
+ * The single row primitive every Eve tool card renders through, so custom
+ * tools inherit the same disclosure, easing, shimmer, duration readout and
+ * motion-reduce guards as the built-in `ToolFallback` instead of each card
+ * re-declaring its own chrome.
+ *
+ * Omit `children` for a status-only row (no chevron target, nothing to open).
+ */
+export function EveToolRow({
+  icon,
+  iconClassName,
+  label,
+  status,
+  toolName = "",
+  defaultOpen,
+  children,
+}: {
+  icon?: React.ElementType;
+  iconClassName?: string;
+  label: React.ReactNode;
+  status?: ToolCallMessagePartStatus;
+  toolName?: string;
+  defaultOpen?: boolean;
+  children?: React.ReactNode;
+}) {
+  // No body: render the trigger's visual row without a Collapsible, so there
+  // is no empty disclosure the user can click into.
+  if (!children) {
+    return (
+      <div
+        data-slot="eve-tool-row-static"
+        className="aui-tool-fallback-root flex w-full min-w-0 items-center gap-2 py-1.5 text-sm text-muted-foreground"
+      >
+        <StaticRowIcon
+          icon={icon}
+          iconClassName={iconClassName}
+          status={status}
+        />
+        <span className="min-w-0 truncate leading-none">{label}</span>
+        <ToolFallbackDuration />
+      </div>
+    );
+  }
+
+  return (
+    <ToolFallbackRoot defaultOpen={defaultOpen}>
+      <ToolFallbackTrigger
+        toolName={toolName}
+        status={status}
+        icon={icon}
+        iconClassName={iconClassName}
+        label={label}
+      />
+      <ToolFallbackContent>{children}</ToolFallbackContent>
+    </ToolFallbackRoot>
+  );
+}
+
+function StaticRowIcon({
+  icon,
+  iconClassName,
+  status,
+}: {
+  icon?: React.ElementType;
+  iconClassName?: string;
+  status?: ToolCallMessagePartStatus;
+}) {
+  const statusType = status?.type ?? "complete";
+  const useCustomIcon = icon != null && statusType !== "incomplete";
+  const Icon = useCustomIcon ? icon : statusIconMap[statusType];
+  return (
+    <Icon
+      className={cn(
+        "size-4 shrink-0",
+        statusType === "running" && !useCustomIcon && "animate-spin [animation-duration:0.6s]",
+        useCustomIcon && iconClassName,
+      )}
+    />
+  );
+}
 
 const ToolFallback = memo(
   ToolFallbackImpl,

@@ -455,6 +455,13 @@ const EditorSkeleton = () => (
   </div>
 );
 
+const SIDEBAR_TABS = [
+  { id: "files", label: "Files", Icon: FolderPlus },
+  { id: "chat", label: "Agent", Icon: Sparkles },
+  { id: "search", label: "Search", Icon: Search },
+  { id: "settings", label: "Settings", Icon: Settings },
+] as const;
+
 const Example = () => {
   // File tree state
   const [selectedPath, setSelectedPath] = useState<string>("");
@@ -693,6 +700,18 @@ const Example = () => {
   useEffect(() => {
     if (mounted) localStorage.setItem("somescript-sidebar-open", String(isLeftSidebarOpen));
   }, [isLeftSidebarOpen, mounted]);
+
+  // Arrow-key navigation for the sidebar tablist. Roles without this would
+  // announce "tab" to a screen reader while not behaving like one.
+  const handleTabKeyDown = useCallback((e: React.KeyboardEvent) => {
+    const dir = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+    if (!dir) return;
+    e.preventDefault();
+    const i = SIDEBAR_TABS.findIndex((t) => t.id === activeTab);
+    const next = SIDEBAR_TABS[(i + dir + SIDEBAR_TABS.length) % SIDEBAR_TABS.length];
+    setActiveTab(next.id);
+    document.getElementById(`sidebar-tab-${next.id}`)?.focus();
+  }, [activeTab]);
 
   const saveSettings = useCallback((newSettings: typeof settings) => {
     setSettings(newSettings);
@@ -1717,59 +1736,46 @@ const Example = () => {
           isLeftSidebarOpen ? "w-80" : "w-0 border-r-0"
         )}
       >
-        {/* Tabs header */}
-        <div className="border-b px-2 bg-muted/10 flex items-center justify-around gap-1 h-11">
-          <button
-            onClick={() => setActiveTab("files")}
-            className={cn(
-              "flex-1 flex justify-center items-center gap-1.5 py-1.5 px-2 rounded text-[11px] font-semibold cursor-pointer transition-colors",
-              activeTab === "files"
-                ? "bg-muted text-foreground"
-                : "text-muted-foreground hover:bg-muted/5 hover:text-foreground"
-            )}
-          >
-            <FolderPlus className="size-3.5" />
-            <span>Files</span>
-          </button>
-          <button
-            onClick={() => setActiveTab("chat")}
-            className={cn(
-              "flex-1 flex justify-center items-center gap-1.5 py-1.5 px-2 rounded text-[11px] font-semibold cursor-pointer transition-colors",
-              activeTab === "chat"
-                ? "bg-muted text-foreground"
-                : "text-muted-foreground hover:bg-muted/5 hover:text-foreground"
-            )}
-          >
-            <Sparkles className="size-3.5" />
-            <span>Agent</span>
-          </button>
-          <button
-            onClick={() => setActiveTab("search")}
-            className={cn(
-              "flex-1 flex justify-center items-center gap-1.5 py-1.5 px-2 rounded text-[11px] font-semibold cursor-pointer transition-colors",
-              activeTab === "search"
-                ? "bg-muted text-foreground"
-                : "text-muted-foreground hover:bg-muted/5 hover:text-foreground"
-            )}
-          >
-            <Search className="size-3.5" />
-            <span>Search</span>
-          </button>
-          <button
-            onClick={() => setActiveTab("settings")}
-            className={cn(
-              "flex-1 flex justify-center items-center gap-1.5 py-1.5 px-2 rounded text-[11px] font-semibold cursor-pointer transition-colors",
-              activeTab === "settings"
-                ? "bg-muted text-foreground"
-                : "text-muted-foreground hover:bg-muted/5 hover:text-foreground"
-            )}
-          >
-            <Settings className="size-3.5" />
-            <span>Settings</span>
-          </button>
+        {/* Tabs header — WAI-ARIA tabs: roving tabIndex, arrow-key navigation,
+            and each panel below wired up via aria-controls/aria-labelledby. */}
+        <div
+          role="tablist"
+          aria-label="Sidebar panels"
+          aria-orientation="horizontal"
+          onKeyDown={handleTabKeyDown}
+          className="border-b px-2 bg-muted/10 flex items-center justify-around gap-1 h-11"
+        >
+          {SIDEBAR_TABS.map(({ id, label, Icon }) => {
+            const selected = activeTab === id;
+            return (
+              <button
+                key={id}
+                id={`sidebar-tab-${id}`}
+                role="tab"
+                aria-selected={selected}
+                aria-controls={`sidebar-panel-${id}`}
+                tabIndex={selected ? 0 : -1}
+                onClick={() => setActiveTab(id)}
+                className={cn(
+                  "flex-1 flex justify-center items-center gap-1.5 py-1.5 px-2 rounded text-[11px] font-semibold cursor-pointer transition-colors",
+                  selected
+                    ? "bg-muted text-foreground"
+                    : "text-muted-foreground hover:bg-muted/5 hover:text-foreground"
+                )}
+              >
+                <Icon className="size-3.5" />
+                <span>{label}</span>
+              </button>
+            );
+          })}
         </div>
 
-        <div className={cn("flex-1 flex flex-col overflow-hidden", activeTab !== "files" && "hidden")}>
+        <div
+          id="sidebar-panel-files"
+          role="tabpanel"
+          aria-labelledby="sidebar-tab-files"
+          className={cn("flex-1 flex flex-col overflow-hidden", activeTab !== "files" && "hidden")}
+        >
           <div className="border-b px-3 py-2 bg-muted/10 flex items-center justify-between shrink-0">
             <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
               Project Files
@@ -1805,7 +1811,12 @@ const Example = () => {
           </div>
         </div>
 
-        <div className={cn("flex-1 flex flex-col overflow-hidden bg-background", activeTab !== "search" && "hidden")}>
+        <div
+          id="sidebar-panel-search"
+          role="tabpanel"
+          aria-labelledby="sidebar-tab-search"
+          className={cn("flex-1 flex flex-col overflow-hidden bg-background", activeTab !== "search" && "hidden")}
+        >
           <SearchPanel
             ref={searchPanelRef}
             selectedPath={selectedPath}
@@ -1815,7 +1826,12 @@ const Example = () => {
           />
         </div>
 
-        <div className={cn("flex-1 flex flex-col overflow-hidden bg-background", activeTab !== "chat" && "hidden")}>
+        <div
+          id="sidebar-panel-chat"
+          role="tabpanel"
+          aria-labelledby="sidebar-tab-chat"
+          className={cn("flex-1 flex flex-col overflow-hidden bg-background", activeTab !== "chat" && "hidden")}
+        >
           {/* Header Bar */}
           <div className="border-b px-3 h-10 flex items-center justify-between bg-muted/5 select-none shrink-0">
             <button
@@ -1891,7 +1907,12 @@ const Example = () => {
           </div>
         </div>
 
-        <div className={cn("flex-1 flex flex-col overflow-hidden bg-background", activeTab !== "settings" && "hidden")}>
+        <div
+          id="sidebar-panel-settings"
+          role="tabpanel"
+          aria-labelledby="sidebar-tab-settings"
+          className={cn("flex-1 flex flex-col overflow-hidden bg-background", activeTab !== "settings" && "hidden")}
+        >
           <div className="border-b px-3 h-10 flex items-center justify-between bg-muted/5 select-none shrink-0">
             <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
               Project Settings
