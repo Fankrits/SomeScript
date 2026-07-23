@@ -47,7 +47,9 @@ WORKDIR /app
 COPY package.json ./
 RUN bun install --production
 
-COPY index.ts ./
+# Glob, not a file list: index.ts imports sibling modules (draft-mode.ts), and
+# naming them one by one silently ships a broken image the next time one is added.
+COPY *.ts ./
 
 # Expose port
 EXPOSE 3001
