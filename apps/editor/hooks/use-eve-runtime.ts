@@ -23,6 +23,8 @@ import {
   type OutgoingPart,
 } from "@/lib/attachment-blocks";
 import type { EveMode } from "@/lib/eve-modes";
+import type { HandleMessageStreamEvent, SessionState } from "eve/client";
+import { loadThreadHistory, saveThreadHistory } from "@/lib/thread-history";
 
 // Leading "[mode: …]" / "[projectId: …]" context markers we inject in onNew: the
 // model (and the dynamic model resolver) still receive them, but users shouldn't
@@ -73,10 +75,6 @@ class SimplePdfAttachmentAdapter implements AttachmentAdapter {
   }
 }
 
-// Stamped into saved threads. Bump on any eve upgrade, or any change to what
-// is persisted, so state the current client cannot replay is discarded.
-const HISTORY_VERSION = "eve-0.26";
-
 export function useEveRuntime(
   threadId: string,
   projectId: string,
@@ -114,17 +112,14 @@ export function useEveRuntime(
   // shape change between versions can wedge the whole thread; bump the stamp
   // whenever eve is upgraded and the mismatched blob is dropped for a fresh
   // session instead.
-  const [initialData] = useState(() => {
-    if (typeof window === "undefined") return null;
-    const saved = localStorage.getItem(`eve-thread-${threadId}`);
-    if (!saved) return null;
-    try {
-      const parsed = JSON.parse(saved);
-      return parsed?.version === HISTORY_VERSION ? parsed : null;
-    } catch {
-      return null;
-    }
-  });
+  const [initialData] = useState(() =>
+    typeof window === "undefined"
+      ? null
+      : loadThreadHistory<HandleMessageStreamEvent, SessionState>(
+          threadId,
+          localStorage,
+        ),
+  );
 
   const agent = useEveAgent({
     initialEvents: initialData?.events,
@@ -367,20 +362,10 @@ export function useEveRuntime(
 
   useEffect(() => {
     if (agent.session?.sessionId) {
-      try {
-        localStorage.setItem(
-          `eve-thread-${threadId}`,
-          JSON.stringify({
-            version: HISTORY_VERSION,
-            events: stripEventFileData(agent.events),
-            sessionState: agent.session,
-          })
-        );
-      } catch (e) {
-        // Out of quota: a long turn's tool output can fill it on its own.
-        // Losing the saved history is survivable; throwing here is not — an
-        // error out of this effect unmounts the thread mid-conversation.
-        console.error("Failed to persist chat history", e);
+      // Never throws: losing saved history is survivable, but an error out of
+      // this effect unmounts the thread mid-conversation.
+      if (!saveThreadHistory(threadId, stripEventFileData(agent.events), agent.session)) {
+        console.error("Failed to persist chat history: localStorage is full");
       }
 
       // Auto-update the title of the conversation in the threads list based on the first user message
