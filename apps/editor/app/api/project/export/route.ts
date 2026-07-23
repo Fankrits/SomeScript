@@ -10,6 +10,22 @@ export async function GET(req: NextRequest) {
     const type = searchParams.get("type"); // "pdf" | "zip"
 
     if (type === "pdf") {
+      // Force a final (non-draft) compile before serving — otherwise this would
+      // hand back whatever's cached, which defaults to draft mode and has every
+      // figure replaced with an empty box. See draft-mode.ts.
+      const compileRes = await fetch(new URL("/api/compile", req.url), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", cookie: req.headers.get("cookie") ?? "" },
+        body: JSON.stringify({ projectId, path: "main.tex", draftMode: false }),
+      });
+      const compileLog = await compileRes.text();
+      if (!compileRes.ok || !compileLog.includes("[SUCCESS]")) {
+        return Response.json(
+          { error: compileLog || "Compilation failed. Please check the project in the editor." },
+          { status: 422 }
+        );
+      }
+
       try {
         const buffer = await storage.readBinaryFile(projectId, ".preview-cache/main.pdf");
         return new Response(new Uint8Array(buffer), {

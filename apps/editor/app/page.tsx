@@ -1354,16 +1354,6 @@ const Example = () => {
     return () => clearTimeout(timer);
   }, [selectedPath, editedCode, currentCode, saveCurrentFile]);
 
-  const handleDownloadPdf = useCallback(() => {
-    if (!pdfUrl) return;
-    const link = document.createElement("a");
-    link.href = pdfUrl;
-    link.download = "document.pdf";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  }, [pdfUrl]);
-
   /**
    * Resolve which .tex file Compile should build, in the same order Overleaf's
    * CLSI resolves a project's root document: the project's configured main
@@ -1384,13 +1374,18 @@ const Example = () => {
     return texFiles.length === 1 ? texFiles[0] : null;
   }, [settings.mainFilePath, fileTree, getTexFiles, toProjectRelative]);
 
-  const handleCompileLatex = useCallback(async () => {
+  // Shared by the preview compile and the download button below, which forces
+  // draft off - download must run its own compile rather than just re-serving
+  // whatever draft/final state happens to already be showing in the preview.
+  const runCompile = useCallback(async (draft: boolean): Promise<{ pdfPath: string; compilePath: string } | null> => {
+    if (isCompiling) return null;
+
     const compilePath = resolveMainFile();
     if (!compilePath) {
       alert(
         "No main file specified. This project has multiple .tex files and none is named main.tex — set the Main Entry File in the Settings tab."
       );
-      return;
+      return null;
     }
     setIsCompiling(true);
     setTerminalOutput("");
@@ -1400,11 +1395,10 @@ const Example = () => {
       // First save the current file content to ensure it compiles current edits
       await saveCurrentFile();
 
-      // Trigger compilation using compilePath
       const res = await fetch("/api/compile", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId, path: compilePath, draftMode: settings.draftMode }),
+        body: JSON.stringify({ projectId, path: compilePath, draftMode: draft }),
       });
 
       if (!res.ok) {
@@ -1413,7 +1407,7 @@ const Example = () => {
           const errData = await res.json().catch(() => ({}));
           if (errData.error) {
             setTerminalOutput(errData.error);
-            return;
+            return null;
           }
         }
         throw new Error("Failed to start compilation");
@@ -1427,6 +1421,7 @@ const Example = () => {
 
       const decoder = new TextDecoder();
       let logBuffer = "";
+      let pdfPath: string | null = null;
 
       while (true) {
         const { value, done } = await reader.read();
@@ -1438,7 +1433,7 @@ const Example = () => {
 
         // Check if stream finished with success
         if (logBuffer.includes("[SUCCESS]") || logBuffer.includes("[CACHE HIT]")) {
-          let pdfPath = ".preview-cache/main.pdf";
+          pdfPath = ".preview-cache/main.pdf";
           const match = logBuffer.match(/\[SUCCESS\]\s+(.*)/);
           if (match && match[1]) {
             // Normalize in case the compiler echoes an absolute container path.
@@ -1449,20 +1444,43 @@ const Example = () => {
             const derivedPdf = toProjectRelative(selectedPath).replace(/\.tex$/, ".pdf");
             pdfPath = `.preview-cache/${derivedPdf}`;
           }
-          setPdfUrl(withProject(`${window.location.origin}/api/files?path=${encodeURIComponent(pdfPath)}&t=${Date.now()}`));
-          setCompiledPath(compilePath);
         }
       }
+
+      return pdfPath ? { pdfPath, compilePath } : null;
     } catch (err) {
       console.error("Compilation error", err);
       const errMessage = err instanceof Error ? err.message : String(err);
       // Put compilation error into the terminal output
       setTerminalOutput((prev) => `${prev}\n\u001B[31mError compiling LaTeX:\u001B[0m ${errMessage}\n`);
+      return null;
     } finally {
       setIsCompiling(false);
       setIsTerminalStreaming(false);
     }
-  }, [projectId, selectedPath, settings, withProject, toProjectRelative, saveCurrentFile, resolveMainFile]);
+  }, [isCompiling, projectId, selectedPath, toProjectRelative, saveCurrentFile, resolveMainFile]);
+
+  const handleCompileLatex = useCallback(async () => {
+    const result = await runCompile(settings.draftMode ?? true);
+    if (!result) return;
+    setPdfUrl(withProject(`${window.location.origin}/api/files?path=${encodeURIComponent(result.pdfPath)}&t=${Date.now()}`));
+    setCompiledPath(result.compilePath);
+  }, [runCompile, settings.draftMode, withProject]);
+
+  // Always compiles final (non-draft), independent of the preview pane's
+  // current draft/final state, so the downloaded file never has figures
+  // replaced with draft-mode placeholder boxes.
+  const handleDownloadPdf = useCallback(async () => {
+    const result = await runCompile(false);
+    if (!result) return;
+    const url = withProject(`${window.location.origin}/api/files?path=${encodeURIComponent(result.pdfPath)}&t=${Date.now()}`);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "document.pdf";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }, [runCompile, withProject]);
 
   // Load tree on mount
   useEffect(() => {
