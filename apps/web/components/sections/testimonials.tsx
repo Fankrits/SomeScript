@@ -84,7 +84,7 @@ export function TestimonialCard({ item }: { item: TestimonialCardProps }) {
   return (
     <LiquidGlassCard
       glassSize="sm"
-      className="mb-4 flex w-full flex-col justify-between gap-4 border-white/10 bg-[#0e161b]/40 backdrop-blur-md rounded-xl hover:-translate-y-0.5 transition-all duration-300"
+      className="mb-4 flex w-full flex-col justify-between gap-4 border-border bg-background rounded-xl hover:-translate-y-0.5 transition-all duration-300"
     >
       <div className="space-y-3">
         <div className="flex gap-0.5 text-amber-500">
@@ -94,18 +94,18 @@ export function TestimonialCard({ item }: { item: TestimonialCardProps }) {
           <Star className="size-4 fill-current" />
           <Star className="size-4 fill-current" />
         </div>
-        <p className="text-sm text-white/80 leading-relaxed font-light">
+        <p className="text-sm text-foreground/80 leading-relaxed font-light">
           &ldquo;{item.description}&rdquo;
         </p>
       </div>
 
       <div className="flex w-full items-center gap-3 mt-2">
-        <Avatar className="h-9 w-9 border border-white/15">
+        <Avatar className="h-9 w-9 border border-border">
           <AvatarImage src={item.img} alt={item.name} />
         </Avatar>
         <div>
-          <p className="text-sm font-medium text-white">{item.name}</p>
-          <p className="text-xs text-white/60 font-light">{item.role}</p>
+          <p className="text-sm font-medium text-foreground">{item.name}</p>
+          <p className="text-xs text-foreground/60 font-light">{item.role}</p>
         </div>
       </div>
     </LiquidGlassCard>

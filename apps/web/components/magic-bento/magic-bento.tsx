@@ -2,6 +2,7 @@
 
 import { useRef, useEffect, useCallback, useState, type ReactNode, type CSSProperties } from "react";
 import { gsap } from "gsap";
+import { CheckCircle2 } from "lucide-react";
 import { LiquidGlassCard } from "@/components/kokonutui/liquid-glass-card";
 import "./magic-bento.css";
 
@@ -467,6 +468,152 @@ const useMobileDetection = () => {
   return isMobile;
 };
 
+/* ---- Animated per-card visuals ---- */
+
+const SineGraph = () => (
+  <svg viewBox="0 0 240 110" fill="none" preserveAspectRatio="xMidYMid meet">
+    <line x1="20" y1="12" x2="20" y2="96" stroke="currentColor" strokeOpacity="0.15" />
+    <line x1="20" y1="55" x2="232" y2="55" stroke="currentColor" strokeOpacity="0.15" />
+    {[70, 120, 170, 220].map((x) => (
+      <line key={x} x1={x} y1="12" x2={x} y2="96" stroke="currentColor" strokeOpacity="0.06" />
+    ))}
+    <path
+      id="bento-sine"
+      d="M20,55 C36.7,25 53.3,25 70,55 C86.7,85 103.3,85 120,55 C136.7,25 153.3,25 170,55 C186.7,85 203.3,85 220,55"
+      stroke="#0f4c5c"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeDasharray="320"
+      strokeDashoffset="320"
+      className="bento-draw"
+    />
+    <circle r="3.5" fill="#dd7e21">
+      <animateMotion dur="3s" repeatCount="indefinite">
+        <mpath href="#bento-sine" />
+      </animateMotion>
+    </circle>
+  </svg>
+);
+
+const CitationNetwork = () => {
+  const nodes = [
+    { x: 34, y: 30, d: "0s" },
+    { x: 40, y: 92, d: "0.25s" },
+    { x: 112, y: 20, d: "0.5s" },
+    { x: 186, y: 40, d: "0.75s" },
+    { x: 176, y: 98, d: "1s" },
+  ];
+  return (
+    <svg viewBox="0 0 220 120" fill="none" preserveAspectRatio="xMidYMid meet">
+      {nodes.map((n, i) => (
+        <line
+          key={`l${i}`}
+          x1="110"
+          y1="60"
+          x2={n.x}
+          y2={n.y}
+          stroke="#0f4c5c"
+          strokeOpacity="0.45"
+          strokeWidth="1.5"
+          strokeDasharray="220"
+          strokeDashoffset="220"
+          className="bento-draw"
+          style={{ animationDelay: n.d }}
+        />
+      ))}
+      {nodes.map((n, i) => (
+        <circle key={`n${i}`} cx={n.x} cy={n.y} r="5" fill="#1f7ea6" className="bento-pop" style={{ animationDelay: n.d }} />
+      ))}
+      <circle cx="110" cy="60" r="9" fill="#0f4c5c" />
+      <circle
+        cx="110"
+        cy="60"
+        r="9"
+        fill="none"
+        stroke="#0f4c5c"
+        strokeWidth="2"
+        className="bento-ring"
+        style={{ transformBox: "fill-box", transformOrigin: "center" }}
+      />
+    </svg>
+  );
+};
+
+const CommitGraph = () => (
+  <svg viewBox="0 0 130 110" fill="none" preserveAspectRatio="xMidYMid meet">
+    <path d="M30,16 L30,96" stroke="currentColor" strokeOpacity="0.2" strokeWidth="2" strokeDasharray="90" strokeDashoffset="90" className="bento-draw" />
+    <path
+      d="M30,42 C30,58 74,50 74,66"
+      stroke="#dd7e21"
+      strokeOpacity="0.55"
+      strokeWidth="2"
+      strokeDasharray="70"
+      strokeDashoffset="70"
+      className="bento-draw"
+      style={{ animationDelay: "0.5s" }}
+    />
+    {[
+      { cx: 30, cy: 20, d: "0s" },
+      { cx: 30, cy: 42, d: "0.3s" },
+      { cx: 30, cy: 68, d: "0.7s" },
+      { cx: 30, cy: 94, d: "1s" },
+    ].map((p, i) => (
+      <circle key={i} cx={p.cx} cy={p.cy} r="5.5" fill="#0f4c5c" className="bento-pop" style={{ animationDelay: p.d }} />
+    ))}
+    <circle cx="74" cy="66" r="5" fill="#dd7e21" className="bento-pop" style={{ animationDelay: "0.85s" }} />
+  </svg>
+);
+
+const CardVisual = ({ index }: { index: number }) => {
+  switch (index) {
+    case 0: // AI Generation — generating lines with a caret
+      return (
+        <div className="w-full space-y-2">
+          <div className="h-1.5 w-[68%] rounded-full bg-[#0f4c5c]/70 bento-shimmer" style={{ animationDelay: "0s" }} />
+          <div className="h-1.5 w-[90%] rounded-full bg-[#1c2e36]/15 bento-shimmer" style={{ animationDelay: "0.3s" }} />
+          <div className="flex items-center gap-1">
+            <div className="h-1.5 w-[45%] rounded-full bg-[#1c2e36]/15 bento-shimmer" style={{ animationDelay: "0.6s" }} />
+            <span className="h-3 w-[2px] bg-[#dd7e21] bento-blink" />
+          </div>
+        </div>
+      );
+    case 1: // Tectonic Compilation — progress bar filling to success
+      return (
+        <div className="w-full">
+          <div className="mb-1.5 flex items-center justify-between font-mono text-[9px] text-[#1c2e36]/40">
+            <span>tectonic build</span>
+            <CheckCircle2 className="h-3 w-3 text-[#1f9563] bento-pop" />
+          </div>
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-[#1c2e36]/10">
+            <div className="h-full rounded-full bg-[#1f9563] bento-fill" />
+          </div>
+        </div>
+      );
+    case 2: // Live PDF Preview — animated function graph
+      return <SineGraph />;
+    case 3: // Citation Management — reference network
+      return <CitationNetwork />;
+    case 4: // Workspace Collaboration — live presence
+      return (
+        <div className="flex items-center gap-3">
+          <div className="flex -space-x-2">
+            <span className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-background bg-[#0f4c5c] text-[9px] font-semibold text-white">PR</span>
+            <span className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-background bg-[#dd7e21] text-[9px] font-semibold text-white">MK</span>
+            <span className="relative flex h-7 w-7 items-center justify-center rounded-full border-2 border-background bg-[#1f7ea6] text-[9px] font-semibold text-white">
+              SB
+              <span className="absolute inset-0 rounded-full border-2 border-[#1f7ea6] bento-ring" />
+            </span>
+          </div>
+          <span className="text-[11px] text-[#1c2e36]/50">+3 online</span>
+        </div>
+      );
+    case 5: // Version History — commit graph
+      return <CommitGraph />;
+    default:
+      return null;
+  }
+};
+
 export interface MagicBentoProps {
   textAutoHide?: boolean;
   enableStars?: boolean;
@@ -520,14 +667,17 @@ export default function MagicBento({
           const content = (
             <LiquidGlassCard
               glassSize="sm"
-              className="magic-bento-card__glass h-full w-full bg-[#0e161b]/50 border border-white/20 rounded-[inherit] flex flex-col justify-between"
+              className="magic-bento-card__glass h-full w-full bg-background border border-border rounded-[inherit] flex flex-col"
             >
               <div className="magic-bento-card__header">
                 <div className="magic-bento-card__label">{card.label}</div>
               </div>
-              <div className="magic-bento-card__content">
+              <div className="magic-bento-card__content mt-2">
                 <h3 className="magic-bento-card__title">{card.title}</h3>
                 <p className="magic-bento-card__description">{card.description}</p>
+              </div>
+              <div className="magic-bento-card__visual">
+                <CardVisual index={index} />
               </div>
             </LiquidGlassCard>
           );

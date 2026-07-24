@@ -48,15 +48,15 @@ export function Faq() {
 
       <LiquidGlassCard
         glassSize="default"
-        className="border-white/10 bg-[#0e161b]/40 backdrop-blur-md rounded-xl"
+        className="border-border bg-background rounded-xl"
       >
         <Accordion type="single" collapsible className="w-full">
           {faqs.map(({ question, answer }) => (
-            <AccordionItem key={question} value={question} className="border-white/10 last:border-0">
-              <AccordionTrigger className="font-serif text-base text-white hover:text-white/80 hover:no-underline transition-colors py-4">
+            <AccordionItem key={question} value={question} className="border-border last:border-0">
+              <AccordionTrigger className="font-serif text-base text-foreground hover:text-foreground/80 hover:no-underline transition-colors py-4">
                 {question}
               </AccordionTrigger>
-              <AccordionContent className="text-white/70 font-light leading-relaxed pb-4">
+              <AccordionContent className="text-foreground/70 font-light leading-relaxed pb-4">
                 {answer}
               </AccordionContent>
             </AccordionItem>

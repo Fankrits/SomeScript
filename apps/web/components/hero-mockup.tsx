@@ -120,39 +120,39 @@ export default function HeroMockup({ overlay }: HeroMockupProps) {
         </div>
       </div>
 
-      {/* Window 1: Code Editor (Bottom-Left / Foreground) - Liquid Glass surface */}
-      <LiquidGlassCard glassSize="sm" className="order-2 w-full bg-[#0e161b]/50 border border-white/20 rounded-xl shadow-2xl p-3 sm:p-4 transition-all duration-500 hover:-translate-y-1 hover:shadow-3xl lg:absolute lg:bottom-0 lg:left-0 lg:z-20 lg:w-[42%] lg:aspect-[4/3] lg:rotate-y-[10deg] lg:rotate-x-[-2deg] font-mono text-[9px] sm:text-[11px] leading-relaxed">
+      {/* Window 1: Code Editor (Bottom-Left / Foreground) */}
+      <LiquidGlassCard glassSize="sm" className="order-2 w-full bg-background border border-border rounded-xl shadow-2xl p-3 sm:p-4 transition-all duration-500 hover:-translate-y-1 hover:shadow-3xl lg:absolute lg:bottom-0 lg:left-0 lg:z-20 lg:w-[42%] lg:aspect-[4/3] lg:rotate-y-[10deg] lg:rotate-x-[-2deg] font-mono text-[9px] sm:text-[11px] leading-relaxed">
 
         {/* Header Bar */}
-        <div className="flex items-center justify-between border-b border-white/10 pb-1.5 mb-2 select-none relative z-10">
+        <div className="flex items-center justify-between border-b border-border pb-1.5 mb-2 select-none relative z-10">
           {/* macOS Buttons */}
           <div className="flex items-center gap-1.5">
             <span className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-[#ff5f56]" />
             <span className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-[#ffbd2e]" />
             <span className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-[#27c93f]" />
           </div>
-          
+
           {/* Active/Inactive tabs */}
           <div className="flex items-center gap-1.5 sm:gap-2">
-            <div className="bg-white/10 border border-white/10 px-2 sm:px-3 py-0.5 sm:py-1 rounded-md text-[8px] sm:text-[10px] text-white/90 flex items-center gap-1.5 font-sans font-medium">
-              <FileText className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-[#cbd2d6]" />
+            <div className="bg-foreground/5 border border-border px-2 sm:px-3 py-0.5 sm:py-1 rounded-md text-[8px] sm:text-[10px] text-foreground flex items-center gap-1.5 font-sans font-medium">
+              <FileText className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-foreground/50" />
               main.tex
             </div>
-            <div className="px-1.5 py-0.5 sm:py-1 text-[8px] sm:text-[10px] text-white/50 hover:text-white/80 transition-colors font-sans">
+            <div className="px-1.5 py-0.5 sm:py-1 text-[8px] sm:text-[10px] text-foreground/50 hover:text-foreground transition-colors font-sans">
               references.bib
             </div>
           </div>
 
-          <div className="flex gap-1 sm:gap-1.5 text-white/45">
+          <div className="flex gap-1 sm:gap-1.5 text-foreground/40">
             <Search className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
             <Settings className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
           </div>
         </div>
 
         {/* Code Layout & Lines */}
-        <div className="flex font-mono text-[8px] sm:text-[10px] relative z-10 text-white/95">
+        <div className="flex font-mono text-[8px] sm:text-[10px] relative z-10 text-foreground">
           {/* Line Numbers */}
-          <div className="text-white/30 select-none pr-2.5 sm:pr-3.5 border-r border-white/10 text-right flex flex-col gap-1 w-5 sm:w-6">
+          <div className="text-foreground/30 select-none pr-2.5 sm:pr-3.5 border-r border-border text-right flex flex-col gap-1 w-5 sm:w-6">
             <span>1</span>
             <span>2</span>
             <span>3</span>
@@ -167,51 +167,51 @@ export default function HeroMockup({ overlay }: HeroMockupProps) {
           {/* Code Lines Body */}
           <div className="pl-2.5 sm:pl-3.5 flex-1 flex flex-col gap-1">
             <div className="flex items-center gap-1">
-              <span className="text-[#c3c4f9]/90">\documentclass</span>
+              <span className="text-[#5b52c9]">\documentclass</span>
               <span>&#123;article&#125;</span>
             </div>
             <div className="flex items-center gap-1">
-              <span className="text-[#c3c4f9]/90">\usepackage</span>
+              <span className="text-[#5b52c9]">\usepackage</span>
               <span>&#123;amsmath&#125;</span>
             </div>
             <div className="h-1.5 flex items-center my-0.5">
-              <div className="h-0.5 bg-white/20 rounded-full w-16 sm:w-24" />
+              <div className="h-0.5 bg-foreground/15 rounded-full w-16 sm:w-24" />
             </div>
             <div className="flex items-center gap-1">
-              <span className="text-[#ffafba]/90">\begin</span>
+              <span className="text-[#c2415a]">\begin</span>
               <span>&#123;document&#125;</span>
             </div>
             <div className="flex items-center gap-1 pl-2 sm:pl-3">
-              <span className="text-[#96dcf8]/90">\section</span>
+              <span className="text-[#1f7ea6]">\section</span>
               <span>&#123;Introduction&#125;</span>
             </div>
             <div className="h-1.5 flex items-center my-0.5 pl-2 sm:pl-3">
-              <div className="h-0.5 bg-white/20 rounded-full w-24 sm:w-36" />
+              <div className="h-0.5 bg-foreground/15 rounded-full w-24 sm:w-36" />
             </div>
             <div className="flex items-center gap-1 pl-2 sm:pl-3">
-              <span className="text-[#ffafba]/90">\begin</span>
+              <span className="text-[#c2415a]">\begin</span>
               <span>&#123;equation&#125;</span>
             </div>
 
             {/* Typed Math Formula */}
-            <div className="text-[#8cedc4] font-medium flex items-center min-h-[12px] sm:min-h-[14px]">
+            <div className="text-[#1f9563] font-medium flex items-center min-h-[12px] sm:min-h-[14px]">
               <span className="whitespace-pre">{typedText}</span>
-              <span className="w-0.5 h-3 sm:h-3.5 bg-[#8cedc4] ml-0.5 animate-pulse" />
+              <span className="w-0.5 h-3 sm:h-3.5 bg-[#1f9563] ml-0.5 animate-pulse" />
             </div>
 
             <div className="flex items-center gap-1 pl-2 sm:pl-3">
-              <span className="text-[#ffafba]/90">\end</span>
+              <span className="text-[#c2415a]">\end</span>
               <span>&#123;equation&#125;</span>
             </div>
             <div className="flex items-center gap-1">
-              <span className="text-[#ffafba]/90">\end</span>
+              <span className="text-[#c2415a]">\end</span>
               <span>&#123;document&#125;</span>
             </div>
           </div>
         </div>
 
         {/* Editor Status Bar */}
-        <div className="mt-2.5 pt-1.5 border-t border-white/10 flex items-center justify-between text-[8px] sm:text-[9px] text-white/50 select-none relative z-10">
+        <div className="mt-2.5 pt-1.5 border-t border-border flex items-center justify-between text-[8px] sm:text-[9px] text-foreground/50 select-none relative z-10">
           <div className="flex items-center gap-2 sm:gap-3">
             <span>LaTeX</span>
             <span>UTF-8</span>
@@ -221,18 +221,18 @@ export default function HeroMockup({ overlay }: HeroMockupProps) {
           {/* Compiler Status Badge */}
           <div className="flex items-center gap-1.5">
             {phase === "typing" && (
-              <div className="flex items-center gap-1 text-[#96dcf8] bg-[#96dcf8]/10 border border-[#96dcf8]/20 px-1.5 py-0.5 rounded text-[7px] sm:text-[8px] font-sans">
+              <div className="flex items-center gap-1 text-[#1f7ea6] bg-[#1f7ea6]/10 border border-[#1f7ea6]/20 px-1.5 py-0.5 rounded text-[7px] sm:text-[8px] font-sans">
                 Editing
               </div>
             )}
             {phase === "compiling" && (
-              <div className="flex items-center gap-1 text-amber-400 bg-amber-400/10 border border-amber-400/20 px-1.5 py-0.5 rounded text-[7px] sm:text-[8px] font-sans animate-pulse">
+              <div className="flex items-center gap-1 text-amber-600 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded text-[7px] sm:text-[8px] font-sans animate-pulse">
                 <Loader2 className="w-2 sm:w-2.5 h-2 sm:h-2.5 animate-spin" />
                 Compiling...
               </div>
             )}
             {phase === "success" && (
-              <div className="flex items-center gap-1 text-[#8cedc4] bg-[#8cedc4]/10 border border-[#8cedc4]/20 px-1.5 py-0.5 rounded text-[7px] sm:text-[8px] font-sans">
+              <div className="flex items-center gap-1 text-[#1f9563] bg-[#1f9563]/10 border border-[#1f9563]/20 px-1.5 py-0.5 rounded text-[7px] sm:text-[8px] font-sans">
                 <CheckCircle2 className="w-2 sm:w-2.5 h-2 sm:h-2.5" />
                 Success
               </div>

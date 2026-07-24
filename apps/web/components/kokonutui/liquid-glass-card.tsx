@@ -126,22 +126,19 @@ function LiquidButton({
   );
 }
 
-// Liquid Glass Card - extends shadcn Card with glass effect
-const liquidGlassCardVariants = cva(
-  "group relative overflow-hidden bg-background/20 backdrop-blur-[2px] transition-all duration-300",
-  {
-    variants: {
-      glassSize: {
-        sm: "p-4",
-        default: "p-6",
-        lg: "p-8",
-      },
+// Plain card (glass/blur effect removed)
+const liquidGlassCardVariants = cva("relative overflow-hidden transition-all duration-300", {
+  variants: {
+    glassSize: {
+      sm: "p-4",
+      default: "p-6",
+      lg: "p-8",
     },
-    defaultVariants: {
-      glassSize: "default",
-    },
-  }
-);
+  },
+  defaultVariants: {
+    glassSize: "default",
+  },
+});
 
 export type LiquidGlassCardProps = React.HTMLAttributes<HTMLDivElement> &
   VariantProps<typeof liquidGlassCardVariants> & {
@@ -151,37 +148,16 @@ export type LiquidGlassCardProps = React.HTMLAttributes<HTMLDivElement> &
 function LiquidGlassCard({
   className,
   glassSize,
-  glassEffect = true,
+  glassEffect,
   children,
   ...props
 }: LiquidGlassCardProps) {
-  const filterId = React.useId();
-
   return (
     <Card
       className={cn(liquidGlassCardVariants({ glassSize }), className)}
       {...props}
     >
-      <div
-        className={cn(
-          "pointer-events-none absolute inset-0 rounded-lg transition-all",
-          GLASS_SHADOW
-        )}
-      />
-
-      {glassEffect && (
-        <>
-          <div
-            className="pointer-events-none absolute inset-0 -z-10 overflow-hidden rounded-lg"
-            style={{ backdropFilter: `url("#${filterId}")` }}
-          />
-          <GlassFilter id={filterId} scale={DEFAULT_GLASS_FILTER_SCALE} />
-        </>
-      )}
-
-      <div className="relative z-10">{children}</div>
-
-      <div className="pointer-events-none absolute inset-0 z-20 rounded-lg bg-gradient-to-r from-transparent via-black/5 to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100 dark:via-white/5" />
+      {children}
     </Card>
   );
 }

@@ -21,7 +21,7 @@ export default function Home() {
         <div className="w-full max-w-6xl">
           <HeroMockup
             overlay={
-              <div className="mx-auto flex max-w-2xl flex-col items-center gap-4 text-center bg-background/95 backdrop-blur-sm rounded-2xl border border-border shadow-xl px-6 py-8 sm:px-10 sm:py-10">
+              <div className="mx-auto flex max-w-2xl flex-col items-center gap-4 text-center">
                 {/* Heading */}
                 <h1 className="text-3xl sm:text-4xl lg:text-5xl font-medium font-serif tracking-tight leading-tight text-foreground">
                   Research Deserves
