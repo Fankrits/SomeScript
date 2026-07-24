@@ -90,30 +90,37 @@ function shouldSkip(latex: string): boolean {
   return SKIP_PATTERNS.some((p) => latex.includes(p))
 }
 
-function extractMathContent(latex: string): string {
+function extractMathBlocks(latex: string): string[] {
   const trimmed = latex.trim()
 
-  // Single environment: \begin{xxx}...\end{xxx}
-  const envMatch = trimmed.match(/^\\begin\{(\w+)\}/)
-  if (envMatch) {
+  // One or more sequential top-level environments: \begin{xxx}...\end{xxx}
+  // (loops so a block showing several examples back-to-back, e.g. all the
+  // amsmath matrix variants, previews every one instead of just the first)
+  const blocks: string[] = []
+  let remaining = trimmed
+  while (true) {
+    remaining = remaining.replace(/^\s+/, '')
+    const envMatch = remaining.match(/^\\begin\{(\w+\*?)\}/)
+    if (!envMatch) break
     const envName = envMatch[1]
-    const endRe = new RegExp(String.raw`^\\end\{${envName}\}`)
-    const lines = trimmed.split('\n')
+    const endRe = new RegExp(String.raw`^\\end\{${envName.replace('*', '\\*')}\}`)
+    const lines = remaining.split('\n')
     const endIdx = lines.findIndex((l) => endRe.test(l.trim()))
-    if (endIdx > 0) {
-      return lines.slice(0, endIdx + 1).join('\n').trim()
-    }
+    if (endIdx <= 0) break
+    blocks.push(lines.slice(0, endIdx + 1).join('\n').trim())
+    remaining = lines.slice(endIdx + 1).join('\n')
   }
+  if (blocks.length) return blocks
 
   // Display math: \[ ... \]
   if (trimmed.startsWith('\\[')) {
     const endIdx = trimmed.lastIndexOf('\\]')
     if (endIdx > 2) {
-      return trimmed.slice(2, endIdx).trim()
+      return [trimmed.slice(2, endIdx).trim()]
     }
   }
 
-  return trimmed
+  return [trimmed]
 }
 
 function renderKatex(latex: string): string {
@@ -177,8 +184,10 @@ function processPreviews() {
     if (!latex.trim()) continue
     if (shouldSkip(latex)) continue
 
-    const mathContent = extractMathContent(latex)
-    const renderedHtml = renderKatex(mathContent)
+    const mathBlocks = extractMathBlocks(latex)
+    const renderedHtml = mathBlocks
+      .map(renderKatex)
+      .join('<div style="height:0.75em"></div>')
 
     // Check if KaTeX actually rendered something meaningful
     if (renderedHtml.includes('katex-error')) continue
@@ -192,7 +201,12 @@ function processPreviews() {
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
 export default defineNuxtPlugin((nuxtApp) => {
-  nuxtApp.hook('page:finish', () => {
+  // Page content renders inside a <Suspense> boundary (ContentRenderer is
+  // async). app:suspense:resolve fires once that boundary has actually
+  // settled, which page:finish does not reliably wait for — inserting
+  // preview wrappers before it settles causes "Hydration node mismatch"
+  // errors since the server-rendered HTML doesn't have them yet.
+  nuxtApp.hook('app:suspense:resolve', () => {
     processPreviews()
   })
 
