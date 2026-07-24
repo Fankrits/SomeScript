@@ -119,10 +119,10 @@ export function Testimonials() {
         <Badge variant="outline" className="text-primary border-primary/20 bg-primary/5 px-3 py-1 text-xs">
           Testimonials
         </Badge>
-        <h2 className="text-3xl sm:text-4xl font-medium font-serif tracking-tight text-white mt-4">
+        <h2 className="text-3xl sm:text-4xl font-medium font-serif tracking-tight text-foreground mt-4">
           Loved by Researchers
         </h2>
-        <p className="mt-3 text-sm sm:text-base text-white/70 font-light max-w-xl mx-auto">
+        <p className="mt-3 text-sm sm:text-base text-foreground/70 font-light max-w-xl mx-auto">
           See what scholars and scientists are saying about their typesetting experience.
         </p>
       </div>

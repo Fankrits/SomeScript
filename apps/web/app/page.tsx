@@ -1,9 +1,7 @@
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { AuroraText } from "@/components/ui/aurora-text";
 import HeroMockup from "@/components/hero-mockup";
-import HeroBackground from "@/components/hero-background";
 import { FeaturesBento } from "@/components/sections/features-bento";
 import { HowItWorks } from "@/components/sections/how-it-works";
 import { Testimonials } from "@/components/sections/testimonials";
@@ -15,29 +13,24 @@ import Footer from "@/components/footer";
 export default function Home() {
   return (
     <div className="flex flex-col min-h-screen bg-background text-foreground font-sans selection:bg-primary/20 relative overflow-hidden">
-      {/* Animated WebGL Gradient Background */}
-      <HeroBackground />
-
       {/* Shared Header Component */}
-      <Header />
+      <Header dark={false} />
 
       {/* Hero Section */}
       <section className="flex flex-col items-center justify-center px-6 relative w-full max-w-7xl mx-auto z-10 py-6 lg:h-[calc(100svh-72px)]">
         <div className="w-full max-w-6xl">
           <HeroMockup
             overlay={
-              <div className="mx-auto flex max-w-2xl flex-col items-center gap-4 text-center">
+              <div className="mx-auto flex max-w-2xl flex-col items-center gap-4 text-center bg-background/95 backdrop-blur-sm rounded-2xl border border-border shadow-xl px-6 py-8 sm:px-10 sm:py-10">
                 {/* Heading */}
-                <h1 className="text-3xl sm:text-4xl lg:text-5xl font-medium font-serif tracking-tight leading-tight text-white">
-                  <AuroraText colors={["#dd7e21", "#0f4c5c", "#8da0ce", "#dd7e21"]}>
-                    Research Deserves
-                    <br />
-                    Perfection.
-                  </AuroraText>
+                <h1 className="text-3xl sm:text-4xl lg:text-5xl font-medium font-serif tracking-tight leading-tight text-foreground">
+                  Research Deserves
+                  <br />
+                  Perfection.
                 </h1>
 
                 {/* Paragraph */}
-                <p className="text-sm sm:text-base text-white/80 leading-relaxed font-light max-w-xl">
+                <p className="text-sm sm:text-base text-foreground/80 leading-relaxed font-light max-w-xl">
                   Your AI co-author for flawless math, citations, and typesetting.
                 </p>
 

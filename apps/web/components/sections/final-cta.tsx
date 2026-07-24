@@ -12,7 +12,7 @@ export function FinalCta() {
             Start Writing Perfect Research Today
           </AuroraText>
         </h2>
-        <p className="text-sm sm:text-base text-white/80 leading-relaxed font-light max-w-xl">
+        <p className="text-sm sm:text-base text-foreground/70 leading-relaxed font-light max-w-xl">
           Join researchers using SomeScript for flawless math, citations, and typesetting.
         </p>
         <div className="flex w-full justify-center">

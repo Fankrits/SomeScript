@@ -11,7 +11,7 @@ export function HowItWorks() {
       title: "01. Write & Prompt",
       content: (
         <div className="max-w-2xl">
-          <p className="text-white/80 font-light text-sm md:text-base leading-relaxed mb-6">
+          <p className="text-foreground/80 font-light text-sm md:text-base leading-relaxed mb-6">
             Start typing standard LaTeX directly, or describe what you need in plain English. SomeScript supports standard document classes and math environments natively.
           </p>
           <LiquidGlassCard className="border-white/10 bg-[#0e161b]/30 backdrop-blur-sm p-4 font-mono text-xs text-white/90">
@@ -33,7 +33,7 @@ export function HowItWorks() {
       title: "02. AI Co-Authoring",
       content: (
         <div className="max-w-2xl">
-          <p className="text-white/80 font-light text-sm md:text-base leading-relaxed mb-6">
+          <p className="text-foreground/80 font-light text-sm md:text-base leading-relaxed mb-6">
             Our embedded AI co-author, Eve, processes your requests and instantly generates outline structures, complex mathematical formulas, formatted tables, and structured bibliographies.
           </p>
           <LiquidGlassCard className="border-white/10 bg-[#0e161b]/30 backdrop-blur-sm p-4">
@@ -64,7 +64,7 @@ export function HowItWorks() {
       title: "03. Instant Compile",
       content: (
         <div className="max-w-2xl">
-          <p className="text-white/80 font-light text-sm md:text-base leading-relaxed mb-6">
+          <p className="text-foreground/80 font-light text-sm md:text-base leading-relaxed mb-6">
             The background Tectonic engine compiles your project on-the-fly. The visual editor updates in real time with page-accurate previews of math, layout, and images as you type.
           </p>
           <div className="grid grid-cols-2 gap-4">
@@ -92,7 +92,7 @@ export function HowItWorks() {
       title: "04. Export & Share",
       content: (
         <div className="max-w-2xl">
-          <p className="text-white/80 font-light text-sm md:text-base leading-relaxed mb-6">
+          <p className="text-foreground/80 font-light text-sm md:text-base leading-relaxed mb-6">
             Download your final typeset, publication-ready PDF document, or invite your co-authors and research collaborators to join your shared isolated sandboxes.
           </p>
           <div className="flex flex-col sm:flex-row gap-3">
@@ -119,10 +119,10 @@ export function HowItWorks() {
   return (
     <section id="how-it-works" className="w-full max-w-7xl mx-auto px-6 py-12 relative z-10 border-t border-border/40">
       <div className="text-center mb-6">
-        <h2 className="text-3xl sm:text-4xl font-medium font-serif tracking-tight text-white">
+        <h2 className="text-3xl sm:text-4xl font-medium font-serif tracking-tight text-foreground">
           How It Works
         </h2>
-        <p className="mt-3 text-sm sm:text-base text-white/70 font-light max-w-xl mx-auto">
+        <p className="mt-3 text-sm sm:text-base text-foreground/70 font-light max-w-xl mx-auto">
           From prompt or scratch draft to a publication-ready PDF in minutes.
         </p>
       </div>
