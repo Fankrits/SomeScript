@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import HeroMockup from "@/components/hero-mockup";
+import GridBackgroundDemo from "@/components/grid-background-demo";
 import { FeaturesBento } from "@/components/sections/features-bento";
 import { HowItWorks } from "@/components/sections/how-it-works";
 import { Testimonials } from "@/components/sections/testimonials";
@@ -17,7 +18,8 @@ export default function Home() {
       <Header dark={false} />
 
       {/* Hero Section */}
-      <section className="flex flex-col items-center justify-center px-6 relative w-full max-w-7xl mx-auto z-10 py-6 lg:h-[calc(100svh-72px)]">
+      <section className="flex flex-col items-center justify-center px-6 relative w-full max-w-7xl mx-auto z-10 py-6 lg:h-[calc(100svh-72px)] bg-background overflow-hidden">
+        <GridBackgroundDemo className="absolute inset-0" />
         <div className="w-full max-w-6xl">
           <HeroMockup
             overlay={

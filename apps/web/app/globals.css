@@ -77,6 +77,27 @@
   animation: aurora 8s ease-in-out infinite alternate;
 }
 
+@keyframes hero-float {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  50% {
+    translate: 0 -14px;
+  }
+}
+
+.animate-hero-float {
+  animation: hero-float 6s ease-in-out infinite;
+  will-change: translate;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-hero-float {
+    animation: none;
+  }
+}
+
 :root {
   /* Custom Premium White Theme: #FBF6F0 (Cream) and #0f4c5c (Teal) */
   --background: #FBF6F0;

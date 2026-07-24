@@ -56,7 +56,7 @@ export default function HeroMockup({ overlay }: HeroMockupProps) {
       )}
 
       {/* Window 2: PDF Preview (Top-Right / Background) */}
-      <div className={`order-1 w-full bg-white border border-[#e5dacd] rounded-xl shadow-2xl p-3 sm:p-4 transition-all duration-700 font-sans overflow-hidden lg:absolute lg:top-0 lg:right-0 lg:z-10 lg:w-[34%] lg:aspect-[3/4] lg:-rotate-y-[10deg] lg:rotate-x-[2deg] ${
+      <div className={`order-1 w-full bg-white border border-[#e5dacd] rounded-xl shadow-2xl p-3 sm:p-4 transition-all duration-700 font-sans overflow-hidden animate-hero-float lg:absolute lg:top-0 lg:right-0 lg:z-10 lg:w-[34%] lg:aspect-[3/4] lg:-rotate-y-[10deg] lg:rotate-x-[2deg] ${
         phase === "success"
           ? "translate-x-1 -translate-y-1 scale-[1.02] ring-2 ring-emerald-500/20 border-emerald-300"
           : "translate-x-0 translate-y-0 scale-100 opacity-90"
@@ -121,7 +121,7 @@ export default function HeroMockup({ overlay }: HeroMockupProps) {
       </div>
 
       {/* Window 1: Code Editor (Bottom-Left / Foreground) */}
-      <LiquidGlassCard glassSize="sm" className="order-2 w-full bg-background border border-border rounded-xl shadow-2xl p-3 sm:p-4 transition-all duration-500 hover:-translate-y-1 hover:shadow-3xl lg:absolute lg:bottom-0 lg:left-0 lg:z-20 lg:w-[42%] lg:aspect-[4/3] lg:rotate-y-[10deg] lg:rotate-x-[-2deg] font-mono text-[9px] sm:text-[11px] leading-relaxed">
+      <LiquidGlassCard glassSize="sm" className="order-2 w-full bg-background border border-border rounded-xl shadow-2xl p-3 sm:p-4 transition-all duration-500 hover:-translate-y-1 hover:shadow-3xl animate-hero-float [animation-delay:-3s] lg:absolute lg:bottom-0 lg:left-0 lg:z-20 lg:w-[42%] lg:aspect-[4/3] lg:rotate-y-[10deg] lg:rotate-x-[-2deg] font-mono text-[9px] sm:text-[11px] leading-relaxed">
 
         {/* Header Bar */}
         <div className="flex items-center justify-between border-b border-border pb-1.5 mb-2 select-none relative z-10">
