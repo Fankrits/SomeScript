@@ -189,7 +189,6 @@ export default function ProjectsTable({ projects, editorUrl }: ProjectsTableProp
                   className="hover:bg-secondary/20 transition-colors group cursor-pointer"
                 >
                   <TableCell
-                    onClick={(e) => e.stopPropagation()}
                     className="px-6 py-4 font-medium text-foreground flex items-center gap-3"
                   >
                     <div className="h-8 w-8 rounded-lg bg-secondary border border-border flex items-center justify-center text-primary group-hover:text-primary-foreground group-hover:bg-primary transition-all shrink-0">
@@ -204,6 +203,7 @@ export default function ProjectsTable({ projects, editorUrl }: ProjectsTableProp
                       onSubmit={(val) => handleRename(project.id, val)}
                       autosize
                       className="flex items-center min-w-0"
+                      onClick={(e) => e.stopPropagation()}
                     >
                       <EditableArea className="flex items-center">
                         <EditablePreview asChild>
