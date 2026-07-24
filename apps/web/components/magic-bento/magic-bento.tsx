@@ -495,49 +495,52 @@ const SineGraph = () => (
   </svg>
 );
 
-const CitationNetwork = () => {
-  const nodes = [
-    { x: 34, y: 30, d: "0s" },
-    { x: 40, y: 92, d: "0.25s" },
-    { x: 112, y: 20, d: "0.5s" },
-    { x: 186, y: 40, d: "0.75s" },
-    { x: 176, y: 98, d: "1s" },
-  ];
-  return (
-    <svg viewBox="0 0 220 120" fill="none" preserveAspectRatio="xMidYMid meet">
-      {nodes.map((n, i) => (
-        <line
-          key={`l${i}`}
-          x1="110"
-          y1="60"
-          x2={n.x}
-          y2={n.y}
-          stroke="#0f4c5c"
-          strokeOpacity="0.45"
+const CitationTrails = () => (
+  <svg viewBox="0 0 300 156" fill="none" preserveAspectRatio="xMidYMid meet" aria-label="Animated citations connecting a manuscript to its bibliography">
+    <rect x="14" y="20" width="98" height="116" rx="6" fill="#0f4c5c" fillOpacity="0.035" stroke="#0f4c5c" strokeOpacity="0.22" />
+    <text x="27" y="39" fill="#0f4c5c" fillOpacity="0.6" fontSize="7" fontFamily="monospace">draft.tex</text>
+    {[
+      { y: 54, width: 58 },
+      { y: 67, width: 70 },
+      { y: 80, width: 47 },
+      { y: 93, width: 65 },
+      { y: 106, width: 40 },
+    ].map((line, i) => (
+      <line key={line.y} x1="27" y1={line.y} x2={27 + line.width} y2={line.y} stroke="#0f4c5c" strokeWidth="2" strokeOpacity={i === 1 || i === 3 ? "0.42" : "0.14"} />
+    ))}
+
+    {[{ y: 67, label: "[1]", targetY: 39, delay: "0s" }, { y: 93, label: "[2]", targetY: 78, delay: "0.45s" }].map((citation) => (
+      <g key={citation.label}>
+        <circle cx="100" cy={citation.y} r="5" fill="#1f7ea6" className="bento-pop" style={{ animationDelay: citation.delay }} />
+        <text x="96.3" y={citation.y + 2.3} fill="white" fontSize="5" fontWeight="700">{citation.label.slice(1, -1)}</text>
+        <path
+          d={`M105 ${citation.y} C145 ${citation.y}, 147 ${citation.targetY}, 180 ${citation.targetY}`}
+          stroke="#1f7ea6"
+          strokeOpacity="0.6"
           strokeWidth="1.5"
-          strokeDasharray="220"
-          strokeDashoffset="220"
+          strokeDasharray="110"
+          strokeDashoffset="110"
           className="bento-draw"
-          style={{ animationDelay: n.d }}
+          style={{ animationDelay: citation.delay }}
         />
-      ))}
-      {nodes.map((n, i) => (
-        <circle key={`n${i}`} cx={n.x} cy={n.y} r="5" fill="#1f7ea6" className="bento-pop" style={{ animationDelay: n.d }} />
-      ))}
-      <circle cx="110" cy="60" r="9" fill="#0f4c5c" />
-      <circle
-        cx="110"
-        cy="60"
-        r="9"
-        fill="none"
-        stroke="#0f4c5c"
-        strokeWidth="2"
-        className="bento-ring"
-        style={{ transformBox: "fill-box", transformOrigin: "center" }}
-      />
-    </svg>
-  );
-};
+      </g>
+    ))}
+
+    <text x="180" y="21" fill="#0f4c5c" fillOpacity="0.58" fontSize="7" fontFamily="monospace">sources.bib</text>
+    {[{ y: 30, h: 21, key: "knuth84", delay: "0.25s" }, { y: 69, h: 21, key: "lamport94", delay: "0.7s" }, { y: 108, h: 18, key: "mittelbach04", delay: "1.05s" }].map((reference) => (
+      <g key={reference.key}>
+        <rect x="180" y={reference.y} width="105" height={reference.h} rx="4" fill="#fff" fillOpacity="0.42" stroke="#0f4c5c" strokeOpacity="0.16" />
+        <line x1="190" y1={reference.y + 8} x2="250" y2={reference.y + 8} stroke="#0f4c5c" strokeWidth="1.8" strokeOpacity="0.43" />
+        <line x1="190" y1={reference.y + 14} x2="231" y2={reference.y + 14} stroke="#0f4c5c" strokeWidth="1.5" strokeOpacity="0.16" />
+        <circle cx="274" cy={reference.y + reference.h / 2} r="3" fill="#1f9563" className="bento-pop" style={{ animationDelay: reference.delay }} />
+      </g>
+    ))}
+    <path d="M112 122 C141 136 154 136 180 117" stroke="#dd7e21" strokeWidth="1.5" strokeOpacity="0.64" strokeDasharray="90" strokeDashoffset="90" className="bento-draw" style={{ animationDelay: "1.15s" }} />
+    <circle cx="147" cy="134" r="3.5" fill="#dd7e21">
+      <animateMotion dur="3s" repeatCount="indefinite" begin="1.15s" path="M0 0 C10 3 22 3 34 -17" />
+    </circle>
+  </svg>
+);
 
 const CommitGraph = () => (
   <svg viewBox="0 0 130 110" fill="none" preserveAspectRatio="xMidYMid meet">
@@ -591,8 +594,8 @@ const CardVisual = ({ index }: { index: number }) => {
       );
     case 2: // Live PDF Preview — animated function graph
       return <SineGraph />;
-    case 3: // Citation Management — reference network
-      return <CitationNetwork />;
+    case 3: // Citation Management — animated manuscript-to-bibliography trails
+      return <CitationTrails />;
     case 4: // Workspace Collaboration — live presence
       return (
         <div className="flex items-center gap-3">
