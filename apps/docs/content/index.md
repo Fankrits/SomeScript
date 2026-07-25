@@ -1,15 +1,17 @@
 ---
+title: SomeScript Docs
+description: A practical guide to writing, typesetting, and publishing beautiful LaTeX documents with SomeScript.
 seo:
-  title: LaTeX Guide
-  description: A comprehensive guide to the LaTeX typesetting system. Learn from basics to advanced topics including mathematics, graphics, and document creation.
+  title: SomeScript Docs
+  description: A practical guide to writing, typesetting, and publishing beautiful LaTeX documents with SomeScript.
 ---
 
 ::u-page-hero
 #title
-LaTeX Guide
+SomeScript Docs
 
 #description
-A comprehensive, topic-based guide to the LaTeX typesetting system. Find exactly what you need, from first document to advanced programming.
+Practical guidance for writing, typesetting, and publishing beautiful LaTeX documents—from your first source file to advanced workflows.
 
 #links
   :::u-button
@@ -19,7 +21,7 @@ A comprehensive, topic-based guide to the LaTeX typesetting system. Find exactly
   to: /getting-started/introduction
   trailing-icon: i-lucide-arrow-right
   ---
-  Get started
+  Start learning
   :::
 
   :::u-button
@@ -30,16 +32,16 @@ A comprehensive, topic-based guide to the LaTeX typesetting system. Find exactly
   to: https://en.wikibooks.org/wiki/LaTeX
   variant: outline
   ---
-  Wikibooks source
+  LaTeX reference
   :::
 ::
 
 ::u-page-section
 #title
-What is LaTeX?
+Write with confidence
 
 #description
-LaTeX is a macro system built on top of TeX that aims to simplify typesetting and automate many common formatting tasks. It is the de-facto standard for academic journals and books in several fields, such as mathematics and physics, and provides some of the best typography free software has to offer.
+SomeScript brings the precision of LaTeX to a focused writing workspace. These guides help you understand the source, use the right tools, and turn your ideas into publication-ready documents.
 ::
 
 ::u-page-section

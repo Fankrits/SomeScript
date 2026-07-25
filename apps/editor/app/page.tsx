@@ -87,6 +87,7 @@ import { CommandPalette } from "@/components/editor/command-palette";
 import { ImageViewer } from "@/components/editor/image-viewer";
 import { latex } from "codemirror-lang-latex";
 import { useCodeMirrorExtensions } from "@/hooks/use-codemirror-extensions";
+import Image from "next/image";
 
 
 import type { BundledLanguage } from "shiki";
@@ -1596,6 +1597,21 @@ const Example = () => {
       {/* Top Header */}
       <header className="flex items-center justify-between border-b px-4 h-14 bg-background z-30">
         <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5 shrink-0" aria-label="SomeScript Editor">
+            <Image
+              src="/icon.svg"
+              alt=""
+              width={28}
+              height={28}
+              className="size-7"
+              priority
+            />
+            <div className="hidden sm:flex items-baseline gap-1.5 leading-none">
+              <span className="text-sm font-semibold tracking-tight text-foreground">SomeScript</span>
+              <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Editor</span>
+            </div>
+          </div>
+          <div className="h-4 w-px bg-border" />
           <a
             href={dashboardUrl}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground rounded-md border bg-muted/10 hover:bg-muted/30 transition-all cursor-pointer"

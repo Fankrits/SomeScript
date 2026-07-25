@@ -1,0 +1,25 @@
+:root {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --color-teal-50: #f0f8f8;
+  --color-teal-100: #d9edef;
+  --color-teal-200: #b6dadd;
+  --color-teal-300: #83bec4;
+  --color-teal-400: #4c9da5;
+  --color-teal-500: #287a84;
+  --color-teal-600: #196470;
+  --color-teal-700: #0f4c5c;
+  --color-teal-800: #0c3d4a;
+  --color-teal-900: #092f3a;
+  --color-teal-950: #041d24;
+  --ui-radius: 0.5rem;
+}
+
+::selection {
+  background: #b6dadd;
+  color: #092f3a;
+}
+
+.dark ::selection {
+  background: #196470;
+  color: #f0f8f8;
+}
