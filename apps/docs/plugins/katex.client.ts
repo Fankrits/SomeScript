@@ -1,93 +1,47 @@
-import { defineNuxtPlugin } from '#app'
+import { defineNuxtPlugin, onNuxtReady } from '#app'
 import { renderToString } from 'katex'
 
-/** Patterns that indicate a code block is NOT a pure math formula */
-const SKIP_PATTERNS = [
-  // Document structure
-  '\\documentclass',
-  '\\usepackage',
-  '\\begin{document}',
-  '\\end{document}',
-  '\\title{',
-  '\\author{',
-  '\\maketitle',
-  '\\tableofcontents',
-  // Commands/macros
-  '\\newcommand',
-  '\\renewcommand',
-  '\\def\\',
-  '\\DeclareMathOperator',
-  // TikZ / PGF
-  '\\begin{tikzpicture}',
-  '\\usetikzlibrary',
-  '\\tikzset',
-  '\\tikzstyle',
-  '\\draw ',
-  '\\path[',
-  '\\node[',
-  '\\fill ',
-  '\\filldraw',
-  '\\clip ',
-  '\\begin{scope}',
-  '\\end{scope}',
-  // PSTricks
-  '\\begin{pspicture}',
-  '\\psset',
-  '\\rput',
-  '\\psline',
-  '\\psframe',
-  // Algorithms
-  '\\begin{algorithm}',
-  '\\begin{algorithmic}',
-  '\\State ',
-  '\\If{',
-  '\\Else',
-  '\\For{',
-  '\\While{',
-  '\\Return ',
-  // Code listings
-  '\\begin{lstlisting}',
-  '\\begin{verbatim}',
-  '\\begin{minted}',
-  // Graphics / figures
-  '\\includegraphics',
-  '\\input{',
-  '\\graphicspath',
-  // Layout
-  '\\pagestyle',
-  '\\thispagestyle',
-  '\\setlength',
-  '\\setcounter',
-  '\\numberwithin',
-  '\\linespread',
-  '\\baselinestretch',
-  // Cross-references (KaTeX can render but output is wrong)
-  '\\ref{',
-  '\\eqref{',
-  '\\cite{',
-  '\\label{',
-  // Bibliography
-  '\\bibliography',
-  '\\bibliographystyle',
-  '\\addbibresource',
-  // Beamer
-  '\\begin{frame}',
-  '\\end{frame}',
-  '\\frametitle',
-  '\\begin{block}',
-  // Short non-math snippets
-  'scale=',
-  'xscale=',
-  'yscale=',
+const AUTO_PREVIEW_ENVIRONMENTS = new Set([
+  'equation',
+  'equation*',
+  'align',
+  'align*',
+  'alignat',
+  'alignat*',
+  'array',
+  'cases',
+  'dcases',
+  'dcases*',
+  'gather',
+  'gather*',
+  'multline',
+  'multline*',
+  'flalign',
+  'flalign*',
+  'matrix',
+  'pmatrix',
+  'bmatrix',
+  'Bmatrix',
+  'vmatrix',
+  'Vmatrix',
+  'smallmatrix',
+  'aligned',
+  'alignedat',
+  'gathered',
+  'split',
+])
+
+const BLOCKED_SOURCE_PATTERNS = [
+  /\\(?:documentclass|usepackage|newcommand|renewcommand|providecommand|Declare\w*|section|subsection|chapter|caption|includegraphics|input|bibliography|bibliographystyle|setlength|setcounter|numberwithin|pagestyle|thispagestyle|label|ref|eqref|intertext)\b/,
+  /\\begin\{(?:document|figure\*?|table\*?|tabular\*?|tikzpicture|pspicture|algorithm\*?|algorithmic|lstlisting|verbatim|minted|minipage|frame)\}/,
+  /\\(?:draw|path|node|fill|filldraw|clip|coordinate|psset|rput|psline|psframe)\b/,
 ]
+
+const FORMULA_SOURCE_PATTERN = /(?:[A-Za-z]\w*\([^)]*\)\s*=)|\\(?:left|right|frac|dfrac|tfrac|sqrt|sum|prod|int|lim|overbrace|underbrace|operatorname|boxed|mathbb|begin\{cases\})\b/
 
 function extractLatex(pre: HTMLElement): string {
   const code = pre.querySelector('code')
   return code?.textContent || pre.textContent || ''
-}
-
-function shouldSkip(latex: string): boolean {
-  return SKIP_PATTERNS.some((p) => latex.includes(p))
 }
 
 function extractMathBlocks(latex: string): string[] {
@@ -123,15 +77,14 @@ function extractMathBlocks(latex: string): string[] {
   return [trimmed]
 }
 
-function renderKatex(latex: string): string {
+function renderKatex(latex: string): string | null {
   try {
     return renderToString(latex, {
-      throwOnError: false,
+      throwOnError: true,
       displayMode: true,
-      trust: true,
     })
   } catch {
-    return `<span style="color:red; font-size:0.9em">KaTeX render error</span>`
+    return null
   }
 }
 
@@ -165,11 +118,35 @@ function createToggleBlock(renderedHtml: string): HTMLElement {
   return wrapper
 }
 
-function isLatexBlock(pre: HTMLElement): boolean {
+function getPreviewSource(pre: HTMLElement): string | null {
   const code = pre.querySelector('code')
-  if (!code) return false
+  if (!code) return null
   const classList = code.className || pre.className || ''
-  return classList.includes('language-latex') || classList.includes('lang-latex')
+  const isLatex = classList.includes('language-latex')
+    || classList.includes('lang-latex')
+    || classList.includes('language-tex')
+    || classList.includes('lang-tex')
+  if (!isLatex) return null
+
+  const source = extractLatex(pre)
+  const trimmed = source.trim()
+  if (BLOCKED_SOURCE_PATTERNS.some(pattern => pattern.test(trimmed))) return null
+
+  // Formula-only fences are detected from their delimiters, math environments,
+  // or formula syntax. The KaTeX render check below is the final guard.
+  if (/^\\\[/.test(trimmed) && /\\\]\s*$/.test(trimmed)) return source
+
+  const environmentTokens = [...trimmed.matchAll(/\\(begin|end)\{([A-Za-z]+\*?)\}/g)]
+  if (
+    environmentTokens.length > 0
+    && environmentTokens.every(([, , environment]) => AUTO_PREVIEW_ENVIRONMENTS.has(environment))
+    && environmentTokens.filter(([, type]) => type === 'begin').length
+      === environmentTokens.filter(([, type]) => type === 'end').length
+  ) {
+    return source
+  }
+
+  return FORMULA_SOURCE_PATTERN.test(trimmed) ? source : null
 }
 
 function processPreviews() {
@@ -177,20 +154,15 @@ function processPreviews() {
   for (const pre of pres) {
     if (!(pre instanceof HTMLElement)) continue
     if (pre.dataset.katexProcessed) continue
-    if (!isLatexBlock(pre)) continue
     if (pre.parentElement?.classList.contains('katex-preview-wrapper')) continue
 
-    const latex = extractLatex(pre)
-    if (!latex.trim()) continue
-    if (shouldSkip(latex)) continue
+    const latex = getPreviewSource(pre)
+    if (!latex?.trim()) continue
 
     const mathBlocks = extractMathBlocks(latex)
-    const renderedHtml = mathBlocks
-      .map(renderKatex)
-      .join('<div style="height:0.75em"></div>')
-
-    // Check if KaTeX actually rendered something meaningful
-    if (renderedHtml.includes('katex-error')) continue
+    const renderedBlocks = mathBlocks.map(renderKatex)
+    if (renderedBlocks.some(block => block === null)) continue
+    const renderedHtml = renderedBlocks.join('<div style="height:0.75em"></div>')
 
     const toggleBlock = createToggleBlock(renderedHtml)
     pre.parentNode?.insertBefore(toggleBlock, pre)
@@ -200,25 +172,15 @@ function processPreviews() {
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
+function schedulePreviews() {
+  if (debounceTimer) clearTimeout(debounceTimer)
+  debounceTimer = setTimeout(processPreviews, 100)
+}
+
 export default defineNuxtPlugin((nuxtApp) => {
-  // Page content renders inside a <Suspense> boundary (ContentRenderer is
-  // async). app:suspense:resolve fires once that boundary has actually
-  // settled, which page:finish does not reliably wait for — inserting
-  // preview wrappers before it settles causes "Hydration node mismatch"
-  // errors since the server-rendered HTML doesn't have them yet.
-  nuxtApp.hook('app:suspense:resolve', () => {
-    processPreviews()
-  })
-
-  nuxtApp.hook('page:transition:finish', () => {
-    processPreviews()
-  })
-
-  if (typeof MutationObserver !== 'undefined') {
-    const observer = new MutationObserver(() => {
-      if (debounceTimer) clearTimeout(debounceTimer)
-      debounceTimer = setTimeout(processPreviews, 100)
-    })
-    observer.observe(document.body, { childList: true, subtree: true })
-  }
+  // The server does not render preview controls. Defer the initial enhancement
+  // until Nuxt has completed client hydration, then rerun after each async page
+  // component resolves during client-side navigation.
+  onNuxtReady(schedulePreviews)
+  nuxtApp.hook('page:finish', schedulePreviews)
 })

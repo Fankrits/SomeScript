@@ -10,6 +10,8 @@
     "@takumi-rs/core": "^2.4.0",
     "docus": "5.12.3",
     "katex": "^0.18.1",
-    "nuxt": "^4.5.0"
+    "nuxt": "^4.5.0",
+    "rehype-katex": "^7.0.1",
+    "remark-math": "^6.0.0"
   }
 }
