@@ -11,16 +11,18 @@ import { Plus, Loader2 } from "lucide-react";
 export function NewProjectDialog() {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
+    setError(null);
     const formData = new FormData(e.currentTarget);
     try {
       await createProject(formData);
       setOpen(false);
     } catch (err) {
-      console.error(err);
+      setError(err instanceof Error ? err.message : "Failed to create project");
     } finally {
       setLoading(false);
     }
@@ -48,6 +50,7 @@ export function NewProjectDialog() {
               className="bg-background border-border focus-visible:ring-primary rounded-md text-foreground placeholder:text-muted-foreground/50"
             />
           </div>
+          {error && <p className="text-sm text-destructive">{error}</p>}
           <DialogFooter className="gap-2">
             <Button
               type="button"

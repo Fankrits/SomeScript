@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, uuid, index } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, uuid, index, integer, pgEnum } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
   id: text("id").primaryKey(), // Clerk User ID
@@ -29,6 +29,71 @@ export const projects = pgTable(
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => [index("projects_workspace_id_idx").on(table.workspaceId)]
+);
+
+export const subscriptionPlanEnum = pgEnum("subscription_plan", ["free", "pro", "team"]);
+export const subscriptionStatusEnum = pgEnum("subscription_status", [
+  "active",
+  "trialing",
+  "past_due",
+  "canceled",
+]);
+
+export const subscriptions = pgTable("subscriptions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  workspaceId: text("workspace_id")
+    .references(() => workspaces.id, { onDelete: "cascade" })
+    .notNull()
+    .unique(),
+  plan: subscriptionPlanEnum("plan").notNull().default("free"),
+  status: subscriptionStatusEnum("status").notNull().default("active"),
+  seats: integer("seats"), // per-seat count for "team" plan; null for free/pro
+  stripeCustomerId: text("stripe_customer_id"),
+  stripeSubscriptionId: text("stripe_subscription_id").unique(),
+  currentPeriodEnd: timestamp("current_period_end"),
+  cancelAtPeriodEnd: timestamp("cancel_at_period_end"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Two pools because they don't behave the same at renewal: `includedBalance` is the
+// plan's monthly AI allowance and resets to PLAN_LIMITS[plan].monthlyAiCredits each
+// period; `purchasedBalance` is paid top-ups and carries over untouched. Spend drains
+// includedBalance first, then purchasedBalance.
+export const creditBalances = pgTable("credit_balances", {
+  workspaceId: text("workspace_id")
+    .primaryKey()
+    .references(() => workspaces.id, { onDelete: "cascade" }),
+  includedBalance: integer("included_balance").notNull().default(0),
+  purchasedBalance: integer("purchased_balance").notNull().default(0),
+  periodResetAt: timestamp("period_reset_at").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const creditTransactionReasonEnum = pgEnum("credit_transaction_reason", [
+  "monthly_grant",
+  "purchase",
+  "usage",
+  "adjustment",
+]);
+
+export const creditTransactions = pgTable(
+  "credit_transactions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workspaceId: text("workspace_id")
+      .references(() => workspaces.id, { onDelete: "cascade" })
+      .notNull(),
+    delta: integer("delta").notNull(), // positive: grant/purchase, negative: usage
+    reason: creditTransactionReasonEnum("reason").notNull(),
+    description: text("description"), // e.g. "Eve chat completion", "Stripe top-up pack_2000"
+    // Stripe redelivers webhook events on retry; dedupe purchase/grant rows against
+    // event.id via onConflictDoNothing so a redelivery can't double-credit a balance.
+    // Null for reasons that don't originate from a Stripe event (usage, adjustment).
+    stripeEventId: text("stripe_event_id").unique(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [index("credit_transactions_workspace_id_idx").on(table.workspaceId)]
 );
 
 export const documents = pgTable("documents", {

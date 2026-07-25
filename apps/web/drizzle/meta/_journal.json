@@ -8,6 +8,27 @@
       "when": 1783835938200,
       "tag": "0000_easy_viper",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1784860478929,
+      "tag": "0001_graceful_machine_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1784860875467,
+      "tag": "0002_nosy_ben_grimm",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1784863305146,
+      "tag": "0003_huge_supernaut",
+      "breakpoints": true
     }
   ]
 }

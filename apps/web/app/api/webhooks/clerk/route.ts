@@ -3,7 +3,7 @@ import { headers } from "next/headers";
 import { WebhookEvent } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
 import { users, workspaces } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { seedWorkspaceDefaults } from "@/lib/limits";
 
 export async function POST(req: Request) {
   const WEBHOOK_SECRET = process.env.CLERK_WEBHOOK_SECRET;
@@ -108,6 +108,12 @@ export async function POST(req: Request) {
             updatedAt: new Date(),
           },
         });
+
+      // The owner's first organization starts free; every organization after that
+      // is born locked until its own checkout completes — see seedWorkspaceDefaults.
+      if (eventType === "organization.created" && created_by) {
+        await seedWorkspaceDefaults(id, created_by);
+      }
     }
 
     return new Response("Webhook processed successfully", { status: 200 });

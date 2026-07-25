@@ -25,6 +25,7 @@ import {
 import type { EveMode } from "@/lib/eve-modes";
 import type { HandleMessageStreamEvent, SessionState } from "eve/client";
 import { loadThreadHistory, saveThreadHistory } from "@/lib/thread-history";
+import { notifyCreditsUpdated } from "@/hooks/use-credit-status";
 
 // Leading "[mode: …]" / "[projectId: …]" context markers we inject in onNew: the
 // model (and the dynamic model resolver) still receive them, but users shouldn't
@@ -81,10 +82,15 @@ export function useEveRuntime(
   mode: EveMode,
 ) {
   const completedToolCalls = useRef<Set<string>>(new Set());
+  const processedSteps = useRef<Set<string>>(new Set());
   // Read inside onNew, which assistant-ui may hold across renders — a ref keeps
   // the marker in sync with the live selection without rebuilding the runtime.
   const modeRef = useRef(mode);
   modeRef.current = mode;
+  // Separate from modeRef: the composer is disabled while a turn streams, but the
+  // mode picker isn't, so modeRef can change mid-turn. Credit deduction needs the
+  // mode that was actually sent for the in-flight turn, captured at send time.
+  const sentModeRef = useRef(mode);
 
   // Lite is not a vision model, so its composer offers no image/PDF adapter:
   // the file picker's `accept` (read live from the active adapter) drops them
@@ -280,6 +286,31 @@ export function useEveRuntime(
 
   const onNew = useCallback(
     async (message: AppendMessage) => {
+      // Pre-flight credit/mode-access check. This is a UX gate, not the security
+      // boundary — a client that skips it still gets billed (and can go negative)
+      // by the server-side deduction below, so failing open on a network hiccup
+      // here is safe: it doesn't bypass accounting, just the friendly early block.
+      try {
+        const res = await fetch("/api/eve/credits");
+        if (res.ok) {
+          const status: {
+            includedBalance: number;
+            purchasedBalance: number;
+            allowedModes: EveMode[];
+          } = await res.json();
+          if (!status.allowedModes.includes(modeRef.current)) {
+            setSendError(`${modeRef.current} mode isn't available on your plan. Upgrade to unlock it.`);
+            return;
+          }
+          if (status.includedBalance + status.purchasedBalance <= 0) {
+            setSendError("Out of AI credits for this workspace this month. Upgrade or buy a top-up to continue.");
+            return;
+          }
+        }
+      } catch (e) {
+        console.error("Credit pre-flight check failed, sending anyway", e);
+      }
+
       // Force save any unsaved changes in the editor before sending
       const promises: Promise<unknown>[] = [];
       window.dispatchEvent(
@@ -329,6 +360,7 @@ export function useEveRuntime(
         const firstPart = parts[0];
         try {
           setSendError(null);
+          sentModeRef.current = modeRef.current;
           if (parts.length === 1 && firstPart.type === "text") {
             await agent.send({ message: firstPart.text });
           } else {
@@ -452,6 +484,37 @@ export function useEveRuntime(
       );
     }
   }, [agent.data?.messages]);
+
+  // Bill completed model-call steps against the workspace's AI credit balance.
+  // step.completed is the only place real output-token usage is reported at all
+  // (eve has no server-side post-turn hook — see agent/agent.ts) — this is the
+  // authoritative deduction, not the pre-flight check above.
+  // ponytail: client-reported, so a dropped tab/network between a step completing
+  // and this POST leaves that step's cost unbilled. Bounded to one step, not
+  // systematically exploitable. Upgrade path if it ever matters: server-side OTel
+  // span capture via eve's defineInstrumentation setup() hook (registerOTel).
+  useEffect(() => {
+    if (!agent.events) return;
+    for (const event of agent.events) {
+      if (event.type !== "step.completed") continue;
+      const key = `${event.data.turnId}:${event.data.stepIndex}`;
+      if (processedSteps.current.has(key)) continue;
+      processedSteps.current.add(key);
+
+      const outputTokens = event.data.usage?.outputTokens;
+      if (!outputTokens || outputTokens <= 0) continue;
+
+      fetch("/api/eve/credits", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: sentModeRef.current, outputTokens }),
+      })
+        .then((res) => {
+          if (res.ok) notifyCreditsUpdated();
+        })
+        .catch((e) => console.error("Failed to record Eve credit usage", e));
+    }
+  }, [agent.events]);
 
   // Dispatch refresh when agent finishes all work
   useEffect(() => {

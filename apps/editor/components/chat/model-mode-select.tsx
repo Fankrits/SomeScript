@@ -9,15 +9,22 @@ import {
 } from "@/components/ui/select";
 import { EVE_MODES, isEveMode } from "@/lib/eve-modes";
 import { useModelMode } from "@/components/chat/model-mode-context";
+import { useCreditStatus } from "@/hooks/use-credit-status";
 
 /**
  * Model-mode picker for the Eve composer (Lite / Pro / Expert). Sits in the
  * composer toolbar; the choice drives both the model (via a marker read by the
  * agent's dynamic resolver) and whether image attachments are offered.
+ *
+ * Locking here is a UX nicety, not the enforcement boundary — the real gate is
+ * the pre-flight check in use-eve-runtime.ts's onNew and the server-side credits
+ * API. `allowedModes` is null while loading, which is treated as "don't restrict
+ * yet" so the picker doesn't flash every option locked before the fetch resolves.
  */
 export function ModelModeSelect() {
   const { mode, setMode } = useModelMode();
   const current = EVE_MODES.find((m) => m.id === mode);
+  const credits = useCreditStatus();
 
   return (
     <Select
@@ -37,14 +44,19 @@ export function ModelModeSelect() {
         <SelectValue>{current?.label}</SelectValue>
       </SelectTrigger>
       <SelectContent align="start">
-        {EVE_MODES.map((m) => (
-          <SelectItem key={m.id} value={m.id} className="items-start">
-            <span className="flex flex-col">
-              <span className="text-sm font-medium">{m.label}</span>
-              <span className="text-xs text-muted-foreground">{m.hint}</span>
-            </span>
-          </SelectItem>
-        ))}
+        {EVE_MODES.map((m) => {
+          const locked = credits !== null && !credits.allowedModes.includes(m.id);
+          return (
+            <SelectItem key={m.id} value={m.id} disabled={locked} className="items-start">
+              <span className="flex flex-col">
+                <span className="text-sm font-medium">{m.label}</span>
+                <span className="text-xs text-muted-foreground">
+                  {locked ? "Upgrade to unlock" : m.hint}
+                </span>
+              </span>
+            </SelectItem>
+          );
+        })}
       </SelectContent>
     </Select>
   );

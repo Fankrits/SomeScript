@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { projects, workspaces, users } from "@/db/schema";
 import { revalidatePath } from "next/cache";
 import { eq, and } from "drizzle-orm";
+import { assertProjectLimit, assertWorkspaceActive, seedWorkspaceDefaults } from "@/lib/limits";
 
 // Helper to ensure the active workspace exists in our database
 async function ensureWorkspaceExists(orgId: string | null, userId: string) {
@@ -53,6 +54,14 @@ async function ensureWorkspaceExists(orgId: string | null, userId: string) {
       slug,
       ownerId: userId,
     });
+
+    // Same free/locked decision the Clerk `organization.created` webhook makes for
+    // org-backed workspaces (see seedWorkspaceDefaults) — personal workspaces have
+    // no such webhook event, and in local dev the webhook may not be reachable at
+    // all, so this is the only place those rows are guaranteed to get created.
+    // onConflictDoNothing makes it a safe no-op on the (usual) org path where the
+    // webhook got there first.
+    await seedWorkspaceDefaults(targetId, userId);
   }
 
   return targetId;
@@ -96,6 +105,8 @@ export async function createProject(formData: FormData) {
 
   // Ensure active workspace exists
   const workspaceId = await ensureWorkspaceExists(orgId || null, userId);
+  await assertWorkspaceActive(workspaceId);
+  await assertProjectLimit(workspaceId);
 
   const [project] = await db
     .insert(projects)
@@ -143,6 +154,8 @@ export async function importProject(formData: FormData) {
 
   // Ensure active workspace exists
   const workspaceId = await ensureWorkspaceExists(orgId || null, userId);
+  await assertWorkspaceActive(workspaceId);
+  await assertProjectLimit(workspaceId);
 
   // 1. Insert into database
   const [project] = await db

@@ -82,6 +82,17 @@ export async function resolveToolProject(projectId: string | null | undefined): 
   }
 }
 
+/**
+ * Validates that the caller is signed in and returns their active workspace id
+ * (org id, falling back to personal). Same lazy-import reasoning as requireProject.
+ */
+export async function requireWorkspace(): Promise<string> {
+  const { auth } = await import("@clerk/nextjs/server");
+  const { userId, orgId } = await auth();
+  if (!userId) throw new ApiError(401, "Unauthorized");
+  return orgId || userId;
+}
+
 /** Uniform error responder: known ApiErrors pass through, everything else is a logged generic 500. */
 export function apiError(err: unknown): Response {
   if (err instanceof ApiError) {

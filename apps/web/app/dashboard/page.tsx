@@ -11,6 +11,7 @@ import Link from "next/link";
 import Image from "next/image";
 import ProjectsTable from "@/components/tables-01";
 import { Skeleton } from "@/components/ui/skeleton";
+import { UpgradeDialog } from "@/components/upgrade-dialog";
 
 export default async function DashboardPage() {
   const { userId, orgId } = await auth();
@@ -84,25 +85,30 @@ export default async function DashboardPage() {
               Projects
             </Link>
           </nav>
+
         </div>
 
-        {/* User Info / Profile Avatar */}
-        <div className="border-t border-sidebar-border pt-6 flex items-center gap-3">
-          <UserButton
-            fallback={
-              <div className="flex items-center gap-3">
-                <Skeleton className="h-4 w-24" />
-                <Skeleton className="h-8 w-8 rounded-full" />
-              </div>
-            }
-            appearance={{
-              elements: {
-                userButtonBox: "flex flex-row-reverse gap-3 items-center w-full",
-                userButtonOuterIdentifier: "text-muted-foreground font-medium text-sm text-left truncate max-w-[120px] hover:text-primary transition-colors",
-              },
-            }}
-            showName
-          />
+        <div className="flex flex-col gap-4">
+          <UpgradeDialog />
+
+          {/* User Info / Profile Avatar */}
+          <div className="border-t border-sidebar-border pt-6 flex items-center gap-3">
+            <UserButton
+              fallback={
+                <div className="flex items-center gap-3">
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-8 w-8 rounded-full" />
+                </div>
+              }
+              appearance={{
+                elements: {
+                  userButtonBox: "flex flex-row-reverse gap-3 items-center w-full",
+                  userButtonOuterIdentifier: "text-muted-foreground font-medium text-sm text-left truncate max-w-[120px] hover:text-primary transition-colors",
+                },
+              }}
+              showName
+            />
+          </div>
         </div>
       </aside>
 
