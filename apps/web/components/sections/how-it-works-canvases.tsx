@@ -89,7 +89,7 @@ export function Step1WritePromptCanvas() {
 
 export function Step2EveAiCanvas() {
   const [typedMessage, setTypedMessage] = useState("");
-  const fullMessage = "I have drafted the TikZ coordinate vector diagram and auto-synced 3 BibTeX references from your Mendeley imports.";
+  const fullMessage = "I have drafted the TikZ coordinate diagram and auto-linked 3 BibTeX references to your project.";
 
   useEffect(() => {
     let index = 0;
@@ -105,60 +105,48 @@ export function Step2EveAiCanvas() {
   }, []);
 
   return (
-    <LiquidGlassCard className="w-full max-w-xl border-border/60 bg-background/95 p-5 shadow-2xl backdrop-blur-xl relative overflow-hidden">
-      {/* Ambient Neural Glow */}
-      <div className="absolute -top-12 -right-12 w-40 h-40 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+    <LiquidGlassCard className="w-full max-w-xl border-border/60 bg-background/95 p-4 shadow-2xl backdrop-blur-xl relative overflow-hidden space-y-3">
+      {/* User Message Bubble */}
+      <div className="flex justify-end">
+        <div className="bg-primary/10 border border-primary/20 text-foreground text-xs px-3.5 py-2 rounded-2xl rounded-tr-xs max-w-[85%] font-light">
+          Eve, draft a TikZ diagram for this rotation matrix and sync my references.
+        </div>
+      </div>
 
-      {/* Eve AI Header */}
-      <div className="flex items-center justify-between pb-3 mb-4 border-b border-border/50">
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-primary/30 to-emerald-500/20 border border-primary/40 flex items-center justify-center text-primary font-bold text-xs shadow-inner">
-              EVE
-            </div>
-            <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 border-2 border-background rounded-full animate-ping" />
-            <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 border-2 border-background rounded-full" />
+      {/* Eve Assistant Message Bubble */}
+      <div className="flex items-start gap-2.5 pt-1">
+        <div className="h-7 w-7 rounded-lg bg-primary text-primary-foreground font-bold text-[10px] flex items-center justify-center shrink-0 shadow-sm">
+          EVE
+        </div>
+        <div className="flex-1 space-y-2.5">
+          <div className="bg-foreground/5 border border-border/60 p-3 rounded-2xl rounded-tl-xs text-xs text-foreground/90 leading-relaxed font-light">
+            {typedMessage}
+            {typedMessage.length < fullMessage.length && (
+              <span className="inline-block w-1.5 h-3.5 bg-primary ml-1 animate-pulse align-middle" />
+            )}
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h4 className="text-sm font-semibold text-foreground">Eve AI Co-Author</h4>
-              <span className="text-[10px] bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-full font-medium">
-                Active Agent
-              </span>
+
+          {/* Assistant-UI Tool Calls */}
+          <div className="flex flex-wrap gap-2 text-[11px]">
+            <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-300 px-2.5 py-1 rounded-lg font-mono flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span>write_file: diagram.tex</span>
             </div>
-            <p className="text-[11px] text-foreground/50 font-mono">v2.4 • Tectonic AI Engine</p>
+            <div className="bg-blue-500/10 border border-blue-500/20 text-blue-700 dark:text-blue-300 px-2.5 py-1 rounded-lg font-mono flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+              <span>bibtex: 3 keys synced</span>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Streaming Message Body */}
-      <div className="space-y-3">
-        <div className="bg-foreground/5 border border-border/60 p-3.5 rounded-xl">
-          <p className="text-xs text-foreground/90 leading-relaxed font-light font-sans">
-            &ldquo;{typedMessage}&rdquo;
-            {typedMessage.length < fullMessage.length && (
-              <span className="inline-block w-1.5 h-3.5 bg-primary ml-1 animate-pulse align-middle" />
-            )}
-          </p>
+      {/* Composer Input Bar */}
+      <div className="pt-2 border-t border-border/40 flex items-center gap-2">
+        <div className="flex-1 bg-foreground/5 border border-border/60 rounded-xl px-3 py-1.5 text-[11px] text-foreground/40 font-light select-none">
+          Ask Eve anything about your LaTeX paper...
         </div>
-
-        {/* Asset Pills */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-          <div className="bg-emerald-500/10 border border-emerald-500/20 p-2.5 rounded-xl">
-            <p className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">TikZ Vector Code</p>
-            <p className="text-[9px] text-emerald-600/70 dark:text-emerald-400/70 mt-0.5">Generated 2D Axis</p>
-          </div>
-          <div className="bg-blue-500/10 border border-blue-500/20 p-2.5 rounded-xl">
-            <p className="text-[11px] font-semibold text-blue-700 dark:text-blue-300">BibTeX Synced</p>
-            <p className="text-[9px] text-blue-600/70 dark:text-blue-400/70 mt-0.5">3 Keys Auto-linked</p>
-          </div>
-        </div>
-
-        {/* Action Shortcut Badge */}
-        <div className="flex justify-end pt-2">
-          <span className="text-[10px] font-mono bg-foreground/10 text-foreground/70 px-2.5 py-1 rounded-lg border border-border">
-            Press <kbd className="font-bold text-foreground">Tab</kbd> to Accept Draft
-          </span>
+        <div className="h-7 w-7 rounded-lg bg-primary/20 text-primary flex items-center justify-center shrink-0 font-bold text-xs select-none">
+          ↑
         </div>
       </div>
     </LiquidGlassCard>
