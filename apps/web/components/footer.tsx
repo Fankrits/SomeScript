@@ -53,9 +53,6 @@ export default function Footer() {
             <h4 className="text-xs font-semibold uppercase tracking-wider text-white/40">Product</h4>
             <ul className="space-y-2.5 text-sm text-white/60 font-light">
               <li><Link href="/dashboard" className="hover:text-white transition-colors">Visual Editor</Link></li>
-              <li><Link href="/#how-it-works" className="hover:text-white transition-colors">Tectonic Compiler</Link></li>
-              <li><Link href="/#features" className="hover:text-white transition-colors">AI Co-author</Link></li>
-              <li><Link href="/dashboard" className="hover:text-white transition-colors">Pricing Plans</Link></li>
             </ul>
           </div>
 
@@ -64,8 +61,6 @@ export default function Footer() {
             <h4 className="text-xs font-semibold uppercase tracking-wider text-white/40">Resources</h4>
             <ul className="space-y-2.5 text-sm text-white/60 font-light">
               <li><Link href="/#faq" className="hover:text-white transition-colors">Documentation</Link></li>
-              <li><Link href="/#faq" className="hover:text-white transition-colors">Help Center</Link></li>
-              <li><Link href="/#how-it-works" className="hover:text-white transition-colors">Changelog</Link></li>
               <li><Link href="/about" className="hover:text-white transition-colors">About Us</Link></li>
             </ul>
           </div>
