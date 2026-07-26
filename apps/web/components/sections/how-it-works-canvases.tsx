@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { motion, AnimatePresence } from "motion/react";
+import { motion } from "motion/react";
 import { LiquidGlassCard } from "@/components/kokonutui/liquid-glass-card";
 
 export function Step1WritePromptCanvas() {
@@ -109,7 +109,7 @@ export function Step1WritePromptCanvas() {
           </div>
 
           {/* Code Content */}
-          <div className="space-y-1 font-mono text-[11px] leading-relaxed min-h-[130px]">
+          <div className="space-y-1 font-mono text-[11px] leading-relaxed min-h-[140px]">
             {codeLines.slice(0, visibleLineCount).map((item) => (
               <div key={item.line} className="flex items-center gap-2">
                 <span className="text-foreground/30 text-[9px] select-none w-4 text-right font-mono">{item.line}</span>
@@ -121,23 +121,6 @@ export function Step1WritePromptCanvas() {
             )}
           </div>
         </div>
-
-        {/* Rendered Preview Badge */}
-        <AnimatePresence>
-          {visibleLineCount === codeLines.length && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 5 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              transition={{ duration: 0.35, ease: "easeOut" }}
-              className="pt-2 border-t border-border/40 flex flex-col gap-1 bg-primary/5 p-2 rounded-lg"
-            >
-              <span className="text-[9px] font-mono text-foreground/60 uppercase tracking-wider font-semibold">Rendered Preview</span>
-              <div className="px-2 py-1 bg-background border border-border/80 rounded shadow-sm font-serif text-xs text-foreground italic text-center">
-                R = [ cosθ -sinθ ; sinθ cosθ ]
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
       </LiquidGlassCard>
     </div>
   );
