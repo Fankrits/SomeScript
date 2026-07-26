@@ -187,11 +187,25 @@ export function Step2TectonicCompileCanvas() {
         <div className="flex-1 flex flex-col justify-center items-center gap-2.5 my-3 px-2">
           <div className="h-2 bg-zinc-200 dark:bg-zinc-800 w-3/4 rounded-full" />
           <div className="h-1.5 bg-zinc-200 dark:bg-zinc-800 w-5/6 rounded-full" />
-          <div className="w-full bg-primary/10 border border-primary/30 p-2.5 rounded-xl my-1 flex flex-col items-center justify-center gap-1 shadow-sm">
-            <span className="text-[10px] font-serif italic text-primary font-semibold">
-              R(θ) = [ cos(θ)  -sin(θ) ;  sin(θ)  cos(θ) ]
-            </span>
+
+          {/* Authentic Rendered LaTeX Matrix Equation */}
+          <div className="w-full bg-primary/10 border border-primary/30 p-3 rounded-xl my-1 flex flex-col items-center justify-center shadow-sm">
+            <div className="flex items-center gap-2 font-serif text-sm text-foreground">
+              <span className="italic font-medium text-primary">R(&theta;)</span>
+              <span className="text-primary font-medium">=</span>
+              <div className="inline-flex items-center px-0.5">
+                <div className="w-1.5 h-8 border-l-2 border-y-2 border-primary/80 rounded-l-md" />
+                <div className="grid grid-cols-2 gap-x-3.5 gap-y-1 px-2 py-0.5 text-[11px] font-serif italic text-center text-primary font-medium">
+                  <span>cos&theta;</span>
+                  <span>-sin&theta;</span>
+                  <span>sin&theta;</span>
+                  <span>cos&theta;</span>
+                </div>
+                <div className="w-1.5 h-8 border-r-2 border-y-2 border-primary/80 rounded-r-md" />
+              </div>
+            </div>
           </div>
+
           <div className="h-1.5 bg-zinc-200 dark:bg-zinc-800 w-2/3 rounded-full" />
         </div>
 
