@@ -1,15 +1,17 @@
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import HeroMockup from "@/components/hero-mockup";
 import GridBackgroundDemo from "@/components/grid-background-demo";
-import { FeaturesBento } from "@/components/sections/features-bento";
-import { HowItWorks } from "@/components/sections/how-it-works";
-import { Testimonials } from "@/components/sections/testimonials";
-import { Faq } from "@/components/sections/faq";
 import { FinalCta } from "@/components/sections/final-cta";
 import Header from "@/components/header";
 import Footer from "@/components/footer";
+
+const FeaturesBento = dynamic(() => import("@/components/sections/features-bento").then((mod) => mod.FeaturesBento));
+const HowItWorks = dynamic(() => import("@/components/sections/how-it-works").then((mod) => mod.HowItWorks));
+const Testimonials = dynamic(() => import("@/components/sections/testimonials").then((mod) => mod.Testimonials));
+const Faq = dynamic(() => import("@/components/sections/faq").then((mod) => mod.Faq));
 
 export default function Home() {
   return (
