@@ -25,7 +25,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { Scissors, Copy, ClipboardPaste, TextCursor, Undo2, Redo2, FileText } from "lucide-react";
-import { CheckCircle2Icon, ListTodoIcon, FilePlus, FolderPlus, PanelLeft, PanelRight, Sparkles, Loader2, Check, Home, ChevronRight, ArrowLeft, Clock, Trash2, Plus, Settings, Search, Download } from "lucide-react";
+import { ListTodoIcon, FilePlus, FolderPlus, PanelLeft, PanelRight, Sparkles, Loader2, Check, Home, ChevronRight, ArrowLeft, Clock, Trash2, Plus, Settings, Search, Download } from "lucide-react";
 import { nanoid } from "nanoid";
 import { toast } from "sonner";
 import { useCallback, useEffect, useInsertionEffect, useRef, useState } from "react";
@@ -33,6 +33,8 @@ import type { PanelImperativeHandle } from "react-resizable-panels";
 import { useDefaultLayout } from "react-resizable-panels";
 import { useEveAgent } from "eve/react";
 import { SearchPanel, SearchPanelHandle } from "@/components/editor/search-panel";
+import { TasksPanel, TasksPanelHandle } from "@/components/editor/tasks-panel";
+import type { Task } from "@/lib/tasks";
 import { search as searchExtension, SearchQuery, setSearchQuery } from "@codemirror/search";
 import nextDynamic from "next/dynamic";
 
@@ -118,12 +120,6 @@ interface MessageType {
   key: string;
   from: "user" | "assistant";
   content: string;
-}
-
-interface TaskItem {
-  id: string;
-  title: string;
-  status: "pending" | "in_progress" | "completed";
 }
 
 interface FileNode {
@@ -336,13 +332,6 @@ npm run dev
   },
 ];
 
-// Mock tasks
-const initialTasks: TaskItem[] = [
-  { id: "1", status: "completed", title: "Refactor Button component" },
-  { id: "2", status: "in_progress", title: "Add form validation" },
-  { id: "3", status: "pending", title: "Write unit tests" },
-];
-
 // Mock chat messages
 const mockMessages: MessageType[] = [
   {
@@ -461,6 +450,7 @@ const SIDEBAR_TABS = [
   { id: "files", label: "Files", Icon: FolderPlus },
   { id: "chat", label: "Agent", Icon: Sparkles },
   { id: "search", label: "Search", Icon: Search },
+  { id: "tasks", label: "Tasks", Icon: ListTodoIcon },
   { id: "settings", label: "Settings", Icon: Settings },
 ] as const;
 
@@ -514,8 +504,9 @@ const Example = () => {
   // Project-relative path of the last successfully compiled root .tex — SyncTeX
   // queries resolve the PDF/.synctex.gz from it. null until the first compile.
   const [compiledPath, setCompiledPath] = useState<string | null>(null);
-  // Set only on an explicit editor double-click — the PDF scrolls to this line then, not on cursor moves.
-  const [pdfSyncRequest, setPdfSyncRequest] = useState<{ line: number; frac: number; nonce: number } | null>(null);
+  // Set only on an explicit editor double-click, or a task's page jump — the PDF scrolls
+  // to this line/page then, not on cursor moves.
+  const [pdfSyncRequest, setPdfSyncRequest] = useState<{ line?: number; frac?: number; page?: number; nonce: number } | null>(null);
   const [isCompiling, setIsCompiling] = useState<boolean>(false);
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "unsaved" | "idle">("idle");
   // View mode: "code" for text | "image" for images | "pdf-standalone" for PDFs opened from tree
@@ -529,15 +520,9 @@ const Example = () => {
   // Chat state
   const [chatText, setChatText] = useState<string>("");
 
-  // Tasks state
-  const [tasks, setTasks] = useState<TaskItem[]>(initialTasks);
-
-  // Checkpoint state
-  const [showCheckpoint, setShowCheckpoint] = useState<boolean>(false);
-
   // Sidebar states
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState<boolean>(true);
-  const [activeTab, setActiveTab] = useState<"files" | "search" | "chat" | "settings">("files");
+  const [activeTab, setActiveTab] = useState<"files" | "search" | "chat" | "tasks" | "settings">("files");
 
   // Gates the skeleton: false until mounted + layout restored from localStorage (SSR-safe).
   const [mounted, setMounted] = useState<boolean>(false);
@@ -556,6 +541,7 @@ const Example = () => {
 
   // Search Panel Refs and States
   const searchPanelRef = useRef<SearchPanelHandle>(null);
+  const tasksPanelRef = useRef<TasksPanelHandle>(null);
   const [pendingLineJump, setPendingLineJump] = useState<{ path: string; line: number } | null>(null);
   const [searchState, setSearchState] = useState<{
     query: string;
@@ -981,6 +967,29 @@ const Example = () => {
     );
   }, [selectedPath, toProjectRelative]);
 
+  // Right-click → "Create task". Unlike handleSendCodeToChat, hands the selection to the
+  // tasks panel directly via ref — no event bus needed, TasksPanel is a direct child of
+  // this component (unlike the chat composer, which lives inside <EveThread>).
+  const handleCreateTask = useCallback((text: string, source?: Task["source"]) => {
+    setIsLeftSidebarOpen(true);
+    setActiveTab("tasks");
+    tasksPanelRef.current?.addTask(text, source);
+  }, []);
+
+  const handleCreateTaskFromSelection = useCallback(() => {
+    const view = editorViewRef.current;
+    if (!view || !selectedPath) return;
+    const { from, to } = view.state.selection.main;
+    if (from === to) return;
+    const text = view.state.sliceDoc(from, to);
+    if (!text.trim()) return;
+    handleCreateTask(text.trim(), {
+      path: toProjectRelative(selectedPath),
+      line: view.state.doc.lineAt(from).number,
+      endLine: view.state.doc.lineAt(Math.max(from, to - 1)).number,
+    });
+  }, [selectedPath, toProjectRelative, handleCreateTask]);
+
   // The context menu replaces the browser's native one, so the clipboard basics
   // have to be re-served on top of the async Clipboard API.
   const handleClipboard = useCallback(async (cut: boolean) => {
@@ -1223,6 +1232,11 @@ const Example = () => {
     setPendingLineJump({ path: rel, line });
     handleFileSelect(rel);
   }, [handleFileSelect, toProjectRelative]);
+
+  const handleSelectPdfPage = useCallback((page: number) => {
+    if (pdfPanelRef.current?.isCollapsed()) pdfPanelRef.current.expand();
+    setPdfSyncRequest({ page, nonce: Date.now() });
+  }, []);
 
   const handleReplaceAll = useCallback(async (replaceText: string, searchState: { query: string; options: { matchCase: boolean; matchWholeWord: boolean; useRegex: boolean; scope: string } }) => {
     try {
@@ -1546,7 +1560,6 @@ const Example = () => {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot mount banner
     setTerminalOutput(`${mockTerminalLines.join("\n")}\n`);
-    setShowCheckpoint(true);
   }, []);
 
   const handleChatTextChange = useCallback(
@@ -1590,9 +1603,6 @@ const Example = () => {
         setProjectName(projectId);
       });
   }, [withProject, projectId]);
-
-  const completedTasks = tasks.filter((t) => t.status === "completed");
-  const pendingTasks = tasks.filter((t) => t.status !== "completed");
 
   if (!mounted) return <EditorSkeleton />;
 
@@ -1792,6 +1802,7 @@ const Example = () => {
                 role="tab"
                 aria-selected={selected}
                 aria-controls={`sidebar-panel-${id}`}
+                aria-label={label}
                 tabIndex={selected ? 0 : -1}
                 onClick={() => setActiveTab(id)}
                 className={cn(
@@ -1802,7 +1813,7 @@ const Example = () => {
                 )}
               >
                 <Icon className="size-3.5" />
-                <span>{label}</span>
+                {selected && <span>{label}</span>}
               </button>
             );
           })}
@@ -2132,6 +2143,20 @@ const Example = () => {
             </div>
           </div>
         </div>
+
+        <div
+          id="sidebar-panel-tasks"
+          role="tabpanel"
+          aria-labelledby="sidebar-tab-tasks"
+          className={cn("flex-1 flex flex-col overflow-hidden bg-background", activeTab !== "tasks" && "hidden")}
+        >
+          <TasksPanel
+            ref={tasksPanelRef}
+            projectId={projectId}
+            onSelectMatch={handleSelectMatch}
+            onSelectPdfPage={handleSelectPdfPage}
+          />
+        </div>
       </div>
 
       {/* Center Panel - Code + Terminal */}
@@ -2230,6 +2255,13 @@ const Example = () => {
                             <Sparkles className="size-3.5" />
                             {hasEditorSelection ? "Add selection to chat" : "Add file to chat"}
                           </ContextMenuItem>
+                          <ContextMenuItem
+                            disabled={!hasEditorSelection}
+                            onClick={handleCreateTaskFromSelection}
+                          >
+                            <ListTodoIcon className="size-3.5" />
+                            Create task from selection
+                          </ContextMenuItem>
                           <ContextMenuItem onClick={handleSyncToPdf}>
                             <FileText className="size-3.5" />
                             Show in PDF
@@ -2314,6 +2346,7 @@ const Example = () => {
                         pdfSyncRequest={pdfSyncRequest}
                         onSelectLine={handleSelectMatch}
                         onDownload={handleDownloadPdf}
+                        onCreateTask={(text, page) => handleCreateTask(text, { page })}
                       />
                     ) : (
                       <div className="absolute inset-0 flex items-center justify-center text-xs font-mono text-muted-foreground">

@@ -20,6 +20,11 @@ export interface StorageProvider {
   delete(projectId: string, fileRelativePath: string): Promise<void>;
 }
 
+// Directories hidden from the file tree, code search, and zip export — checked as
+// a path *segment* (not just a basename) so both the local walker and the S3 key
+// lister exclude the same things.
+const EXCLUDED = new Set(["node_modules", ".git", ".next", ".eve", ".workflow-data", ".somescript"]);
+
 // -------------------------------------------------------------
 // 1. Local File System Storage Provider
 // -------------------------------------------------------------
@@ -83,8 +88,6 @@ export class LocalStorageProvider implements StorageProvider {
     } catch {
       // Ignored
     }
-
-    const EXCLUDED = new Set(["node_modules", ".git", ".next", ".eve", ".workflow-data"]);
 
     const scan = async (dir: string, relativeRoot = ""): Promise<FileNode[]> => {
       const entries = await fs.readdir(dir, { withFileTypes: true });
@@ -309,6 +312,7 @@ class S3StorageProvider implements StorageProvider {
       // Get path relative to the project folder prefix
       const relativePath = object.Key.substring(prefix.length);
       if (!relativePath || relativePath === ".keep" || relativePath.endsWith(".pdf")) continue;
+      if (relativePath.split("/").some((s) => EXCLUDED.has(s))) continue;
 
       const parts = relativePath.split("/");
       let currentPath = "";

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Copy, Download, FileCode, Hand, Loader2, Maximize2, Minus, MousePointer, Plus, Scan, Search, SquareDashedMousePointer, ZoomIn, ZoomOut } from "lucide-react";
+import { ChevronLeft, ChevronRight, Copy, Download, FileCode, Hand, ListTodo, Loader2, Maximize2, Minus, MousePointer, Plus, Scan, Search, SquareDashedMousePointer, ZoomIn, ZoomOut } from "lucide-react";
 import { createPluginRegistration } from "@embedpdf/core";
 import { EmbedPDF } from "@embedpdf/core/react";
 import { usePdfiumEngine } from "@embedpdf/engines/react";
@@ -58,9 +58,10 @@ interface HeadlessPdfViewerProps {
   pdfUrl: string | null;
   synctexQuery: SynctexQuery;
   selectedPath: string;
-  pdfSyncRequest: { line: number; frac: number; nonce: number } | null;
+  pdfSyncRequest: { line?: number; frac?: number; page?: number; nonce: number } | null;
   onSelectLine: (filePath: string, line: number) => void;
   onDownload: () => void;
+  onCreateTask: (text: string, page: number) => void;
 }
 
 const HeadlessPdfViewer = ({
@@ -70,6 +71,7 @@ const HeadlessPdfViewer = ({
   pdfSyncRequest,
   onSelectLine,
   onDownload,
+  onCreateTask,
 }: HeadlessPdfViewerProps) => {
   const docManagerCap = useDocumentManagerCapability();
   const { activeDocumentId, activeDocument } = useActiveDocument();
@@ -118,6 +120,7 @@ const HeadlessPdfViewer = ({
       pdfSyncRequest={pdfSyncRequest}
       onSelectLine={onSelectLine}
       onDownload={onDownload}
+      onCreateTask={onCreateTask}
     />
   );
 };
@@ -126,9 +129,10 @@ interface HeadlessPdfViewerInnerProps {
   documentId: string;
   synctexQuery: SynctexQuery;
   selectedPath: string;
-  pdfSyncRequest: { line: number; frac: number; nonce: number } | null;
+  pdfSyncRequest: { line?: number; frac?: number; page?: number; nonce: number } | null;
   onSelectLine: (filePath: string, line: number) => void;
   onDownload: () => void;
+  onCreateTask: (text: string, page: number) => void;
 }
 
 const HeadlessPdfViewerInner = ({
@@ -138,6 +142,7 @@ const HeadlessPdfViewerInner = ({
   pdfSyncRequest,
   onSelectLine,
   onDownload,
+  onCreateTask,
 }: HeadlessPdfViewerInnerProps) => {
   const scrollHook = useScroll(documentId);
   const zoomHook = useZoom(documentId);
@@ -156,7 +161,7 @@ const HeadlessPdfViewerInner = ({
   // explicit double-click (pdfSyncRequest), never on plain cursor movement.
   const lastSyncNonceRef = useRef<number | null>(null);
   useEffect(() => {
-    if (!pdfSyncRequest || !selectedPath || !scrollHook?.provides) return;
+    if (!pdfSyncRequest || !scrollHook?.provides) return;
     // One-shot per double-click. scrollHook.provides changes identity on every manual
     // scroll, which re-runs this effect; without the nonce guard it would re-scroll to
     // the sync target each time and the preview would feel stuck.
@@ -164,9 +169,17 @@ const HeadlessPdfViewerInner = ({
     lastSyncNonceRef.current = pdfSyncRequest.nonce;
     const scroll = scrollHook.provides;
 
+    // A task's page jump has no source line to resolve via SyncTeX — just scroll there.
+    if (pdfSyncRequest.page) {
+      scroll.scrollToPage({ pageNumber: pdfSyncRequest.page, behavior: "instant" });
+      return;
+    }
+    const line = pdfSyncRequest.line;
+    if (!selectedPath || !line) return;
+
     let cancelled = false;
     (async () => {
-      const data = await synctexQuery({ type: "view", texRelativePath: selectedPath, line: pdfSyncRequest.line });
+      const data = await synctexQuery({ type: "view", texRelativePath: selectedPath, line });
       const records: SynctexViewRecord[] = data?.records ?? [];
       if (cancelled || records.length === 0) return;
 
@@ -246,6 +259,21 @@ const HeadlessPdfViewerInner = ({
       selectionCap.provides?.clear(documentId);
     });
   }, [selectionCap.provides, documentId]);
+
+  // Selection's start page is 0-based (GlyphPointer.page), unlike contextPage below
+  // (1-based, SyncTeX convention, and wherever the click landed rather than where the
+  // selection starts) — so this reads getState() rather than reusing contextPage.
+  // Deliberately doesn't clear() the selection afterward, unlike handleCopy: the user
+  // is still looking at the highlight when the task is created.
+  const handleCreateTask = useCallback(() => {
+    const state = selectionCap.provides?.getState(documentId);
+    const startPage = state?.selection?.start.page;
+    if (!selectionCap.provides || startPage === undefined) return;
+    selectionCap.provides.getSelectedText(documentId).wait((textArray) => {
+      const text = (textArray ?? []).join("\n").trim();
+      if (text) onCreateTask(text, startPage + 1);
+    }, () => {});
+  }, [selectionCap.provides, documentId, onCreateTask]);
 
   // Reverse SyncTeX (`synctex edit`) wants PDF points from the page's top-left.
   // The page renders at `zoom` css px per pt, so divide it out. Resolving the page
@@ -593,6 +621,10 @@ const HeadlessPdfViewerInner = ({
           >
             <FileCode className="size-3.5" />
             Show in editor
+          </ContextMenuItem>
+          <ContextMenuItem disabled={!hasSelection} onClick={handleCreateTask}>
+            <ListTodo className="size-3.5" />
+            Create task from selection
           </ContextMenuItem>
           <ContextMenuSeparator />
           <ContextMenuItem onClick={() => zoomHook?.provides?.zoomIn()}>
