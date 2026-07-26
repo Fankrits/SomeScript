@@ -1556,22 +1556,25 @@ const Example = () => {
 
 
 
-  const [dashboardUrl, setDashboardUrl] = useState<string>("/dashboard");
+  const [dashboardUrl, setDashboardUrl] = useState<string>(
+    process.env.NEXT_PUBLIC_WEB_URL ? `${process.env.NEXT_PUBLIC_WEB_URL}/dashboard` : "/dashboard"
+  );
   const [projectName, setProjectName] = useState<string>("my-new-project");
 
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    // Dashboard URL
-    const hostname = window.location.hostname;
-    const port = window.location.port;
-    /* eslint-disable react-hooks/set-state-in-effect -- client-only value derived from window.location */
-    if (port === "3002" || port === "3001" || port === "3000") {
-      setDashboardUrl(`http://${hostname}:3000/dashboard`);
-    } else {
-      setDashboardUrl("/dashboard");
+    // Dashboard URL: NEXT_PUBLIC_WEB_URL takes priority; fall back to the local-dev
+    // port heuristic only when it's unset (e.g. running without .env.local configured).
+    if (!process.env.NEXT_PUBLIC_WEB_URL) {
+      const hostname = window.location.hostname;
+      const port = window.location.port;
+      /* eslint-disable react-hooks/set-state-in-effect -- client-only value derived from window.location */
+      if (port === "3002" || port === "3001" || port === "3000") {
+        setDashboardUrl(`http://${hostname}:3000/dashboard`);
+      }
+      /* eslint-enable react-hooks/set-state-in-effect */
     }
-    /* eslint-enable react-hooks/set-state-in-effect */
 
     // Project Name
     fetch(withProject("/api/project/name"))
