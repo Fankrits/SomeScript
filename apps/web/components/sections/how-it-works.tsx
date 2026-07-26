@@ -4,35 +4,28 @@ import React, { useRef, useState } from "react";
 import { useScroll, useMotionValueEvent, motion, AnimatePresence } from "motion/react";
 import {
   Step1WritePromptCanvas,
-  Step2EveAiCanvas,
-  Step3TectonicCompileCanvas,
-  Step4ExportShareCanvas,
+  Step2TectonicCompileCanvas,
+  Step3ExportShareCanvas,
 } from "./how-it-works-canvases";
 
 const steps = [
   {
     number: "01",
-    title: "Write & Prompt",
-    description: "Start typing standard LaTeX directly, or describe what you need in plain English. SomeScript supports standard document classes and math environments natively.",
+    title: "Prompt & Co-Author",
+    description: "Type LaTeX directly or describe what you need in plain English. Eve AI streams back structured outline code, mathematical equations, and TikZ figures instantly.",
     canvas: <Step1WritePromptCanvas />,
   },
   {
     number: "02",
-    title: "AI Co-Authoring",
-    description: "Our embedded AI co-author, Eve, processes your requests and instantly generates outline structures, complex mathematical formulas, formatted tables, and structured bibliographies.",
-    canvas: <Step2EveAiCanvas />,
+    title: "Instant Compile",
+    description: "The background Tectonic engine compiles your project on-the-fly. The visual editor updates in real time with page-accurate previews of math, layout, and images as you type.",
+    canvas: <Step2TectonicCompileCanvas />,
   },
   {
     number: "03",
-    title: "Instant Compile",
-    description: "The background Tectonic engine compiles your project on-the-fly. The visual editor updates in real time with page-accurate previews of math, layout, and images as you type.",
-    canvas: <Step3TectonicCompileCanvas />,
-  },
-  {
-    number: "04",
     title: "Export & Share",
     description: "Download your final typeset, publication-ready PDF document, or invite your co-authors and research collaborators to join your shared isolated sandboxes.",
-    canvas: <Step4ExportShareCanvas />,
+    canvas: <Step3ExportShareCanvas />,
   },
 ];
 
@@ -46,14 +39,12 @@ export function HowItWorks() {
   });
 
   useMotionValueEvent(scrollYProgress, "change", (latest) => {
-    if (latest < 0.25) {
+    if (latest < 0.33) {
       setActiveStep(0);
-    } else if (latest < 0.5) {
+    } else if (latest < 0.66) {
       setActiveStep(1);
-    } else if (latest < 0.75) {
-      setActiveStep(2);
     } else {
-      setActiveStep(3);
+      setActiveStep(2);
     }
   });
 
@@ -62,14 +53,14 @@ export function HowItWorks() {
     const container = containerRef.current;
     const containerTop = container.getBoundingClientRect().top + window.scrollY - 72;
     const containerHeight = container.offsetHeight - window.innerHeight;
-    const targetY = containerTop + (idx / 3) * containerHeight;
+    const targetY = containerTop + (idx / 2) * containerHeight;
     window.scrollTo({ top: targetY, behavior: "smooth" });
   };
 
   return (
     <section id="how-it-works" className="w-full border-t border-border/40 relative z-10">
       {/* Scroll track container */}
-      <div ref={containerRef} className="relative h-[300vh] bg-background">
+      <div ref={containerRef} className="relative h-[250vh] bg-background">
         {/* Sticky viewport frame - pinned under 72px Header */}
         <div className="sticky top-[72px] h-[calc(100vh-72px)] flex flex-col justify-center max-w-7xl mx-auto px-6 py-6 overflow-hidden">
           {/* Header */}
