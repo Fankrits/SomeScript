@@ -17,57 +17,57 @@ export default function ContactPage() {
       {/* Main Content */}
       <main className="flex-1 flex flex-col relative w-full z-10 py-12 px-6 max-w-3xl mx-auto">
         <div className="text-center mb-10">
-          <h1 className="text-4xl md:text-5xl font-medium font-serif tracking-tight text-white mb-4">
+          <h1 className="text-4xl md:text-5xl font-medium font-serif tracking-tight text-foreground mb-4">
             Contact Us
           </h1>
-          <p className="text-white/70 text-sm md:text-base font-light max-w-xl mx-auto">
+          <p className="text-muted-foreground text-sm md:text-base font-light max-w-xl mx-auto">
             Have questions or need assistance? Reach out to our academic support team.
           </p>
         </div>
 
         <LiquidGlassCard
           glassSize="default"
-          className="border-white/10 bg-[#0e161b]/40 backdrop-blur-md rounded-xl p-8 space-y-8 text-white"
+          className="border-border bg-card/80 backdrop-blur-md rounded-xl p-8 space-y-8 text-card-foreground shadow-lg"
         >
           <div className="space-y-6">
-            <h2 className="text-2xl font-medium font-serif text-[#dd7e21]">
+            <h2 className="text-2xl font-medium font-serif text-primary">
               Get in Touch
             </h2>
-            <p className="text-white/80 font-light text-sm md:text-base leading-relaxed">
+            <p className="text-foreground/80 font-light text-sm md:text-base leading-relaxed">
               We look forward to hearing from you. Whether you are a student, professor, or part of an institutional research lab, we are here to support your LaTeX authoring experience.
             </p>
           </div>
 
           {/* Contact Details Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-white/10">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-border">
             {/* Primary Email */}
-            <div className="flex items-start gap-4 p-4 rounded-lg bg-white/5 border border-white/5">
-              <Mail className="h-6 w-6 text-[#dd7e21] shrink-0 mt-0.5" />
+            <div className="flex items-start gap-4 p-4 rounded-lg bg-secondary/40 border border-border">
+              <Mail className="h-6 w-6 text-primary shrink-0 mt-0.5" />
               <div className="space-y-1">
                 <h3 className="text-sm font-semibold">General & Support Email</h3>
                 <a
                   href="mailto:contact@fankrits.com"
-                  className="text-xs text-[#dd7e21] hover:underline block font-medium"
+                  className="text-xs text-primary hover:underline block font-medium"
                 >
                   contact@fankrits.com
                 </a>
-                <p className="text-[10px] text-white/50 leading-relaxed font-light">
+                <p className="text-[10px] text-muted-foreground/70 leading-relaxed font-light">
                   We typical respond within 12–24 business hours.
                 </p>
               </div>
             </div>
 
             {/* Support / Partnerships */}
-            <div className="flex items-start gap-4 p-4 rounded-lg bg-white/5 border border-white/5">
-              <MessageSquare className="h-6 w-6 text-[#dd7e21] shrink-0 mt-0.5" />
+            <div className="flex items-start gap-4 p-4 rounded-lg bg-secondary/40 border border-border">
+              <MessageSquare className="h-6 w-6 text-primary shrink-0 mt-0.5" />
               <div className="space-y-1">
                 <h3 className="text-sm font-semibold">Enterprise & Labs</h3>
-                <p className="text-xs text-white/70 font-light">
+                <p className="text-xs text-muted-foreground font-light">
                   For university site licenses, department packages, or custom Tectonic hosting:
                 </p>
                 <a
                   href="mailto:contact@fankrits.com"
-                  className="text-xs text-[#dd7e21] hover:underline font-medium"
+                  className="text-xs text-primary hover:underline font-medium"
                 >
                   contact@fankrits.com
                 </a>
