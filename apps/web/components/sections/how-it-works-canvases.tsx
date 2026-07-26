@@ -89,7 +89,7 @@ export function Step1WritePromptCanvas() {
 
 export function Step2EveAiCanvas() {
   const [typedMessage, setTypedMessage] = useState("");
-  const fullMessage = "I have drafted the TikZ coordinate diagram and auto-linked 3 BibTeX references to your project.";
+  const fullMessage = "I have drafted the TikZ coordinate diagram and auto-linked references to your project.";
 
   useEffect(() => {
     let index = 0;
@@ -114,28 +114,19 @@ export function Step2EveAiCanvas() {
       </div>
 
       {/* Eve Assistant Message Bubble */}
-      <div className="flex items-start gap-2.5 pt-1">
-        <div className="h-7 w-7 rounded-lg bg-primary text-primary-foreground font-bold text-[10px] flex items-center justify-center shrink-0 shadow-sm">
-          EVE
+      <div className="space-y-2.5 pt-1">
+        <div className="bg-foreground/5 border border-border/60 p-3 rounded-2xl rounded-tl-xs text-xs text-foreground/90 leading-relaxed font-light">
+          {typedMessage}
+          {typedMessage.length < fullMessage.length && (
+            <span className="inline-block w-1.5 h-3.5 bg-primary ml-1 animate-pulse align-middle" />
+          )}
         </div>
-        <div className="flex-1 space-y-2.5">
-          <div className="bg-foreground/5 border border-border/60 p-3 rounded-2xl rounded-tl-xs text-xs text-foreground/90 leading-relaxed font-light">
-            {typedMessage}
-            {typedMessage.length < fullMessage.length && (
-              <span className="inline-block w-1.5 h-3.5 bg-primary ml-1 animate-pulse align-middle" />
-            )}
-          </div>
 
-          {/* Assistant-UI Tool Calls */}
-          <div className="flex flex-wrap gap-2 text-[11px]">
-            <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-300 px-2.5 py-1 rounded-lg font-mono flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              <span>write_file: diagram.tex</span>
-            </div>
-            <div className="bg-blue-500/10 border border-blue-500/20 text-blue-700 dark:text-blue-300 px-2.5 py-1 rounded-lg font-mono flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-              <span>bibtex: 3 keys synced</span>
-            </div>
+        {/* Assistant-UI Tool Calls */}
+        <div className="flex flex-wrap gap-2 text-[11px]">
+          <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-300 px-2.5 py-1 rounded-lg font-mono flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            <span>write_file: diagram.tex</span>
           </div>
         </div>
       </div>
