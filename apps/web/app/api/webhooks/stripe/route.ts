@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { subscriptions, creditBalances, creditTransactions } from "@/db/schema";
 import { eq, sql } from "drizzle-orm";
 import { syncWorkspaceMemberLimit } from "@/lib/limits";
+import { PLAN_LIMITS } from "@/lib/plans";
 
 // Stripe's full status enum has a few values our own `subscription_status` doesn't
 // need to distinguish — everything that isn't "paying fine" collapses to past_due
@@ -82,10 +83,27 @@ async function creditTopUp(session: Stripe.Checkout.Session, eventId: string): P
     // balance was already credited. Skip, or a retry would double-credit it.
     if (inserted.length === 0) return;
 
+    // A personal (non-org) workspace never gets a credit_balances row seeded — see
+    // seedWorkspaceDefaults — so its first-ever top-up would hit a bare UPDATE that
+    // matches zero rows and silently vanishes. Upsert instead. includedBalance on
+    // first insert mirrors getWorkspaceSubscription's "no row = plan's default
+    // allowance" fallback, so creating the row here can't regress what the user
+    // already had.
+    const sub = await tx.query.subscriptions.findFirst({ where: eq(subscriptions.workspaceId, workspaceId) });
+    const plan = sub?.plan ?? "free";
+
     await tx
-      .update(creditBalances)
-      .set({ purchasedBalance: sql`${creditBalances.purchasedBalance} + ${credits}`, updatedAt: new Date() })
-      .where(eq(creditBalances.workspaceId, workspaceId));
+      .insert(creditBalances)
+      .values({
+        workspaceId,
+        includedBalance: PLAN_LIMITS[plan].monthlyAiCredits,
+        purchasedBalance: credits,
+        periodResetAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      })
+      .onConflictDoUpdate({
+        target: creditBalances.workspaceId,
+        set: { purchasedBalance: sql`${creditBalances.purchasedBalance} + ${credits}`, updatedAt: new Date() },
+      });
   });
 }
 
