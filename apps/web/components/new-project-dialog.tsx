@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createProject } from "@/app/dashboard/actions";
+import { UpgradeDialog } from "@/components/upgrade-dialog";
 import { Plus, Loader2 } from "lucide-react";
 
 export function NewProjectDialog() {
@@ -50,7 +51,12 @@ export function NewProjectDialog() {
               className="bg-background border-border focus-visible:ring-primary rounded-md text-foreground placeholder:text-muted-foreground/50"
             />
           </div>
-          {error && <p className="text-sm text-destructive">{error}</p>}
+          {error && (
+            <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 space-y-2">
+              <p className="text-sm text-destructive">{error}</p>
+              {error.includes("Upgrade") && <UpgradeDialog />}
+            </div>
+          )}
           <DialogFooter className="gap-2">
             <Button
               type="button"

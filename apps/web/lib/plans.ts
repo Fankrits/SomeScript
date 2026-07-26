@@ -49,6 +49,6 @@ export const EVE_MODE_CREDIT_COST: Record<EveMode, number> = {
 
 export const MODE_ACCESS_BY_PLAN: Record<Plan, readonly EveMode[]> = {
   free: ["lite"],
-  pro: ["lite", "pro"],
+  pro: ["lite", "pro", "expert"],
   team: ["lite", "pro", "expert"],
 };
