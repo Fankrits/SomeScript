@@ -117,15 +117,15 @@ export function UpgradeDialog({ autoOpenLocked = false }: { autoOpenLocked?: boo
         if (!next) reset();
       }}
     >
-      <SheetTrigger asChild>
-        <Button
-          variant="outline"
-          className="w-full justify-start gap-2 border-border bg-card text-foreground hover:bg-secondary rounded-lg"
-        >
-          <ArrowUpCircle className="h-4 w-4" />
-          Upgrade plan
-        </Button>
-      </SheetTrigger>
+      <Button
+        variant="outline"
+        disabled
+        className="w-full justify-start gap-2 border-border bg-card text-foreground rounded-lg"
+      >
+        <ArrowUpCircle className="h-4 w-4" />
+        Upgrade plan
+        <span className="ml-auto text-xs text-muted-foreground">Soon</span>
+      </Button>
       <SheetContent className="w-full gap-0 p-0 sm:max-w-md">
         <SheetHeader className="border-b border-border p-6">
           {checkout ? (
