@@ -91,29 +91,37 @@ Welcome to your new LaTeX project! Describe what you want the AI assistant to wr
 \\end{document}
 `;
 
-export async function createProject(formData: FormData) {
+// Next.js redacts thrown Error messages from Server Functions in production
+// builds (see node_modules/next/dist/docs/01-app/01-getting-started/10-error-handling.md
+// "Handling expected errors" — model expected errors as return values, not throws).
+// So every expected failure below is returned as { error } instead of thrown.
+export async function createProject(formData: FormData): Promise<{ error: string } | void> {
   const { userId, orgId } = await auth();
 
   if (!userId) {
-    throw new Error("Unauthorized");
+    return { error: "Unauthorized" };
   }
 
   const name = formData.get("name") as string;
   if (!name || name.trim() === "") {
-    throw new Error("Project name is required");
+    return { error: "Project name is required" };
   }
 
   // Ensure active workspace exists
   const workspaceId = await ensureWorkspaceExists(orgId || null, userId);
-  await assertWorkspaceActive(workspaceId);
-  await assertProjectLimit(workspaceId);
+  try {
+    await assertWorkspaceActive(workspaceId);
+    await assertProjectLimit(workspaceId);
+  } catch (error: any) {
+    return { error: error.message || "Failed to create project" };
+  }
 
   const [project] = await db
     .insert(projects)
     .values({ name: name.trim(), workspaceId })
     .returning();
 
-  if (!project) throw new Error("Failed to create project");
+  if (!project) return { error: "Failed to create project" };
 
   const res = await editorFetch("/api/files", {
     method: "POST",
@@ -128,34 +136,38 @@ export async function createProject(formData: FormData) {
 
   if (!res.ok) {
     await db.delete(projects).where(eq(projects.id, project.id));
-    throw new Error("Failed to initialize project files");
+    return { error: "Failed to initialize project files" };
   }
 
   revalidatePath("/dashboard");
 }
 
-export async function importProject(formData: FormData) {
+export async function importProject(formData: FormData): Promise<{ error: string } | void> {
   const { userId, orgId } = await auth();
 
   if (!userId) {
-    throw new Error("Unauthorized");
+    return { error: "Unauthorized" };
   }
 
   const name = formData.get("name") as string;
   const file = formData.get("file") as File | null;
 
   if (!name || name.trim() === "") {
-    throw new Error("Project name is required");
+    return { error: "Project name is required" };
   }
 
   if (!file || file.size === 0) {
-    throw new Error("ZIP file is required");
+    return { error: "ZIP file is required" };
   }
 
   // Ensure active workspace exists
   const workspaceId = await ensureWorkspaceExists(orgId || null, userId);
-  await assertWorkspaceActive(workspaceId);
-  await assertProjectLimit(workspaceId);
+  try {
+    await assertWorkspaceActive(workspaceId);
+    await assertProjectLimit(workspaceId);
+  } catch (error: any) {
+    return { error: error.message || "Failed to create project" };
+  }
 
   // 1. Insert into database
   const [project] = await db
@@ -167,7 +179,7 @@ export async function importProject(formData: FormData) {
     .returning();
 
   if (!project) {
-    throw new Error("Failed to create project record");
+    return { error: "Failed to create project record" };
   }
 
   // 2. Call the editor's import API
@@ -186,28 +198,28 @@ export async function importProject(formData: FormData) {
       console.error("Failed to import files to editor service:", errorText);
       // Clean up the project if file import failed
       await db.delete(projects).where(eq(projects.id, project.id));
-      throw new Error(`Failed to import files: ${errorText}`);
+      return { error: `Failed to import files: ${errorText}` };
     }
   } catch (error: any) {
     console.error("Error calling editor service to import files:", error);
     // Clean up the project if file import failed
     await db.delete(projects).where(eq(projects.id, project.id));
-    throw new Error(error.message || "Failed to call editor service for import");
+    return { error: error.message || "Failed to call editor service for import" };
   }
 
   revalidatePath("/dashboard");
 }
 
 
-export async function renameProject(projectId: string, newName: string) {
+export async function renameProject(projectId: string, newName: string): Promise<{ error: string } | void> {
   const { userId, orgId } = await auth();
 
   if (!userId) {
-    throw new Error("Unauthorized");
+    return { error: "Unauthorized" };
   }
 
   if (!newName || newName.trim() === "") {
-    throw new Error("Project name is required");
+    return { error: "Project name is required" };
   }
 
   const workspaceId = orgId || userId;
@@ -219,17 +231,17 @@ export async function renameProject(projectId: string, newName: string) {
     .returning({ id: projects.id });
 
   if (updated.length === 0) {
-    throw new Error("Project not found");
+    return { error: "Project not found" };
   }
 
   revalidatePath("/dashboard");
 }
 
-export async function deleteProject(projectId: string) {
+export async function deleteProject(projectId: string): Promise<{ error: string } | void> {
   const { userId, orgId } = await auth();
 
   if (!userId) {
-    throw new Error("Unauthorized");
+    return { error: "Unauthorized" };
   }
 
   const workspaceId = orgId || userId;
@@ -237,7 +249,7 @@ export async function deleteProject(projectId: string) {
   const project = await db.query.projects.findFirst({
     where: and(eq(projects.id, projectId), eq(projects.workspaceId, workspaceId)),
   });
-  if (!project) throw new Error("Project not found");
+  if (!project) return { error: "Project not found" };
 
   // Delete files first: the editor's ownership check needs the DB row to still exist.
   // If the editor is unreachable we still remove the row; orphaned storage is

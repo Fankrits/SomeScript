@@ -97,8 +97,12 @@ export default function ProjectsTable({ projects, editorUrl }: ProjectsTableProp
   const handleRename = async (projectId: string, newName: string) => {
     if (!newName || newName.trim() === "") return;
     try {
-      await renameProject(projectId, newName);
-      toast.success("Project renamed successfully");
+      const result = await renameProject(projectId, newName);
+      if (result?.error) {
+        toast.error(result.error);
+      } else {
+        toast.success("Project renamed successfully");
+      }
     } catch (error: any) {
       toast.error(error.message || "Failed to rename project");
     }
@@ -107,8 +111,12 @@ export default function ProjectsTable({ projects, editorUrl }: ProjectsTableProp
   const handleDelete = async (projectId: string) => {
     setPendingAction({ id: projectId, type: "delete" });
     try {
-      await deleteProject(projectId);
-      toast.success("Project deleted successfully");
+      const result = await deleteProject(projectId);
+      if (result?.error) {
+        toast.error(result.error);
+      } else {
+        toast.success("Project deleted successfully");
+      }
     } catch (error: any) {
       console.error(error);
       toast.error(error.message || "Failed to delete project");

@@ -33,10 +33,14 @@ export function ImportProjectDialog() {
     setLoading(true);
     const formData = new FormData(e.currentTarget);
     try {
-      await importProject(formData);
-      toast.success("Project imported successfully!");
-      setOpen(false);
-      setFileName("");
+      const result = await importProject(formData);
+      if (result?.error) {
+        toast.error(result.error);
+      } else {
+        toast.success("Project imported successfully!");
+        setOpen(false);
+        setFileName("");
+      }
     } catch (err: any) {
       console.error(err);
       toast.error(err.message || "Failed to import project");

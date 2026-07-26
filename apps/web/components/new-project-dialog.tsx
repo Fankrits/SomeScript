@@ -20,8 +20,12 @@ export function NewProjectDialog() {
     setError(null);
     const formData = new FormData(e.currentTarget);
     try {
-      await createProject(formData);
-      setOpen(false);
+      const result = await createProject(formData);
+      if (result?.error) {
+        setError(result.error);
+      } else {
+        setOpen(false);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create project");
     } finally {
