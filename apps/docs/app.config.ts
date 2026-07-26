@@ -1,6 +1,7 @@
 export default defineAppConfig({
   header: {
     title: 'SomeScript Docs',
+    github: false,
     logo: {
       light: '/logo.svg',
       dark: '/logo.svg',
@@ -23,6 +24,17 @@ export default defineAppConfig({
     colors: {
       primary: 'teal',
       neutral: 'slate',
+    },
+    button: {
+      slots: {
+        avatar: '!rounded-none !bg-transparent !ring-0',
+      },
+    },
+    avatar: {
+      slots: {
+        root: '!rounded-none !bg-transparent !ring-0',
+        image: '!rounded-none',
+      },
     },
   },
 })

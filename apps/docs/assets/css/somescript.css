@@ -23,3 +23,30 @@
   background: #196470;
   color: #f0f8f8;
 }
+
+/* Remove circular container clipping & background on button avatar logos */
+button [class*="avatar"],
+a [class*="avatar"],
+[class*="avatar"],
+button span:has(> img),
+a span:has(> img) {
+  border-radius: 0 !important;
+  background-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  ring: 0 !important;
+}
+
+button [class*="avatar"] img,
+a [class*="avatar"] img,
+[class*="avatar"] img {
+  border-radius: 0 !important;
+}
+/* Hide GitHub links from header and social navigation */
+header a[href*="github.com"],
+a[aria-label*="github" i],
+a[href*="github.com"] {
+  display: none !important;
+}
+
+

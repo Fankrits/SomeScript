@@ -1,64 +1,60 @@
 ---
-title: SomeScript Docs
-description: A practical guide to writing, typesetting, and publishing beautiful LaTeX documents with SomeScript.
-seo:
-  title: SomeScript Docs
-  description: A practical guide to writing, typesetting, and publishing beautiful LaTeX documents with SomeScript.
+title: SomeScript Documentation
+description: Your complete guide to AI-assisted LaTeX typesetting, real-time PDF compilation, and collaborative academic writing with SomeScript.
 ---
 
 ::u-page-hero
+---
+align: center
+---
 #title
-SomeScript Docs
+LaTeX Document Guide
 
 #description
-Practical guidance for writing, typesetting, and publishing beautiful LaTeX documents—from your first source file to advanced workflows.
+Learn how to write, compile, and format LaTeX documents with SomeScript. Explore guides for math typesetting, citations, tables, and real-time PDF compilation.
 
 #links
   :::u-button
   ---
-  color: neutral
+  color: primary
   size: xl
   to: /getting-started/introduction
   trailing-icon: i-lucide-arrow-right
   ---
-  Start learning
+  Explore Documentation
   :::
 
   :::u-button
   ---
   color: neutral
-  icon: simple-icons-github
+  avatar:
+    src: /logo.svg
+    ui:
+      rounded: rounded-none
   size: xl
-  to: https://en.wikibooks.org/wiki/LaTeX
+  to: https://somescript.com
   variant: outline
   ---
-  LaTeX reference
+  Start writing LaTeX with SomeScript
   :::
 ::
 
-::u-page-section
-#title
-Write with confidence
-
-#description
-SomeScript brings the precision of LaTeX to a focused writing workspace. These guides help you understand the source, use the right tools, and turn your ideas into publication-ready documents.
-::
 
 ::u-page-section
 #title
-What you'll learn
+Documentation Topics
 
 #features
   :::u-page-feature
   ---
-  icon: i-lucide-play
+  icon: i-lucide-sparkles
   to: /getting-started/introduction
   ---
   #title
-  Getting Started
+  Getting Started & Eve AI
   
   #description
-  Install LaTeX, learn the basics, and write your first document.
+  Learn the fundamentals of SomeScript, project setup, and prompting Eve to draft, format, and edit LaTeX code.
   :::
 
   :::u-page-feature
@@ -70,90 +66,91 @@ What you'll learn
   Document Fundamentals
   
   #description
-  Text formatting, fonts, colors, lists, and special characters.
+  Structure papers, manage document classes, configure typography, and handle formatting primitives.
   :::
 
   :::u-page-feature
   ---
-  icon: i-lucide-layout
-  to: /page-design/page-layout
-  ---
-  #title
-  Page Design
-  
-  #description
-  Layout, headers, footers, titles, and footnotes.
-  :::
-
-  :::u-page-feature
-  ---
-  icon: i-lucide-table
-  to: /tables-and-graphics/tables
-  ---
-  #title
-  Tables and Graphics
-  
-  #description
-  Tables, figures, TikZ, PSTricks, and procedural graphics.
-  :::
-
-  :::u-page-feature
-  ---
-  icon: i-lucide-flask-conical
+  icon: i-lucide-binary
   to: /technical-writing/mathematics
   ---
   #title
-  Technical Writing
+  Mathematics & Equations
   
   #description
-  Mathematics, algorithms, chemical graphics, bibliographies, and code listings.
+  Typeset complex math expressions, aligned equation blocks, theorems, proof environments, and symbols.
   :::
 
   :::u-page-feature
   ---
-  icon: i-lucide-link
-  to: /cross-references/labels-and-cross-referencing
+  icon: i-lucide-quote
+  to: /technical-writing/mathematics
   ---
   #title
-  Cross-References
+  Citations & BibTeX
   
   #description
-  Labels, cross-references, hyperlinks, and PDF navigation.
+  Manage reference databases, generate bibliographies, and utilize Eve's automated citation retrieval tools.
   :::
 
   :::u-page-feature
   ---
-  icon: i-lucide-file-badge
-  to: /specialized-documents/scientific-reports
+  icon: i-lucide-table-properties
+  to: /tables-and-graphics/tables
   ---
   #title
-  Specialized Documents
+  Tables & Figures
   
   #description
-  Scientific reports, letters, presentations, CVs, and academic journals.
+  Design publication-grade tables, float environments, graphics inclusions, and procedural TikZ diagrams.
   :::
 
   :::u-page-feature
   ---
-  icon: i-lucide-code
+  icon: i-lucide-cpu
   to: /programming/macros
   ---
   #title
-  Programming LaTeX
+  Compilation & SyncTeX
   
   #description
-  Macros, packages, themes, modular documents, and collaboration.
+  Understand real-time background compilation, error diagnostics, and bi-directional SyncTeX navigation.
   :::
 
   :::u-page-feature
   ---
-  icon: i-lucide-book-open
+  icon: i-lucide-layout-grid
+  to: /page-design/page-layout
+  ---
+  #title
+  Page Layout & Styling
+  
+  #description
+  Configure margins, multi-column layouts, headers, footers, custom packages, and document themes.
+  :::
+
+  :::u-page-feature
+  ---
+  icon: i-lucide-book-marked
+  to: /specialized-documents/scientific-reports
+  ---
+  #title
+  Templates & Publications
+  
+  #description
+  Work with journal templates (IEEE, ACM, Springer, arXiv), scientific reports, and slide presentations.
+  :::
+
+  :::u-page-feature
+  ---
+  icon: i-lucide-help-circle
   to: /reference/faq
   ---
   #title
-  Reference and Help
+  Troubleshooting & FAQ
   
   #description
-  FAQ, tips, errors, lengths, counters, boxes, and command glossary.
+  Resolve common LaTeX compilation warnings, syntax errors, package conflicts, and editor usage questions.
   :::
 ::
+
