@@ -47,7 +47,7 @@ export function Step1WritePromptCanvas() {
         <div className="space-y-2.5">
           {/* Header */}
           <div className="border-b border-border/50 pb-2 flex items-center justify-between">
-            <span className="text-xs font-mono font-semibold text-primary">Eve AI Co-Author</span>
+            <span className="text-xs font-mono font-semibold text-primary">AI Agent</span>
             <span className="text-[9px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 px-1.5 py-0.5 rounded font-mono">
               Online
             </span>
@@ -56,7 +56,7 @@ export function Step1WritePromptCanvas() {
           {/* User Message */}
           <div className="flex justify-end">
             <div className="bg-primary/10 border border-primary/20 text-foreground text-[11px] px-3 py-1.5 rounded-xl rounded-tr-xs max-w-[90%] font-light">
-              Eve, write a 2D rotation matrix equation in LaTeX.
+              Write a 2D rotation matrix equation in LaTeX.
             </div>
           </div>
 
@@ -84,7 +84,7 @@ export function Step1WritePromptCanvas() {
         {/* Composer Bar */}
         <div className="pt-2 border-t border-border/40 flex items-center gap-2">
           <div className="flex-1 bg-foreground/5 border border-border/60 rounded-lg px-2.5 py-1 text-[10px] text-foreground/40 font-light select-none">
-            Ask Eve anything...
+            Ask AI Agent anything...
           </div>
           <div className="h-6 w-6 rounded-md bg-primary/20 text-primary flex items-center justify-center shrink-0 font-bold text-[10px] select-none">
             ↑

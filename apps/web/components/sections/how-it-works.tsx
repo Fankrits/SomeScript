@@ -12,7 +12,7 @@ const steps = [
   {
     number: "01",
     title: "Prompt & Co-Author",
-    description: "Type LaTeX directly or describe what you need in plain English. Eve AI streams back structured outline code, mathematical equations, and TikZ figures instantly.",
+    description: "Type LaTeX directly or describe what you need in plain English. Our AI Agent processes your requests to instantly generate formulas, TikZ diagrams, and structured document code.",
     canvas: <Step1WritePromptCanvas />,
   },
   {
