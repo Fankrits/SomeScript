@@ -26,6 +26,7 @@ export const metadata: Metadata = {
 };
 
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { Toaster } from "@/components/ui/sonner";
 
 export default function RootLayout({
   children,
@@ -43,6 +44,7 @@ export default function RootLayout({
             returning 401 ~60s after the last page-level Clerk handshake. */}
         <ClerkProvider>
           <TooltipProvider>{children}</TooltipProvider>
+          <Toaster />
         </ClerkProvider>
       </body>
     </html>

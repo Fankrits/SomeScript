@@ -27,6 +27,7 @@ import {
 import { Scissors, Copy, ClipboardPaste, TextCursor, Undo2, Redo2, FileText } from "lucide-react";
 import { CheckCircle2Icon, ListTodoIcon, FilePlus, FolderPlus, PanelLeft, PanelRight, Sparkles, Loader2, Check, Home, ChevronRight, ArrowLeft, Clock, Trash2, Plus, Settings, Search, Download } from "lucide-react";
 import { nanoid } from "nanoid";
+import { toast } from "sonner";
 import { useCallback, useEffect, useInsertionEffect, useRef, useState } from "react";
 import type { PanelImperativeHandle } from "react-resizable-panels";
 import { useDefaultLayout } from "react-resizable-panels";
@@ -1383,7 +1384,7 @@ const Example = () => {
 
     const compilePath = resolveMainFile();
     if (!compilePath) {
-      alert(
+      toast.error(
         "No main file specified. This project has multiple .tex files and none is named main.tex — set the Main Entry File in the Settings tab."
       );
       return null;

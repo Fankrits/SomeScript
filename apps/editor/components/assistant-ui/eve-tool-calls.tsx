@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import {
   ShieldAlert,
   Bot,
@@ -27,6 +27,16 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 // Shape of the write-file tool's structured input/output as it reaches the UI.
 type WriteFileInput = { projectId?: string; path?: string; content?: string };
@@ -353,6 +363,20 @@ export function WriteFileCard({ args, result }: { args: ToolCardArgs; result?: u
   const [reverted, setReverted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmOverwrite, setConfirmOverwrite] = useState(false);
+  const confirmResolveRef = useRef<((ok: boolean) => void) | null>(null);
+
+  const askOverwriteConfirm = () =>
+    new Promise<boolean>((resolve) => {
+      confirmResolveRef.current = resolve;
+      setConfirmOverwrite(true);
+    });
+
+  const resolveOverwriteConfirm = (ok: boolean) => {
+    setConfirmOverwrite(false);
+    confirmResolveRef.current?.(ok);
+    confirmResolveRef.current = null;
+  };
 
   const before = out?.before ?? null;
   const created = Boolean(out?.created);
@@ -410,9 +434,7 @@ export function WriteFileCard({ args, result }: { args: ToolCardArgs; result?: u
       // Guard against clobbering edits made after this write (by the user or a later turn).
       const current = await fetchFileContent(input.projectId, path);
       if (current !== null && next && current !== next) {
-        const ok = window.confirm(
-          "This file changed since Eve's edit. Revert anyway and overwrite the current content?"
-        );
+        const ok = await askOverwriteConfirm();
         if (!ok) return;
       }
       const success = created
@@ -503,6 +525,21 @@ export function WriteFileCard({ args, result }: { args: ToolCardArgs; result?: u
           )}
         </DialogFooter>
       </DialogContent>
+
+      <AlertDialog open={confirmOverwrite} onOpenChange={(open) => !open && resolveOverwriteConfirm(false)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>File changed since Eve's edit</AlertDialogTitle>
+            <AlertDialogDescription>
+              Revert anyway and overwrite the current content?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => resolveOverwriteConfirm(false)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => resolveOverwriteConfirm(true)}>Revert</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 }
