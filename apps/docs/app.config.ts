@@ -37,4 +37,12 @@ export default defineAppConfig({
       },
     },
   },
+  assistant: {
+    floatingInput: true,
+    explainWithAi: true,
+    icons: {
+      trigger: 'i-lucide-sparkles',
+      explain: 'i-lucide-brain',
+    },
+  },
 })
