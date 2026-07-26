@@ -2,8 +2,9 @@
 
 import { useRef, useEffect, useCallback, useState, type ReactNode, type CSSProperties } from "react";
 import { gsap } from "gsap";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, Sparkles, Copy, ThumbsUp, ArrowUp, Bot } from "lucide-react";
 import { LiquidGlassCard } from "@/components/kokonutui/liquid-glass-card";
+import { Avatar, AvatarImage, AvatarFallback, AvatarGroup, AvatarGroupCount, AvatarBadge } from "@/components/ui/avatar";
 import "./magic-bento.css";
 
 const DEFAULT_PARTICLE_COUNT = 12;
@@ -19,36 +20,26 @@ interface BentoCard {
 
 const cardData: BentoCard[] = [
   {
-    label: "Eve AI",
+    label: "AI Agent",
     title: "AI Generation",
     description: "Draft outlines, equations, and citations from a single prompt.",
   },
   {
-    label: "Compiler",
-    title: "Tectonic Compilation",
-    description: "Fast, on-demand LaTeX compilation running directly in your browser.",
+    label: "Workspace",
+    title: "Team Workspaces",
+    description: "Collaborate seamlessly across research teams with multi-user workspace permissions.",
   },
   {
-    label: "Preview",
-    title: "Live PDF Preview",
+    label: "Debug",
+    title: "Terminal & Error Repair",
     description:
-      "Watch your document typeset in real time, with instant equation rendering and page-accurate layout as you write.",
+      "Run terminal commands, inspect build logs, and instantly send compilation errors to the AI Agent for automatic repair.",
   },
   {
-    label: "Citations",
-    title: "Citation Management",
+    label: "Collaboration",
+    title: "Real-Time Co-Authoring",
     description:
-      "Organize references and bibliographies alongside your document, kept in sync with your .bib files.",
-  },
-  {
-    label: "Teamwork",
-    title: "Workspace Collaboration",
-    description: "Share projects with co-authors under isolated, permissioned workspaces.",
-  },
-  {
-    label: "History",
-    title: "Version History",
-    description: "Every compile is saved, so you can roll back with confidence.",
+      "Edit LaTeX documents simultaneously with co-authors and AI agents with live presence and multi-cursor sync.",
   },
 ];
 
@@ -567,51 +558,299 @@ const CommitGraph = () => (
   </svg>
 );
 
+const VisualAiChat = () => (
+  <div className="w-full rounded-xl border border-border/70 bg-background/95 p-2.5 shadow-sm backdrop-blur-md text-left flex flex-col justify-between select-none">
+    {/* Header */}
+    <div className="flex items-center justify-between border-b border-border/40 pb-1.5 mb-2">
+      <div className="flex items-center gap-1.5 font-medium text-[11px] text-foreground">
+        <span>AI Agent</span>
+      </div>
+      <div className="flex items-center gap-1 text-[9.5px] font-mono text-muted-foreground">
+        <span className="h-1.5 w-1.5 rounded-full bg-[#1f9563] animate-pulse" />
+        <span>Ready</span>
+      </div>
+    </div>
+
+    {/* Message stream */}
+    <div className="space-y-2 my-0.5">
+      {/* User Bubble */}
+      <div className="flex justify-end">
+        <div className="rounded-xl rounded-tr-xs bg-[#1c2e36] px-2.5 py-1 text-[10.5px] font-medium text-white shadow-xs">
+          Format Schrödinger equation
+        </div>
+      </div>
+
+      {/* Assistant Bubble */}
+      <div className="flex-1 space-y-1">
+        <div className="rounded-xl bg-muted/40 p-2 border border-border/30 font-mono text-[10px]">
+          <div className="text-[#1f7ea6] font-semibold">
+            {"i\\hbar \\frac{\\partial}{\\partial t}\\Psi = \\hat{H}\\Psi"}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {/* Input Box */}
+    <div className="mt-2 flex items-center justify-between rounded-full border border-border/60 bg-muted/40 px-2.5 py-1 text-[10px] text-muted-foreground">
+      <span className="flex items-center gap-1 truncate">
+        Ask AI Agent to write or fix LaTeX...
+        <span className="h-3 w-[1.5px] bg-[#1f7ea6] bento-blink" />
+      </span>
+      <div className="flex h-4.5 w-4.5 items-center justify-center rounded-full bg-[#1c2e36] text-white shrink-0 ml-1">
+        <ArrowUp className="h-2.5 w-2.5" />
+      </div>
+    </div>
+  </div>
+);
+
+const RealtimeCollaborateCard = () => (
+  <div className="relative w-full h-[210px] rounded-xl bg-gradient-to-b from-muted/30 to-muted/10 border border-border/40 p-2.5 overflow-hidden select-none">
+    {/* Subtle background grid */}
+    <div className="absolute inset-0 bg-[radial-gradient(#1c2e36_1px,transparent_1px)] [background-size:12px_12px] opacity-[0.07]" />
+
+    {/* Single Editor Window Panel */}
+    <div className="relative z-10 w-full h-full rounded-xl bg-background/95 border border-border/70 shadow-md p-3 flex flex-col justify-between overflow-hidden">
+      {/* Window Top Bar */}
+      <div className="flex items-center justify-between border-b border-border/40 pb-2 mb-2">
+        <div className="flex items-center gap-1.5">
+          <span className="h-2 w-2 rounded-full bg-red-400/70" />
+          <span className="h-2 w-2 rounded-full bg-yellow-400/70" />
+          <span className="h-2 w-2 rounded-full bg-green-400/70" />
+          <span className="ml-2 font-mono text-[10px] text-muted-foreground">main.tex</span>
+        </div>
+        <div className="flex items-center gap-1 text-[9.5px] text-muted-foreground font-mono">
+          <span className="h-1.5 w-1.5 rounded-full bg-[#1f9563] animate-pulse" />
+          <span>3 co-authors editing</span>
+        </div>
+      </div>
+
+      {/* Code Editor Content */}
+      <div className="font-mono text-[10.5px] leading-relaxed space-y-1.5 flex-1 pt-0.5 text-foreground/80">
+        <div className="flex items-center gap-2">
+          <span className="text-muted-foreground/40 w-4 text-right text-[9px] font-sans select-none">1</span>
+          <span className="text-muted-foreground">\documentclass{"{article}"}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-muted-foreground/40 w-4 text-right text-[9px] font-sans select-none">2</span>
+          <span className="text-muted-foreground">\begin{"{document}"}</span>
+        </div>
+        <div className="flex items-center gap-2 bg-[#0284c7]/10 px-1.5 py-0.5 rounded border-l-2 border-[#0284c7] bento-shimmer">
+          <span className="text-muted-foreground/40 w-4 text-right text-[9px] font-sans select-none">3</span>
+          <span>\section{"{Quantum Entanglement}"}</span>
+        </div>
+        <div className="flex items-center gap-2 bg-[#c026d3]/10 px-1.5 py-0.5 rounded border-l-2 border-[#c026d3]">
+          <span className="text-muted-foreground/40 w-4 text-right text-[9px] font-sans select-none">4</span>
+          <span>\equation{"{\\Psi(x,t) = A e^{i(kx-\\omega t)}}"}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-muted-foreground/40 w-4 text-right text-[9px] font-sans select-none">5</span>
+          <span className="text-muted-foreground">\end{"{document}"}</span>
+        </div>
+      </div>
+    </div>
+
+    {/* Floating Animated Collaborative Cursors */}
+    <div className="absolute inset-0 pointer-events-none z-20">
+      {/* Cursor 1: John */}
+      <div className="absolute top-0 left-0 bento-collab-cursor-1">
+        <div className="flex items-start gap-1">
+          <svg className="w-3.5 h-3.5 text-[#0284c7] drop-shadow-xs" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 0 1 .35-.15h6.87c.45 0 .67-.54.35-.85L5.5 3.21z" />
+          </svg>
+          <div className="flex items-center gap-1.5 rounded-full bg-[#0284c7] px-2 py-0.5 text-[9px] font-semibold text-white shadow-md">
+            <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-white/20 text-[7.5px] font-bold">J</span>
+            <span>John</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Cursor 2: You */}
+      <div className="absolute top-0 left-0 bento-collab-cursor-2">
+        <div className="flex items-start gap-1">
+          <svg className="w-3.5 h-3.5 text-[#18181b] drop-shadow-xs" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 0 1 .35-.15h6.87c.45 0 .67-.54.35-.85L5.5 3.21z" />
+          </svg>
+          <div className="flex items-center gap-1.5 rounded-full bg-[#18181b] px-2 py-0.5 text-[9px] font-semibold text-white shadow-md">
+            <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-white/20 text-[7.5px] font-bold">JC</span>
+            <span>You</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Cursor 3: Sara */}
+      <div className="absolute top-0 left-0 bento-collab-cursor-3">
+        <div className="flex items-start gap-1">
+          <svg className="w-3.5 h-3.5 text-[#c026d3] drop-shadow-xs" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 0 1 .35-.15h6.87c.45 0 .67-.54.35-.85L5.5 3.21z" />
+          </svg>
+          <div className="flex items-center gap-1.5 rounded-full bg-[#c026d3] px-2 py-0.5 text-[9px] font-semibold text-white shadow-md">
+            <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-white/20 text-[7.5px] font-bold">S</span>
+            <span>Sara</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+);
+
+const WorkspaceCardVisual = () => (
+  <div className="w-full flex flex-col items-start gap-1.5 select-none">
+    <div className="flex items-center justify-between w-full font-mono text-[9.5px] text-muted-foreground">
+      <span>Team Members</span>
+      <span className="text-[#1f9563] font-semibold flex items-center gap-1">
+        <span className="h-1.5 w-1.5 rounded-full bg-[#1f9563] animate-pulse" />
+        +4 Online
+      </span>
+    </div>
+    <AvatarGroup className="-space-x-2">
+      <Avatar size="sm" className="border-2 border-background shadow-xs">
+        <AvatarImage src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80" alt="Sarah" />
+        <AvatarFallback className="bg-[#0284c7] text-white text-[10px] font-bold">SK</AvatarFallback>
+        <AvatarBadge className="bg-[#1f9563]" />
+      </Avatar>
+      <Avatar size="sm" className="border-2 border-background shadow-xs">
+        <AvatarImage src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&auto=format&fit=crop&q=80" alt="John" />
+        <AvatarFallback className="bg-[#c026d3] text-white text-[10px] font-bold">JD</AvatarFallback>
+        <AvatarBadge className="bg-[#1f9563]" />
+      </Avatar>
+      <Avatar size="sm" className="border-2 border-background shadow-xs">
+        <AvatarImage src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&auto=format&fit=crop&q=80" alt="Alex" />
+        <AvatarFallback className="bg-[#18181b] text-white text-[10px] font-bold">AL</AvatarFallback>
+        <AvatarBadge className="bg-[#1f9563]" />
+      </Avatar>
+      <Avatar size="sm" className="border-2 border-background shadow-xs">
+        <AvatarImage src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&auto=format&fit=crop&q=80" alt="Michael" />
+        <AvatarFallback className="bg-[#dd7e21] text-white text-[10px] font-bold">MK</AvatarFallback>
+      </Avatar>
+      <AvatarGroupCount className="text-[10px] font-semibold bg-muted text-muted-foreground border-2 border-background">
+        +3
+      </AvatarGroupCount>
+    </AvatarGroup>
+  </div>
+);
+
+const DebugTerminalCardVisual = () => {
+  const [status, setStatus] = useState<"error" | "fixing" | "success">("error");
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setStatus((prev) => {
+        if (prev === "error") return "fixing";
+        if (prev === "fixing") return "success";
+        return "error";
+      });
+    }, 3200);
+
+    return () => clearInterval(timer);
+  }, []);
+
+  return (
+    <div className="relative w-full h-[200px] sm:h-[210px] rounded-xl bg-[#09090b] border border-border/70 p-3.5 flex flex-col justify-between overflow-hidden shadow-lg select-none font-mono text-[10.5px] leading-relaxed text-white">
+      {/* Top Bar with window controls & Send to chat button */}
+      <div className="flex items-center justify-between pb-1.5 border-b border-white/10 mb-2">
+        <div className="flex items-center gap-1.5">
+          <span className="h-2 w-2 rounded-full bg-red-400/80" />
+          <span className="h-2 w-2 rounded-full bg-yellow-400/80" />
+          <span className="h-2 w-2 rounded-full bg-green-400/80" />
+        </div>
+        <button
+          className={`rounded-md border px-2.5 py-1 text-[10px] transition-all font-sans cursor-pointer ${
+            status === "error"
+              ? "border-sky-400/80 bg-sky-500/25 text-sky-200 shadow-sm animate-pulse"
+              : status === "fixing"
+              ? "border-amber-400/80 bg-amber-500/20 text-amber-200"
+              : "border-emerald-400/80 bg-emerald-500/20 text-emerald-200"
+          }`}
+        >
+          {status === "error" && "Send to chat"}
+          {status === "fixing" && "Fixing with AI..."}
+          {status === "success" && "Fixed by AI"}
+        </button>
+      </div>
+
+      {/* Terminal Log Output - Regenerating from top */}
+      <div key={status} className="space-y-1 text-white/90 flex-1 pt-0.5 animate-fadeIn">
+        {status === "error" && (
+          <>
+            <div className="flex items-center gap-1.5">
+              <span className="text-emerald-400 font-bold">✓</span>
+              <span>Initializing Tectonic LaTeX environment...</span>
+            </div>
+            <div>
+              <span className="text-[#38bdf8]">Loading core engines: </span>
+              <span className="text-white/80">XeTeX, BibTeX, xdvipdfmx</span>
+            </div>
+            <div>
+              <span className="text-[#38bdf8]">Connecting packages cache: </span>
+              <span className="text-white/80">tectonic-cache-repo</span>
+            </div>
+            <div className="pt-1 flex items-center gap-1.5">
+              <span className="text-emerald-400 font-bold">✓</span>
+              <span>LaTeX system ready in <span className="text-[#a3e635] font-medium">0.8s</span></span>
+            </div>
+            <div className="pt-1.5 text-amber-400">
+              <div>System Status: <span className="font-semibold">SYNTAX ERROR</span></div>
+              <div className="text-amber-300/90 text-[10px] pt-0.5">✖ main.tex:42: Unclosed bracket in \equation. Click &apos;Send to chat&apos; for AI repair.</div>
+            </div>
+          </>
+        )}
+
+        {status === "fixing" && (
+          <>
+            <div className="flex items-center gap-1.5 text-sky-300 animate-pulse font-semibold">
+              <span>✦ Sending error log to AI Agent...</span>
+            </div>
+            <div className="text-white/80 pt-0.5">
+              <span className="text-[#38bdf8]">AI Repair Engine: </span>
+              <span>fixing unclosed bracket in main.tex:42</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-emerald-400 pt-1">
+              <span className="font-bold">✓</span>
+              <span>Updated \equation syntax &amp; saved main.tex</span>
+            </div>
+            <div className="pt-1 text-white/50 text-[10px]">Re-triggering Tectonic build process...</div>
+          </>
+        )}
+
+        {status === "success" && (
+          <>
+            <div className="flex items-center gap-1.5">
+              <span className="text-emerald-400 font-bold">✓</span>
+              <span>Initializing Tectonic LaTeX environment...</span>
+            </div>
+            <div>
+              <span className="text-[#38bdf8]">Loading core engines: </span>
+              <span className="text-white/80">XeTeX, BibTeX, xdvipdfmx</span>
+            </div>
+            <div>
+              <span className="text-[#38bdf8]">Connecting packages cache: </span>
+              <span className="text-white/80">tectonic-cache-repo</span>
+            </div>
+            <div className="pt-1 flex items-center gap-1.5">
+              <span className="text-emerald-400 font-bold">✓</span>
+              <span>LaTeX compilation successful in <span className="text-[#a3e635] font-semibold">0.4s</span></span>
+            </div>
+            <div className="pt-1 text-emerald-400 font-semibold">
+              <div>System Status: <span className="text-emerald-300 font-bold">COMPILED (0 errors)</span></div>
+              <div className="text-white/70 text-[10px] font-normal pt-0.5">Generated output: main.pdf (1.2 MB)</div>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const CardVisual = ({ index }: { index: number }) => {
   switch (index) {
-    case 0: // AI Generation — generating lines with a caret
-      return (
-        <div className="w-full space-y-2">
-          <div className="h-1.5 w-[68%] rounded-full bg-[#0f4c5c]/70 bento-shimmer" style={{ animationDelay: "0s" }} />
-          <div className="h-1.5 w-[90%] rounded-full bg-[#1c2e36]/15 bento-shimmer" style={{ animationDelay: "0.3s" }} />
-          <div className="flex items-center gap-1">
-            <div className="h-1.5 w-[45%] rounded-full bg-[#1c2e36]/15 bento-shimmer" style={{ animationDelay: "0.6s" }} />
-            <span className="h-3 w-[2px] bg-[#dd7e21] bento-blink" />
-          </div>
-        </div>
-      );
-    case 1: // Tectonic Compilation — progress bar filling to success
-      return (
-        <div className="w-full">
-          <div className="mb-1.5 flex items-center justify-between font-mono text-[9px] text-[#1c2e36]/40">
-            <span>tectonic build</span>
-            <CheckCircle2 className="h-3 w-3 text-[#1f9563] bento-pop" />
-          </div>
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-[#1c2e36]/10">
-            <div className="h-full rounded-full bg-[#1f9563] bento-fill" />
-          </div>
-        </div>
-      );
-    case 2: // Live PDF Preview — animated function graph
-      return <SineGraph />;
-    case 3: // Citation Management — animated manuscript-to-bibliography trails
-      return <CitationTrails />;
-    case 4: // Workspace Collaboration — live presence
-      return (
-        <div className="flex items-center gap-3">
-          <div className="flex -space-x-2">
-            <span className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-background bg-[#0f4c5c] text-[9px] font-semibold text-white">PR</span>
-            <span className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-background bg-[#dd7e21] text-[9px] font-semibold text-white">MK</span>
-            <span className="relative flex h-7 w-7 items-center justify-center rounded-full border-2 border-background bg-[#1f7ea6] text-[9px] font-semibold text-white">
-              SB
-              <span className="absolute inset-0 rounded-full border-2 border-[#1f7ea6] bento-ring" />
-            </span>
-          </div>
-          <span className="text-[11px] text-[#1c2e36]/50">+3 online</span>
-        </div>
-      );
-    case 5: // Version History — commit graph
-      return <CommitGraph />;
+    case 0: // AI Co-Author Chat — visual AI chat card
+      return <VisualAiChat />;
+    case 1: // Team Workspaces — Shadcn Avatar stack
+      return <WorkspaceCardVisual />;
+    case 2: // Terminal & Error Repair — Debug terminal card with Send to Chat button
+      return <DebugTerminalCardVisual />;
+    case 3: // Real-Time Co-Authoring — live collaboration windows & multi-cursors
+      return <RealtimeCollaborateCard />;
     default:
       return null;
   }
