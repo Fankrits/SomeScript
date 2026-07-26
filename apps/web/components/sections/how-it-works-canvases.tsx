@@ -16,7 +16,7 @@ export function Step1WritePromptCanvas() {
 
   const [visibleLineCount, setVisibleLineCount] = useState(0);
   const [typedMessage, setTypedMessage] = useState("");
-  const fullMessage = "Here is the standard 2D rotation matrix equation in LaTeX:";
+  const fullMessage = "Generating matrix_rotation.tex with standard 2D rotation equation...";
 
   useEffect(() => {
     let index = 0;
@@ -35,90 +35,111 @@ export function Step1WritePromptCanvas() {
     if (typedMessage.length >= fullMessage.length) {
       const codeInterval = setInterval(() => {
         setVisibleLineCount((prev) => (prev < codeLines.length ? prev + 1 : prev));
-      }, 350);
+      }, 300);
       return () => clearInterval(codeInterval);
     }
   }, [typedMessage.length, fullMessage.length, codeLines.length]);
 
   return (
-    <LiquidGlassCard className="w-full max-w-xl border-border/60 bg-background/95 p-4 shadow-2xl backdrop-blur-xl relative overflow-hidden space-y-3">
-      {/* User Chat Prompt Bubble */}
-      <div className="flex justify-end">
-        <div className="bg-primary/10 border border-primary/20 text-foreground text-xs px-3.5 py-2 rounded-2xl rounded-tr-xs max-w-[85%] font-light">
-          Eve, write a 2D rotation matrix equation in LaTeX.
-        </div>
-      </div>
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 w-full max-w-2xl">
+      {/* Column 1: AI Chat Interface */}
+      <LiquidGlassCard className="border-border/60 bg-background/95 p-3.5 shadow-2xl backdrop-blur-xl flex flex-col justify-between space-y-3">
+        <div className="space-y-2.5">
+          {/* Header */}
+          <div className="border-b border-border/50 pb-2 flex items-center justify-between">
+            <span className="text-xs font-mono font-semibold text-primary">Eve AI Co-Author</span>
+            <span className="text-[9px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 px-1.5 py-0.5 rounded font-mono">
+              Online
+            </span>
+          </div>
 
-      {/* AI Assistant Stream */}
-      <div className="space-y-2.5 pt-1">
-        <div className="bg-foreground/5 border border-border/60 p-3 rounded-2xl rounded-tl-xs text-xs text-foreground/90 leading-relaxed font-light">
-          {typedMessage}
-          {typedMessage.length < fullMessage.length && (
-            <span className="inline-block w-1.5 h-3.5 bg-primary ml-1 animate-pulse align-middle" />
+          {/* User Message */}
+          <div className="flex justify-end">
+            <div className="bg-primary/10 border border-primary/20 text-foreground text-[11px] px-3 py-1.5 rounded-xl rounded-tr-xs max-w-[90%] font-light">
+              Eve, write a 2D rotation matrix equation in LaTeX.
+            </div>
+          </div>
+
+          {/* AI Response Bubble */}
+          <div className="bg-foreground/5 border border-border/60 p-2.5 rounded-xl text-[11px] text-foreground/90 leading-relaxed font-light">
+            {typedMessage}
+            {typedMessage.length < fullMessage.length && (
+              <span className="inline-block w-1.5 h-3 bg-primary ml-1 animate-pulse align-middle" />
+            )}
+          </div>
+
+          {/* Tool Call Pill */}
+          {typedMessage.length >= fullMessage.length && (
+            <motion.div
+              initial={{ opacity: 0, y: 5 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-300 px-2.5 py-1 rounded-lg text-[10px] font-mono flex items-center gap-1.5"
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span>write_file: matrix_rotation.tex</span>
+            </motion.div>
           )}
         </div>
 
-        {/* Tool Call Badge */}
-        {typedMessage.length >= fullMessage.length && (
-          <motion.div
-            initial={{ opacity: 0, y: 5 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex items-center gap-2 text-[11px]"
-          >
-            <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-300 px-2.5 py-1 rounded-lg font-mono flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              <span>write_file: matrix_rotation.tex</span>
-            </div>
-          </motion.div>
-        )}
+        {/* Composer Bar */}
+        <div className="pt-2 border-t border-border/40 flex items-center gap-2">
+          <div className="flex-1 bg-foreground/5 border border-border/60 rounded-lg px-2.5 py-1 text-[10px] text-foreground/40 font-light select-none">
+            Ask Eve anything...
+          </div>
+          <div className="h-6 w-6 rounded-md bg-primary/20 text-primary flex items-center justify-center shrink-0 font-bold text-[10px] select-none">
+            ↑
+          </div>
+        </div>
+      </LiquidGlassCard>
 
-        {/* Generated Code Window */}
-        {typedMessage.length >= fullMessage.length && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="bg-background border border-border/70 rounded-xl p-3 font-mono text-xs space-y-1 shadow-inner"
-          >
+      {/* Column 2: Code Editor Window */}
+      <LiquidGlassCard className="border-border/60 bg-background/95 p-3.5 shadow-2xl backdrop-blur-xl flex flex-col justify-between space-y-2">
+        <div>
+          {/* Mac Header */}
+          <div className="flex items-center justify-between border-b border-border/50 pb-2 mb-2 text-foreground/50 text-[10px]">
+            <div className="flex items-center gap-1.5">
+              <div className="flex gap-1 mr-1">
+                <span className="w-2 h-2 rounded-full bg-red-500/80 inline-block" />
+                <span className="w-2 h-2 rounded-full bg-amber-500/80 inline-block" />
+                <span className="w-2 h-2 rounded-full bg-emerald-500/80 inline-block" />
+              </div>
+              <span className="font-mono text-foreground/80 font-medium">matrix_rotation.tex</span>
+            </div>
+            <span className="bg-primary/10 text-primary px-1 py-0.5 rounded font-mono text-[9px]">LaTeX</span>
+          </div>
+
+          {/* Code Content */}
+          <div className="space-y-1 font-mono text-[11px] leading-relaxed min-h-[130px]">
             {codeLines.slice(0, visibleLineCount).map((item) => (
-              <div key={item.line} className="flex items-center gap-3">
-                <span className="text-foreground/30 text-[10px] select-none w-5 text-right">{item.line}</span>
+              <div key={item.line} className="flex items-center gap-2">
+                <span className="text-foreground/30 text-[9px] select-none w-4 text-right font-mono">{item.line}</span>
                 <span className={`${item.color} font-medium tracking-wide`}>{item.text}</span>
               </div>
             ))}
             {visibleLineCount < codeLines.length && (
-              <span className="inline-block w-2 h-3.5 bg-primary ml-8 animate-pulse align-middle" />
+              <span className="inline-block w-1.5 h-3 bg-primary ml-6 animate-pulse align-middle" />
             )}
-          </motion.div>
-        )}
+          </div>
+        </div>
 
-        {/* Rendered Preview Box */}
+        {/* Rendered Preview Badge */}
         <AnimatePresence>
           {visibleLineCount === codeLines.length && (
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 5 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               transition={{ duration: 0.35, ease: "easeOut" }}
-              className="pt-2 border-t border-border/40 flex items-center justify-between bg-primary/5 p-2.5 rounded-xl"
+              className="pt-2 border-t border-border/40 flex flex-col gap-1 bg-primary/5 p-2 rounded-lg"
             >
-              <span className="text-[10px] font-mono text-foreground/60 uppercase tracking-wider font-semibold">Rendered Preview</span>
-              <div className="px-3 py-1 bg-background border border-border/80 rounded-lg shadow-sm font-serif text-sm text-foreground italic">
+              <span className="text-[9px] font-mono text-foreground/60 uppercase tracking-wider font-semibold">Rendered Preview</span>
+              <div className="px-2 py-1 bg-background border border-border/80 rounded shadow-sm font-serif text-xs text-foreground italic text-center">
                 R = [ cosθ -sinθ ; sinθ cosθ ]
               </div>
             </motion.div>
           )}
         </AnimatePresence>
-      </div>
-
-      {/* Composer Input Bar */}
-      <div className="pt-2 border-t border-border/40 flex items-center gap-2">
-        <div className="flex-1 bg-foreground/5 border border-border/60 rounded-xl px-3 py-1.5 text-[11px] text-foreground/40 font-light select-none">
-          Ask Eve anything about your LaTeX paper...
-        </div>
-        <div className="h-7 w-7 rounded-lg bg-primary/20 text-primary flex items-center justify-center shrink-0 font-bold text-xs select-none">
-          ↑
-        </div>
-      </div>
-    </LiquidGlassCard>
+      </LiquidGlassCard>
+    </div>
   );
 }
 
