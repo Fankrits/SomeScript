@@ -57,14 +57,23 @@ export function HowItWorks() {
     }
   });
 
+  const handleStepClick = (idx: number) => {
+    if (!containerRef.current) return;
+    const container = containerRef.current;
+    const containerTop = container.getBoundingClientRect().top + window.scrollY - 72;
+    const containerHeight = container.offsetHeight - window.innerHeight;
+    const targetY = containerTop + (idx / 3) * containerHeight;
+    window.scrollTo({ top: targetY, behavior: "smooth" });
+  };
+
   return (
     <section id="how-it-works" className="w-full border-t border-border/40 relative z-10">
       {/* Scroll track container */}
-      <div ref={containerRef} className="relative h-[320vh] bg-background">
-        {/* Sticky viewport frame */}
-        <div className="sticky top-0 h-screen flex flex-col justify-center max-w-7xl mx-auto px-6 py-12 overflow-hidden">
+      <div ref={containerRef} className="relative h-[300vh] bg-background">
+        {/* Sticky viewport frame - pinned under 72px Header */}
+        <div className="sticky top-[72px] h-[calc(100vh-72px)] flex flex-col justify-center max-w-7xl mx-auto px-6 py-6 overflow-hidden">
           {/* Header */}
-          <div className="text-center mb-8 shrink-0">
+          <div className="text-center mb-6 shrink-0">
             <h2 className="text-3xl sm:text-4xl font-medium font-serif tracking-tight text-foreground">
               How It Works
             </h2>
@@ -74,18 +83,20 @@ export function HowItWorks() {
           </div>
 
           {/* Main Split Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center flex-1 max-h-[600px]">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center flex-1 max-h-[550px]">
             {/* Left Column: Steps List */}
-            <div className="lg:col-span-5 flex flex-col gap-6 justify-center">
+            <div className="lg:col-span-5 flex flex-col gap-4 justify-center">
               {steps.map((step, idx) => {
                 const isActive = activeStep === idx;
                 return (
-                  <div
+                  <button
                     key={step.number}
-                    className={`transition-all duration-300 p-4 rounded-xl border ${
+                    onClick={() => handleStepClick(idx)}
+                    type="button"
+                    className={`text-left transition-all duration-300 p-4 rounded-xl border cursor-pointer ${
                       isActive
                         ? "bg-foreground/5 border-primary/30 shadow-md scale-[1.02]"
-                        : "bg-transparent border-transparent opacity-40 hover:opacity-70"
+                        : "bg-transparent border-transparent opacity-40 hover:opacity-75"
                     }`}
                   >
                     <div className="flex items-center gap-3">
@@ -108,7 +119,7 @@ export function HowItWorks() {
                         {step.description}
                       </motion.p>
                     )}
-                  </div>
+                  </button>
                 );
               })}
             </div>

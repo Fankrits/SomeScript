@@ -13,7 +13,7 @@ import Footer from "@/components/footer";
 
 export default function Home() {
   return (
-    <div className="flex flex-col min-h-screen bg-background text-foreground font-sans selection:bg-primary/20 relative overflow-hidden">
+    <div className="flex flex-col min-h-screen bg-background text-foreground font-sans selection:bg-primary/20 relative overflow-x-clip">
       {/* Shared Header Component */}
       <Header dark={false} />
 
@@ -52,12 +52,11 @@ export default function Home() {
 
       <main className="flex-1 flex flex-col relative w-full z-10">
         <FeaturesBento />
+        <HowItWorks />
+        <Testimonials />
+        <Faq />
+        <FinalCta />
       </main>
-
-      <HowItWorks />
-      <Testimonials />
-      <Faq />
-      <FinalCta />
 
       {/* Shared Footer Component */}
       <Footer />
