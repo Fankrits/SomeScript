@@ -52,7 +52,7 @@ export default function Footer() {
           <div className="md:col-span-2 space-y-4">
             <h4 className="text-xs font-semibold uppercase tracking-wider text-white/40">Product</h4>
             <ul className="space-y-2.5 text-sm text-white/60 font-light">
-              <li><Link href="/dashboard" className="hover:text-white transition-colors">Visual Editor</Link></li>
+              <li><Link href="/dashboard" className="hover:text-white transition-colors">Editor</Link></li>
             </ul>
           </div>
 
@@ -60,7 +60,11 @@ export default function Footer() {
           <div className="md:col-span-2 space-y-4">
             <h4 className="text-xs font-semibold uppercase tracking-wider text-white/40">Resources</h4>
             <ul className="space-y-2.5 text-sm text-white/60 font-light">
-              <li><Link href="/#faq" className="hover:text-white transition-colors">Documentation</Link></li>
+              <li>
+                <a href="https://docs.somescript.com" target="_blank" rel="noreferrer" className="hover:text-white transition-colors">
+                  Documentation
+                </a>
+              </li>
               <li><Link href="/about" className="hover:text-white transition-colors">About Us</Link></li>
             </ul>
           </div>
