@@ -6,7 +6,7 @@ import Image from "next/image";
 import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-export default function Header({ dark = true }: { dark?: boolean }) {
+export default function Header({ dark = false }: { dark?: boolean }) {
   return (
     <header className="sticky top-0 z-50 bg-transparent px-6 flex h-[72px] items-center justify-between">
       <Link href="/" className="flex items-center gap-1.5 hover:opacity-90 transition-opacity">
