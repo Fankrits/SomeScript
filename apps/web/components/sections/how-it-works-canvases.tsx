@@ -281,20 +281,27 @@ export function Step4ExportShareCanvas() {
 
         <div>
           <h4 className="text-sm font-semibold text-foreground">Collaborate Live</h4>
-          <div className="flex items-center gap-2 mt-2">
-            <div className="flex -space-x-2 overflow-hidden">
-              <div className="inline-block h-6 w-6 rounded-full ring-2 ring-background bg-blue-500 text-white text-[10px] font-bold flex items-center justify-center">AT</div>
-              <div className="inline-block h-6 w-6 rounded-full ring-2 ring-background bg-purple-500 text-white text-[10px] font-bold flex items-center justify-center">ER</div>
-            </div>
-            <span className="text-xs text-foreground/70 font-medium">2 Active Collaborators</span>
-          </div>
+          <p className="text-xs text-foreground/60 mt-1 leading-relaxed">
+            Real-time co-authoring with instant document synchronization.
+          </p>
         </div>
 
         <div className="mt-4 pt-3 border-t border-border/40 flex items-center justify-between">
-          <span className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400">
-            Worktree Synced
-          </span>
-          <span className="text-[10px] font-mono text-foreground/40">git-worktree</span>
+          <div className="flex items-center gap-2">
+            <div className="flex -space-x-2">
+              <div className="h-7 w-7 rounded-full ring-2 ring-background bg-gradient-to-tr from-blue-600 to-indigo-500 text-white text-[11px] font-bold flex items-center justify-center shadow-sm">
+                AT
+              </div>
+              <div className="h-7 w-7 rounded-full ring-2 ring-background bg-gradient-to-tr from-emerald-600 to-teal-500 text-white text-[11px] font-bold flex items-center justify-center shadow-sm">
+                ER
+              </div>
+              <div className="h-7 w-7 rounded-full ring-2 ring-background bg-gradient-to-tr from-purple-600 to-pink-500 text-white text-[11px] font-bold flex items-center justify-center shadow-sm">
+                MK
+              </div>
+            </div>
+            <span className="text-[11px] text-foreground/70 font-medium font-mono">3 Active</span>
+          </div>
+          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
         </div>
       </LiquidGlassCard>
     </div>
