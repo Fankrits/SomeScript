@@ -21,6 +21,9 @@ import {
   ListFilesToolUI,
   ListFilesSnakeToolUI,
   TodoToolUI,
+  WebFetchToolUI,
+  DeleteFileToolUI,
+  MoveFileToolUI,
 } from "@/components/assistant-ui/eve-tool-calls";
 
 /**
@@ -121,6 +124,9 @@ function EveThreadInner({
         <ListFilesToolUI />
         <ListFilesSnakeToolUI />
         <TodoToolUI />
+        <WebFetchToolUI />
+        <DeleteFileToolUI />
+        <MoveFileToolUI />
         <ComposerInbox />
 
         <div className="h-full flex flex-col bg-background">

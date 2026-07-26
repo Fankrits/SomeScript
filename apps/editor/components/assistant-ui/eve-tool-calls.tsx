@@ -12,6 +12,9 @@ import {
   CheckSquare,
   RotateCcw,
   Undo2,
+  Trash2,
+  FolderInput,
+  Globe,
 } from "lucide-react";
 import { structuredPatch } from "diff";
 import { Button } from "@/components/ui/button";
@@ -336,6 +339,24 @@ function ReadFileCard({ args, result, status }: EveCardProps) {
   );
 }
 
+type WebFetchInput = { url?: string };
+type WebFetchOutput = { content?: string; url?: string; truncated?: boolean };
+
+function WebFetchCard({ args, result, status }: EveCardProps) {
+  const input = (args.input ?? {}) as WebFetchInput;
+  const out = result as WebFetchOutput | undefined;
+  const url = out?.url || input.url || "";
+  return (
+    <EveToolRow icon={Globe} iconClassName="text-sky-500" label={<>Fetch: {url || "…"}</>} status={status}>
+      {!!out?.content && (
+        <ToolOutput className="max-h-48 whitespace-pre-wrap">
+          {out.truncated ? `${out.content}\n\n[truncated]` : out.content}
+        </ToolOutput>
+      )}
+    </EveToolRow>
+  );
+}
+
 // Line-level +/− counts for the chip label; same jsdiff engine the DiffViewer uses,
 // so the numbers match the modal's header stats.
 function diffStats(before: string, after: string): { added: number; removed: number } {
@@ -548,6 +569,199 @@ function cnChip(extra: string): string {
   return `${chipClass} ${extra}`;
 }
 
+type DeleteFileInput = { projectId?: string; path?: string };
+type DeleteFileOutput = {
+  ok?: boolean;
+  path?: string;
+  before?: string | null;
+  existed?: boolean;
+  error?: string;
+};
+
+function DeleteFileCard({ args, result }: { args: ToolCardArgs; result?: unknown }) {
+  const input = (args.input ?? {}) as DeleteFileInput;
+  const out = result as DeleteFileOutput | undefined;
+  const path = input.path || out?.path || args.path || "";
+
+  const [reverted, setReverted] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (!out) {
+    return (
+      <div className={chipClass}>
+        <Trash2 className="size-3.5 shrink-0 text-red-500" />
+        <span className="text-muted-foreground animate-pulse motion-reduce:animate-none">
+          Deleting <code className="text-foreground font-mono">{path || "file…"}</code>
+        </span>
+      </div>
+    );
+  }
+
+  if (out.ok === false) {
+    return (
+      <div className={cnChip("border-red-500/40")}>
+        <XCircle className="size-3.5 shrink-0 text-red-500" />
+        <span className="text-muted-foreground truncate">
+          Delete failed: <code className="text-foreground font-mono">{path}</code>
+          <span className="text-red-500 ml-1.5">{out.error || "unknown error"}</span>
+        </span>
+      </div>
+    );
+  }
+
+  const before = out.before ?? null;
+  const canRestore = before !== null;
+
+  const doRevert = async () => {
+    if (!input.projectId || !path || before === null) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const success = await postFiles({ projectId: input.projectId, action: "save", path, content: before });
+      if (!success) {
+        setError("Restore failed.");
+        return;
+      }
+      window.dispatchEvent(new CustomEvent("somescript:refresh-workspace"));
+      setReverted(true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const doReDelete = async () => {
+    if (!input.projectId || !path) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const success = await postFiles({ projectId: input.projectId, action: "delete", path });
+      if (!success) {
+        setError("Re-delete failed.");
+        return;
+      }
+      window.dispatchEvent(new CustomEvent("somescript:refresh-workspace"));
+      setReverted(false);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className={cnChip("border-red-500/30")}>
+      <Trash2 className="size-3.5 shrink-0 text-red-500" />
+      <code className="text-foreground truncate font-mono">{path}</code>
+      <span className="shrink-0 text-muted-foreground">
+        {out.existed === false ? "did not exist" : reverted ? "restored" : "deleted"}
+      </span>
+      {error && <span className="shrink-0 text-xs text-red-500">{error}</span>}
+      {out.existed !== false &&
+        (reverted ? (
+          <Button size="sm" variant="outline" onClick={doReDelete} disabled={busy}>
+            <RotateCcw className="mr-1.5 size-3.5" />
+            Re-delete
+          </Button>
+        ) : canRestore ? (
+          <Button size="sm" variant="outline" onClick={doRevert} disabled={busy}>
+            <Undo2 className="mr-1.5 size-3.5" />
+            Restore
+          </Button>
+        ) : (
+          <span className="shrink-0 text-xs text-muted-foreground">(too large to restore)</span>
+        ))}
+    </div>
+  );
+}
+
+type MoveFileInput = { projectId?: string; oldPath?: string; newPath?: string };
+type MoveFileOutput = { ok?: boolean; oldPath?: string; newPath?: string; error?: string };
+
+function MoveFileCard({ args, result }: { args: ToolCardArgs; result?: unknown }) {
+  const input = (args.input ?? {}) as MoveFileInput;
+  const out = result as MoveFileOutput | undefined;
+  const oldPath = input.oldPath || out?.oldPath || "";
+  const newPath = input.newPath || out?.newPath || "";
+
+  const [reverted, setReverted] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (!out) {
+    return (
+      <div className={chipClass}>
+        <FolderInput className="size-3.5 shrink-0 text-amber-500" />
+        <span className="text-muted-foreground animate-pulse motion-reduce:animate-none">
+          Moving <code className="text-foreground font-mono">{oldPath || "file…"}</code>
+        </span>
+      </div>
+    );
+  }
+
+  if (out.ok === false) {
+    return (
+      <div className={cnChip("border-red-500/40")}>
+        <XCircle className="size-3.5 shrink-0 text-red-500" />
+        <span className="text-muted-foreground truncate">
+          Move failed: <code className="text-foreground font-mono">{oldPath}</code> →{" "}
+          <code className="text-foreground font-mono">{newPath}</code>
+          <span className="text-red-500 ml-1.5">{out.error || "unknown error"}</span>
+        </span>
+      </div>
+    );
+  }
+
+  // Toggling swaps which path is "current" vs "previous" so one button
+  // handles both directions: move back, then move forward again.
+  const current = reverted ? oldPath : newPath;
+  const previous = reverted ? newPath : oldPath;
+
+  const doToggle = async () => {
+    if (!input.projectId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const success = await postFiles({
+        projectId: input.projectId,
+        action: "move",
+        oldPath: current,
+        newPath: previous,
+      });
+      if (!success) {
+        setError(reverted ? "Re-apply failed." : "Revert failed.");
+        return;
+      }
+      window.dispatchEvent(new CustomEvent("somescript:refresh-workspace"));
+      setReverted(!reverted);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className={cnChip("border-amber-500/30")}>
+      <FolderInput className="size-3.5 shrink-0 text-amber-500" />
+      <code className="text-foreground truncate font-mono">{oldPath}</code>
+      <span className="shrink-0 text-muted-foreground">→</span>
+      <code className="text-foreground truncate font-mono">{newPath}</code>
+      {reverted && <span className="shrink-0 text-amber-500/90">reverted</span>}
+      {error && <span className="shrink-0 text-xs text-red-500">{error}</span>}
+      <Button size="sm" variant="outline" onClick={doToggle} disabled={busy}>
+        {reverted ? (
+          <>
+            <RotateCcw className="mr-1.5 size-3.5" />
+            Re-apply
+          </>
+        ) : (
+          <>
+            <Undo2 className="mr-1.5 size-3.5" />
+            Revert
+          </>
+        )}
+      </Button>
+    </div>
+  );
+}
+
 function TodoCard({ args, result, status }: EveCardProps) {
   return (
     <EveToolRow
@@ -658,6 +872,23 @@ export const TodoToolUI = makeAssistantToolUI({
   render: ({ args, result, status }) => (
     <TodoCard args={args} result={result} status={status} />
   ),
+});
+
+export const WebFetchToolUI = makeAssistantToolUI({
+  toolName: "web_fetch",
+  render: ({ args, result, status }) => (
+    <WebFetchCard args={args} result={result} status={status} />
+  ),
+});
+
+export const DeleteFileToolUI = makeAssistantToolUI({
+  toolName: "delete-file",
+  render: ({ args, result }) => <DeleteFileCard args={args} result={result} />,
+});
+
+export const MoveFileToolUI = makeAssistantToolUI({
+  toolName: "move-file",
+  render: ({ args, result }) => <MoveFileCard args={args} result={result} />,
 });
 
 
