@@ -488,6 +488,14 @@ const HeadlessPdfViewerInner = ({
           <div
             className="flex-1 bg-muted/15 relative overflow-hidden"
             onContextMenu={(e) => setContextPage(pointFromEvent(e))}
+            onPointerDownCapture={(e) => {
+              // embedpdf's selection plugin clears the current selection on every
+              // pointerdown regardless of button (see @embedpdf/plugin-selection's
+              // onPointerDown), so a right-click meant to open this context menu and
+              // copy the just-made selection wipes it first. Stop non-primary-button
+              // pointerdowns before they reach embedpdf's page/global listeners.
+              if (e.button !== 0) e.stopPropagation();
+            }}
           >
             {/* Floating Page Navigation */}
             <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-[40] flex items-center gap-1 bg-background/90 backdrop-blur-md px-2.5 py-1.5 rounded-full border border-border/80 shadow-lg select-none">
