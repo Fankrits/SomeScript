@@ -102,21 +102,19 @@ export function DashboardDropzone({ children }: DashboardDropzoneProps) {
 
       {/* Drag & Drop Visual Overlay */}
       {isDragging && (
-        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-background/80 backdrop-blur-md border-4 border-dashed border-primary transition-all animate-in fade-in duration-150 pointer-events-none">
-          <div className="flex flex-col items-center p-8 rounded-2xl bg-card/95 border border-border shadow-2xl max-w-md text-center scale-105 transition-transform">
-            <div className="h-16 w-16 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary mb-4 animate-bounce">
-              <Upload className="h-8 w-8" />
-            </div>
-            <h2 className="text-xl font-bold tracking-tight text-foreground">
-              Drop your LaTeX project (.zip) here
-            </h2>
-            <p className="text-sm text-muted-foreground mt-1.5 font-light">
-              Release the file to automatically import and create your project workspace.
-            </p>
-            <div className="flex items-center gap-2 mt-4 px-3 py-1.5 rounded-full bg-secondary/80 text-xs font-medium text-secondary-foreground border border-border">
-              <FileArchive className="h-3.5 w-3.5 text-primary" />
-              <span>Supports batch .zip uploads</span>
-            </div>
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-background/40 backdrop-blur-sm border-4 border-dashed border-primary transition-all animate-in fade-in duration-150 pointer-events-none p-8 text-center">
+          <div className="h-16 w-16 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary mb-4 animate-bounce">
+            <Upload className="h-8 w-8" />
+          </div>
+          <h2 className="text-2xl font-bold tracking-tight text-foreground drop-shadow-sm">
+            Drop your LaTeX project (.zip) here
+          </h2>
+          <p className="text-base text-muted-foreground mt-2 font-medium max-w-md">
+            Release the file to automatically import and create your project workspace.
+          </p>
+          <div className="flex items-center gap-2 mt-5 px-4 py-2 rounded-full bg-background/80 text-xs font-medium text-foreground border border-border shadow-sm">
+            <FileArchive className="h-4 w-4 text-primary" />
+            <span>Supports batch .zip uploads</span>
           </div>
         </div>
       )}
