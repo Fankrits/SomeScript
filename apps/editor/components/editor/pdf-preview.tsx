@@ -223,7 +223,11 @@ const HeadlessPdfViewerInner = ({
   const [hasSelection, setHasSelection] = useState(false);
   const [contextPage, setContextPage] = useState<{ page: number; x: number; y: number } | null>(null);
 
-  // Initialize zoom to 100% when a new document ID is loaded to trigger layout calculation
+  // Initialize zoom to 100% when a new document ID is loaded to trigger layout calculation.
+  // Keyed on documentId only: useZoom() returns a freshly-constructed `provides` object on
+  // every render (it calls forDocument(documentId) with no memoization), so including it in
+  // the deps re-ran this effect on every zoom change and snapped the zoom back to 100% ~80ms
+  // after any zoomIn/zoomOut.
   useEffect(() => {
     const provides = zoomHook?.provides;
     if (provides) {
@@ -236,7 +240,8 @@ const HeadlessPdfViewerInner = ({
       }, 80);
       return () => clearTimeout(t);
     }
-  }, [documentId, zoomHook?.provides]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [documentId]);
 
   const handleCopy = useCallback(() => {
     if (!selectionCap.provides) return;
