@@ -1899,13 +1899,22 @@ const Example = () => {
             </button>
             <button
               onClick={() => {
-                const panel = pdfPanelRef.current;
-                if (panel) {
+                const pdfPanel = pdfPanelRef.current;
+                const codePanel = codePanelRef.current;
+                if (pdfPanel) {
                   setIsAnimatingPdf(true);
-                  if (panel.isCollapsed()) {
-                    panel.expand();
+                  if (pdfPanel.isCollapsed()) {
+                    pdfPanel.expand();
+                    // On mobile screens (< 1024px), collapse Code panel so PDF preview takes full size (100% width)
+                    if (typeof window !== "undefined" && window.innerWidth < 1024 && codePanel) {
+                      codePanel.collapse();
+                    }
                   } else {
-                    panel.collapse();
+                    pdfPanel.collapse();
+                    // On mobile screens (< 1024px), expand Code panel back to full size (100% width) when hiding PDF
+                    if (typeof window !== "undefined" && window.innerWidth < 1024 && codePanel && codePanel.isCollapsed()) {
+                      codePanel.expand();
+                    }
                   }
                   setTimeout(() => setIsAnimatingPdf(false), 300);
                 }
