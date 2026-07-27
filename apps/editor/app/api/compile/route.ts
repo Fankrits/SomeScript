@@ -19,18 +19,25 @@ interface DifferentialFile {
 // Base64 round-trips text just as losslessly as binary, so there's no need for a
 // separate text path.
 async function getAllStorageFiles(projectId: string, nodes: FileNode[]): Promise<{ path: string; content: string }[]> {
-  const files: { path: string; content: string }[] = [];
+  const filePromises: Promise<{ path: string; content: string }>[] = [];
 
-  for (const node of nodes) {
-    if (node.isDir && node.children) {
-      const subFiles = await getAllStorageFiles(projectId, node.children);
-      files.push(...subFiles);
-    } else if (!node.isDir) {
-      const buffer = await storage.readBinaryFile(projectId, node.path);
-      files.push({ path: node.path, content: buffer.toString("base64") });
+  function collectNodes(nodeList: FileNode[]) {
+    for (const node of nodeList) {
+      if (node.isDir && node.children) {
+        collectNodes(node.children);
+      } else if (!node.isDir) {
+        filePromises.push(
+          storage.readBinaryFile(projectId, node.path).then((buffer) => ({
+            path: node.path,
+            content: buffer.toString("base64"),
+          }))
+        );
+      }
     }
   }
-  return files;
+
+  collectNodes(nodes);
+  return Promise.all(filePromises);
 }
 
 import { checkRate } from "@/lib/rate-limit";
