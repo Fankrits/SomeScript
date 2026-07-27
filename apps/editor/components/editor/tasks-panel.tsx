@@ -1,5 +1,5 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useState } from "react";
-import { Eye, EyeOff, ListTodoIcon, Trash2 } from "lucide-react";
+import { Eye, EyeOff, ListTodoIcon, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import type { Task } from "@/lib/tasks";
@@ -151,13 +151,23 @@ export const TasksPanel = forwardRef<TasksPanelHandle, TasksPanelProps>(
         </div>
 
         <form onSubmit={handleAdd} className="p-3 border-b border-border bg-background/50">
-          <input
-            type="text"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            placeholder="Add a task…"
-            className="w-full bg-muted/30 border border-border rounded px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-primary/50 placeholder:text-muted-foreground text-foreground"
-          />
+          <div className="relative flex items-center">
+            <input
+              type="text"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              placeholder="Add a task…"
+              className="w-full bg-muted/30 border border-border rounded-md pl-2.5 pr-8 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-primary/50 placeholder:text-muted-foreground text-foreground"
+            />
+            <button
+              type="submit"
+              disabled={!draft.trim()}
+              className="absolute right-1 size-5.5 rounded inline-flex items-center justify-center bg-[#0f4c5c] text-white hover:bg-[#0f4c5c]/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-xs cursor-pointer"
+              title="Add task"
+            >
+              <Plus className="size-3.5 stroke-[2.5]" />
+            </button>
+          </div>
         </form>
 
         <div className="flex-1 overflow-y-auto p-1.5 space-y-1">
