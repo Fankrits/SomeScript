@@ -32,6 +32,19 @@ import { notifyCreditsUpdated } from "@/hooks/use-credit-status";
 // see them in rendered text or thread titles.
 const MARKER_PREFIX = /^(?:\[(?:projectId|mode): [^\]]*\]\n?)+/;
 
+// eve's NDJSON turn stream can go silent forever without erroring on Vercel
+// deployments: the CDN brotli-compresses the low-throughput stream (our
+// vercel.json + apps/editor/next.config.ts's withEve match the setup in the
+// report below exactly), and the final bytes — carrying the turn's terminal
+// event — sit in the compression buffer and never flush. Short replies (a
+// one-word prompt's answer) are the highest-risk case since there's little
+// data to force a flush. agent.status then never leaves "submitted"/
+// "streaming" and the composer spins forever. Open upstream, unfixed as of
+// eve 0.27.6 (latest): https://github.com/vercel/eve/issues/1159 — real fix
+// in flight at https://github.com/vercel/eve/pull/1186 (adds a native
+// streamIdleTimeoutMs idle-reconnect).
+const STALL_TIMEOUT_MS = 30_000;
+
 // assistant-ui only ships Simple adapters for images and text. PDFs get the
 // same treatment: read as a data URL, forward as a generic `file` content
 // part — attachmentsToParts (lib/attachment-blocks.ts) already knows how to
@@ -391,6 +404,27 @@ export function useEveRuntime(
     adapters: { attachments: attachmentAdapter },
   });
 
+  // Backstop for the stalled-stream bug above: if a turn produces no new
+  // event for STALL_TIMEOUT_MS, abort it through eve's own public agent.stop()
+  // (an AbortError eve's client already treats as a clean terminal state)
+  // instead of leaving the spinner stuck forever. Re-armed on every event via
+  // the `agent` dependency, since useEveAgent hands back a new snapshot object
+  // on each one.
+  // ponytail: this ends the turn (any partial answer already streamed stays
+  // visible; the user re-sends) rather than transparently resuming mid-stream
+  // like eve#1186 will — eve/react's public surface (send/stop/reset) has no
+  // lower-level "resume this stream" hook to do better from here. Drop once
+  // eve ships streamIdleTimeoutMs and the dependency is bumped past it.
+  useEffect(() => {
+    if (!isBusy) return;
+    const timer = setTimeout(() => {
+      setSendError(
+        "Eve stopped responding — this is a known eve streaming issue on some deployments (github.com/vercel/eve/issues/1159). Please try again.",
+      );
+      agent.stop();
+    }, STALL_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [agent, isBusy]);
 
   useEffect(() => {
     if (agent.session?.sessionId) {
