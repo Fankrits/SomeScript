@@ -48,28 +48,31 @@ export default function Footer() {
             </div>
           </div>
 
-          {/* Product */}
-          <div className="sm:col-span-1 md:col-span-2 space-y-3">
-            <h4 className="text-[11px] font-semibold uppercase tracking-wider text-white/40">Product</h4>
-            <ul className="space-y-2 text-xs sm:text-sm text-white/60 font-light">
-              <li><Link href="#features" className="hover:text-white transition-colors">Features</Link></li>
-              <li><Link href="#how-it-works" className="hover:text-white transition-colors">How it Works</Link></li>
-              <li><Link href="/dashboard" className="hover:text-white transition-colors">Editor & Dashboard</Link></li>
-            </ul>
-          </div>
+          {/* Product & Resources (2 Columns on mobile & desktop) */}
+          <div className="grid grid-cols-2 gap-6 sm:col-span-2 md:col-span-4">
+            {/* Product */}
+            <div className="space-y-3">
+              <h4 className="text-[11px] font-semibold uppercase tracking-wider text-white/40">Product</h4>
+              <ul className="space-y-2 text-xs sm:text-sm text-white/60 font-light">
+                <li><Link href="#features" className="hover:text-white transition-colors">Features</Link></li>
+                <li><Link href="#how-it-works" className="hover:text-white transition-colors">How it Works</Link></li>
+                <li><Link href="/dashboard" className="hover:text-white transition-colors">Editor & Dashboard</Link></li>
+              </ul>
+            </div>
 
-          {/* Resources */}
-          <div className="sm:col-span-1 md:col-span-2 space-y-3">
-            <h4 className="text-[11px] font-semibold uppercase tracking-wider text-white/40">Resources</h4>
-            <ul className="space-y-2 text-xs sm:text-sm text-white/60 font-light">
-              <li>
-                <a href="https://docs.somescript.com" target="_blank" rel="noreferrer" className="hover:text-white transition-colors">
-                  Documentation
-                </a>
-              </li>
-              <li><Link href="/about" className="hover:text-white transition-colors">About Us</Link></li>
-              <li><Link href="#faq" className="hover:text-white transition-colors">FAQ</Link></li>
-            </ul>
+            {/* Resources */}
+            <div className="space-y-3">
+              <h4 className="text-[11px] font-semibold uppercase tracking-wider text-white/40">Resources</h4>
+              <ul className="space-y-2 text-xs sm:text-sm text-white/60 font-light">
+                <li>
+                  <a href="https://docs.somescript.com" target="_blank" rel="noreferrer" className="hover:text-white transition-colors">
+                    Documentation
+                  </a>
+                </li>
+                <li><Link href="/about" className="hover:text-white transition-colors">About Us</Link></li>
+                <li><Link href="#faq" className="hover:text-white transition-colors">FAQ</Link></li>
+              </ul>
+            </div>
           </div>
 
           {/* Newsletter */}

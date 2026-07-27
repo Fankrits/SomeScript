@@ -41,14 +41,16 @@ export default function Header({ dark = false }: { dark?: boolean }) {
         <Link href="#how-it-works" className={`text-xs sm:text-sm font-medium transition-colors ${dark ? "text-white/70 hover:text-white" : "text-foreground/70 hover:text-foreground"}`}>
           How it Works
         </Link>
-        <Link href="#testimonials" className={`text-xs sm:text-sm font-medium transition-colors ${dark ? "text-white/70 hover:text-white" : "text-foreground/70 hover:text-foreground"}`}>
-          Testimonials
-        </Link>
+        <a
+          href="https://docs.somescript.com"
+          target="_blank"
+          rel="noreferrer"
+          className={`text-xs sm:text-sm font-medium transition-colors ${dark ? "text-white/70 hover:text-white" : "text-foreground/70 hover:text-foreground"}`}
+        >
+          Docs
+        </a>
         <Link href="#faq" className={`text-xs sm:text-sm font-medium transition-colors ${dark ? "text-white/70 hover:text-white" : "text-foreground/70 hover:text-foreground"}`}>
           FAQ
-        </Link>
-        <Link href="/dashboard" className={`text-xs sm:text-sm font-medium transition-colors ${dark ? "text-white/70 hover:text-white" : "text-foreground/70 hover:text-foreground"}`}>
-          Dashboard
         </Link>
         <Button asChild size="sm" className="bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-lg transition-all shadow-md shadow-primary/10">
           <Link href="/dashboard">
@@ -91,26 +93,21 @@ export default function Header({ dark = false }: { dark?: boolean }) {
           >
             How it Works
           </Link>
-          <Link
-            href="#testimonials"
+          <a
+            href="https://docs.somescript.com"
+            target="_blank"
+            rel="noreferrer"
             onClick={() => setMobileMenuOpen(false)}
             className="text-sm font-medium text-foreground/80 hover:text-foreground py-2 border-b border-border/30"
           >
-            Testimonials
-          </Link>
+            Docs
+          </a>
           <Link
             href="#faq"
             onClick={() => setMobileMenuOpen(false)}
             className="text-sm font-medium text-foreground/80 hover:text-foreground py-2 border-b border-border/30"
           >
             FAQ
-          </Link>
-          <Link
-            href="/dashboard"
-            onClick={() => setMobileMenuOpen(false)}
-            className="text-sm font-medium text-foreground/80 hover:text-foreground py-2 border-b border-border/30"
-          >
-            Dashboard
           </Link>
           <Button asChild size="lg" className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold rounded-lg mt-2">
             <Link href="/dashboard" onClick={() => setMobileMenuOpen(false)}>
