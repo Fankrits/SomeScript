@@ -1,11 +1,20 @@
-# Stage 1: Download pre-compiled Tectonic binary (static musl release for fast build times)
+# Stage 1: Download the official pre-compiled Tectonic release binary
 FROM debian:stable-slim AS builder
 
 RUN apt-get update && apt-get install -y curl xz-utils git gcc zlib1g-dev && rm -rf /var/lib/apt/lists/*
 
-RUN curl -Lo tectonic.tar.gz https://github.com/tectonic-typesetting/tectonic/releases/download/tectonic%400.15.0/tectonic-0.15.0-x86_64-unknown-linux-musl.tar.gz \
+# The *-linux-gnu release, NOT *-linux-musl. Both are official Tectonic release
+# artifacts, but the static musl build carries no usable ICU break data, so
+# \XeTeXlinebreaklocale fails there for EVERY locale ("failed to create linebreak
+# iterator, status=2") — which breaks line breaking for every script written
+# without word spaces (Thai, Lao, Khmer, CJK). Upstream assembled that build by
+# force-static-linking ICU/HarfBuzz/Graphite and lost functionality doing so
+# (tectonic-typesetting/tectonic#185). The gnu build works; verified on this base.
+# Consequence: no aarch64-linux-gnu artifact is published, so this image is
+# pinned to linux/amd64 in docker-compose.yml (emulated on Apple Silicon).
+RUN curl -Lo tectonic.tar.gz https://github.com/tectonic-typesetting/tectonic/releases/download/tectonic%400.17.0/tectonic-0.17.0-x86_64-unknown-linux-gnu.tar.gz \
     && tar -xzf tectonic.tar.gz \
-    && mv tectonic-0.15.0-x86_64-unknown-linux-musl/tectonic /usr/local/bin/ || mv tectonic /usr/local/bin/
+    && mv tectonic /usr/local/bin/
 
 # Build the official SyncTeX CLI (jlaurens/synctex) — Tectonic writes .synctex.gz
 # but does not ship the query tool used by the /synctex endpoint. The sed fixes an

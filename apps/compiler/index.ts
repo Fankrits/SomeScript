@@ -2,7 +2,6 @@ import { spawn } from "child_process";
 import { existsSync } from "fs";
 import fs from "fs/promises";
 import path from "path";
-import { applyDraftMode } from "./draft-mode";
 
 const PORT = process.env.PORT || 3001;
 
@@ -31,12 +30,11 @@ async function writeFiles(baseDir: string, files: { path: string; content: strin
       throw new Error(`Invalid file path: ${file.path}`);
     }
     await fs.mkdir(path.dirname(resolvedPath), { recursive: true });
-    if (file.content.startsWith("data:") || /\.(pdf|png|jpe?g|gif|webp)$/i.test(file.path)) {
-      const base64Data = file.content.split(";base64,").pop() || file.content;
-      await fs.writeFile(resolvedPath, Buffer.from(base64Data, "base64"));
-    } else {
-      await fs.writeFile(resolvedPath, file.content, "utf-8");
-    }
+    // Every upload is base64 now (see getAllStorageFiles in apps/editor/app/api/compile/route.ts),
+    // whether the source was text or binary — extension-sniffing here would just
+    // be a second copy of the same allow-list problem.
+    const base64Data = file.content.startsWith("data:") ? file.content.split(";base64,").pop()! : file.content;
+    await fs.writeFile(resolvedPath, Buffer.from(base64Data, "base64"));
   }
 }
 
@@ -173,7 +171,7 @@ const server = Bun.serve({
       try {
         const bodyText = await req.text();
         const body = JSON.parse(bodyText);
-        const { mode, localProjectPath, fileRelativePath, files, deletedFiles, projectId, syncType, draft, projectHash } = body;
+        const { mode, localProjectPath, fileRelativePath, files, deletedFiles, projectId, syncType, projectHash } = body;
 
         if (mode === "local") {
           if (!ALLOW_LOCAL) {
@@ -226,13 +224,6 @@ const server = Bun.serve({
 
           (async () => {
             try {
-              // Local mode compiles the user's real file, so draft injection is
-              // strip-restored in the finally below. The strip only writes when
-              // the prefix is present, so an edit saved mid-compile (which has no
-              // prefix) is never clobbered — and a stale prefix from a crashed
-              // run gets cleaned by the next compile either way.
-              await applyDraftMode(resolvedTexPath, Boolean(draft));
-
               const flags = ["-C", "--synctex", resolvedTexPath];
 
               let code = await runTectonic(flags);
@@ -250,11 +241,6 @@ const server = Bun.serve({
             } catch (err: any) {
               writer.write(encoder.encode(`\n[ERROR] Compilation process error: ${err.message}\n`));
             } finally {
-              try {
-                await applyDraftMode(resolvedTexPath, false);
-              } catch {
-                // File unreadable — nothing to restore.
-              }
               writer.close();
             }
           })();
@@ -327,8 +313,8 @@ const server = Bun.serve({
           if (relativePathCheck.startsWith("..") || path.isAbsolute(relativePathCheck)) {
             return Response.json({ error: "Access denied" }, { status: 403 });
           }
-          // applyDraftMode reads the root file, so surface a clear error first
-          // rather than a raw ENOENT from inside it.
+          // Surface a clear error before handing a missing file to Tectonic,
+          // rather than whatever cryptic failure it produces for that itself.
           try {
             await fs.access(resolvedTexPath);
           } catch {
@@ -337,9 +323,6 @@ const server = Bun.serve({
               { status: 404 }
             );
           }
-          // Safe here: projectDir is a scratch workspace synced from storage, not
-          // the user's own files.
-          await applyDraftMode(resolvedTexPath, Boolean(draft));
 
           let logs = "";
 
@@ -373,8 +356,6 @@ const server = Bun.serve({
             });
           };
  
-          // Draft is handled by applyDraftMode above, not by cutting reruns —
-          // Tectonic's auto-rerun is what makes \ref, \cite and the TOC resolve.
           const flags = ["-C", "--synctex", resolvedTexPath];
 
           let code = await runTectonicUpload(flags);
