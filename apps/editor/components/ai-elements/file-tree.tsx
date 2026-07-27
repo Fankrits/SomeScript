@@ -10,6 +10,8 @@ import {
   ImageIcon,
   Edit2Icon,
   Trash2Icon,
+  CopyIcon,
+  DownloadIcon,
 } from "lucide-react";
 import { useEffect, useRef, useState, useMemo } from "react";
 import { Tree } from "react-arborist";
@@ -19,6 +21,7 @@ import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 
@@ -35,6 +38,9 @@ export type FileTreeProps = {
   onSelect?: (path: string) => void;
   onMove?: (oldPath: string, newPath: string) => void;
   onDelete?: (path: string) => void;
+  onDuplicate?: (path: string) => void;
+  onDownload?: (path: string) => void;
+  onUploadFiles?: (files: FileList, targetDir: string) => void;
   className?: string;
 };
 
@@ -85,6 +91,9 @@ export const FileTree = ({
   onSelect,
   onMove,
   onDelete,
+  onDuplicate,
+  onDownload,
+  onUploadFiles,
   className,
 }: FileTreeProps) => {
   const [containerRef, dimensions] = useDimensions<HTMLDivElement>();
@@ -128,6 +137,25 @@ export const FileTree = ({
     const isSelected = selectedPath === node.id;
     const isFolder = !node.isLeaf;
 
+    const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+      if (!e.dataTransfer.types.includes("Files")) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.currentTarget.classList.add("bg-primary/10", "ring-1", "ring-primary/20");
+    };
+    const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+      e.currentTarget.classList.remove("bg-primary/10", "ring-1", "ring-primary/20");
+    };
+    const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+      if (!e.dataTransfer.types.includes("Files")) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.currentTarget.classList.remove("bg-primary/10", "ring-1", "ring-primary/20");
+      if (e.dataTransfer.files.length > 0) {
+        onUploadFiles?.(e.dataTransfer.files, node.id);
+      }
+    };
+
     const handleClick = (e: React.MouseEvent) => {
       e.stopPropagation();
       if (node.isEditing) return;
@@ -151,6 +179,7 @@ export const FileTree = ({
               node.willReceiveDrop && "bg-primary/10 border border-primary/30 ring-1 ring-primary/20"
             )}
             onClick={handleClick}
+            {...(isFolder ? { onDragOver: handleDragOver, onDragLeave: handleDragLeave, onDrop: handleDrop } : {})}
           >
             <div className="flex items-center gap-1 min-w-0 flex-1">
               {isFolder ? (
@@ -200,6 +229,17 @@ export const FileTree = ({
             <Edit2Icon className="size-3.5" />
             <span>Rename</span>
           </ContextMenuItem>
+          <ContextMenuItem onClick={() => onDuplicate?.(node.id)} className="gap-2">
+            <CopyIcon className="size-3.5" />
+            <span>Duplicate</span>
+          </ContextMenuItem>
+          {!isFolder && (
+            <ContextMenuItem onClick={() => onDownload?.(node.id)} className="gap-2">
+              <DownloadIcon className="size-3.5" />
+              <span>Download</span>
+            </ContextMenuItem>
+          )}
+          <ContextMenuSeparator />
           <ContextMenuItem
             onClick={() => onDelete?.(node.id)}
             variant="destructive"
@@ -221,6 +261,22 @@ export const FileTree = ({
         className
       )}
       role="tree"
+      onDragOver={(e) => {
+        if (!e.dataTransfer.types.includes("Files")) return;
+        e.preventDefault();
+        e.currentTarget.classList.add("bg-primary/5");
+      }}
+      onDragLeave={(e) => {
+        e.currentTarget.classList.remove("bg-primary/5");
+      }}
+      onDrop={(e) => {
+        if (!e.dataTransfer.types.includes("Files")) return;
+        e.preventDefault();
+        e.currentTarget.classList.remove("bg-primary/5");
+        if (e.dataTransfer.files.length > 0) {
+          onUploadFiles?.(e.dataTransfer.files, "");
+        }
+      }}
     >
       {dimensions.height > 0 && dimensions.width > 0 && (
         <Tree
