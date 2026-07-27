@@ -17,6 +17,7 @@ export interface StorageProvider {
   createDirectory(projectId: string, dirRelativePath: string): Promise<void>;
   listProjectFiles(projectId: string): Promise<FileNode[]>;
   move(projectId: string, oldPath: string, newPath: string): Promise<void>;
+  copy(projectId: string, srcPath: string, destPath: string): Promise<void>;
   delete(projectId: string, fileRelativePath: string): Promise<void>;
 }
 
@@ -79,6 +80,13 @@ export class LocalStorageProvider implements StorageProvider {
     const newFullPath = this.getLocalPath(projectId, newPath);
     await fs.mkdir(path.dirname(newFullPath), { recursive: true });
     await fs.rename(oldFullPath, newFullPath);
+  }
+
+  async copy(projectId: string, srcPath: string, destPath: string): Promise<void> {
+    const srcFullPath = this.getLocalPath(projectId, srcPath);
+    const destFullPath = this.getLocalPath(projectId, destPath);
+    await fs.mkdir(path.dirname(destFullPath), { recursive: true });
+    await fs.cp(srcFullPath, destFullPath, { recursive: true });
   }
 
   async delete(projectId: string, fileRelativePath: string): Promise<void> {
@@ -270,6 +278,43 @@ class S3StorageProvider implements StorageProvider {
         new DeleteObjectCommand({
           Bucket: this.bucket,
           Key: object.Key,
+        })
+      );
+    }
+  }
+
+  async copy(projectId: string, srcPath: string, destPath: string): Promise<void> {
+    const srcPrefix = this.getS3Key(projectId, srcPath);
+    const destPrefix = this.getS3Key(projectId, destPath);
+
+    const listResponse = await this.client.send(
+      new ListObjectsV2Command({
+        Bucket: this.bucket,
+        Prefix: srcPrefix,
+      })
+    );
+
+    if (!listResponse.Contents || listResponse.Contents.length === 0) {
+      await this.client.send(
+        new CopyObjectCommand({
+          Bucket: this.bucket,
+          CopySource: encodeURIComponent(`${this.bucket}/${srcPrefix}`),
+          Key: destPrefix,
+        })
+      );
+      return;
+    }
+
+    for (const object of listResponse.Contents) {
+      if (!object.Key) continue;
+      const relativePart = object.Key.substring(srcPrefix.length);
+      const destKey = destPrefix + relativePart;
+
+      await this.client.send(
+        new CopyObjectCommand({
+          Bucket: this.bucket,
+          CopySource: encodeURIComponent(`${this.bucket}/${object.Key}`),
+          Key: destKey,
         })
       );
     }

@@ -1,4 +1,6 @@
 import { expect, test } from "bun:test";
+import fs from "fs/promises";
+import path from "path";
 import { LocalStorageProvider, isBinaryContent } from "./storage";
 
 const p = new LocalStorageProvider();
@@ -29,4 +31,38 @@ test("isBinaryContent flags a NUL byte", () => {
 test("isBinaryContent treats plain text and empty buffers as text", () => {
   expect(isBinaryContent(Buffer.from("Hello, world! éè", "utf-8"))).toBe(false);
   expect(isBinaryContent(Buffer.alloc(0))).toBe(false);
+});
+
+test("copy rejects traversal in the source path", async () => {
+  await expect(p.copy("abc", "../abc-evil/secret.txt", "dest.txt")).rejects.toThrow("Directory traversal");
+});
+
+test("copy rejects traversal in the destination path", async () => {
+  await expect(p.copy("abc", "secret.txt", "../abc-evil/dest.txt")).rejects.toThrow("Directory traversal");
+});
+
+test("copy duplicates a file without removing the original", async () => {
+  const projectId = `test-copy-file-${Date.now()}`;
+  const baseDir = path.join(process.cwd(), "projects", projectId);
+  try {
+    await p.writeFile(projectId, "original.tex", "hello world");
+    await p.copy(projectId, "original.tex", "duplicate.tex");
+    expect(await p.readFile(projectId, "original.tex")).toBe("hello world");
+    expect(await p.readFile(projectId, "duplicate.tex")).toBe("hello world");
+  } finally {
+    await fs.rm(baseDir, { recursive: true, force: true });
+  }
+});
+
+test("copy recursively duplicates a directory", async () => {
+  const projectId = `test-copy-dir-${Date.now()}`;
+  const baseDir = path.join(process.cwd(), "projects", projectId);
+  try {
+    await p.writeFile(projectId, "sections/intro.tex", "intro content");
+    await p.copy(projectId, "sections", "sections-dup");
+    expect(await p.readFile(projectId, "sections-dup/intro.tex")).toBe("intro content");
+    expect(await p.readFile(projectId, "sections/intro.tex")).toBe("intro content");
+  } finally {
+    await fs.rm(baseDir, { recursive: true, force: true });
+  }
 });
