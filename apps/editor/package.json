@@ -35,6 +35,7 @@
     "@embedpdf/plugin-viewport": "^2.14.4",
     "@embedpdf/plugin-zoom": "^2.14.4",
     "@embedpdf/react-pdf-viewer": "^2.14.4",
+    "@hello-pangea/dnd": "^18.0.1",
     "@radix-ui/react-use-controllable-state": "^1.2.6",
     "@replit/codemirror-vim": "^6.3.0",
     "@rive-app/react-webgl2": "^4.30.0",

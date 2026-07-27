@@ -11,6 +11,7 @@ export interface Task {
   name: string;
   description?: string;
   done: boolean;
+  status?: 'todo' | 'ongoing' | 'finished';
   createdAt: number;
   source?: {
     path?: string; // editor only; omitted for PDF (one PDF per project)
@@ -43,6 +44,7 @@ export function sanitizeTasks(input: unknown): Task[] {
       id: t.id,
       name: t.name.slice(0, MAX_NAME_LENGTH),
       done: Boolean(t.done),
+      status: (['todo', 'ongoing', 'finished'].includes(t.status as string) ? t.status : (t.done ? 'finished' : 'todo')) as Task['status'],
       createdAt: typeof t.createdAt === "number" && Number.isFinite(t.createdAt) ? t.createdAt : Date.now(),
       source: sanitizeSource(t.source),
     };
