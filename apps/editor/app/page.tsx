@@ -25,7 +25,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { Scissors, Copy, ClipboardPaste, TextCursor, Undo2, Redo2, FileText } from "lucide-react";
-import { ListTodoIcon, FilePlus, FolderPlus, PanelLeft, PanelRight, Sparkles, Loader2, Check, Home, ChevronRight, ArrowLeft, Clock, Trash2, Plus, Settings, Search, Download } from "lucide-react";
+import { ListTodoIcon, FilePlus, FolderPlus, PanelLeft, PanelRight, Sparkles, Loader2, Check, Home, ChevronRight, ArrowLeft, Clock, Trash2, Plus, Settings, Search, Download, Upload } from "lucide-react";
 import { nanoid } from "nanoid";
 import { toast } from "sonner";
 import { useCallback, useEffect, useInsertionEffect, useRef, useState } from "react";
@@ -500,6 +500,7 @@ const Example = () => {
   // loadedPathRef can't gate that, since it's only set once the fetch lands.
   const selectingPathRef = useRef<string | null>(null);
   const [newItemName, setNewItemName] = useState<string>("");
+  const uploadInputRef = useRef<HTMLInputElement>(null);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   // Project-relative path of the last successfully compiled root .tex — SyncTeX
   // queries resolve the PDF/.synctex.gz from it. null until the first compile.
@@ -1366,6 +1367,75 @@ const Example = () => {
     }
   }, [projectId, selectedPath, refreshWorkspace]);
 
+  const handleFileDuplicate = useCallback(async (path: string) => {
+    const exists = (candidate: string, nodes: FileNode[]): boolean => {
+      for (const n of nodes) {
+        if (n.path === candidate) return true;
+        if (n.children && exists(candidate, n.children)) return true;
+      }
+      return false;
+    };
+
+    const lastSlash = path.lastIndexOf("/");
+    const dir = lastSlash >= 0 ? path.slice(0, lastSlash) : "";
+    const name = lastSlash >= 0 ? path.slice(lastSlash + 1) : path;
+    const dotIdx = name.lastIndexOf(".");
+    const base = dotIdx > 0 ? name.slice(0, dotIdx) : name;
+    const ext = dotIdx > 0 ? name.slice(dotIdx) : "";
+
+    let candidateName = `${base} copy${ext}`;
+    let counter = 2;
+    while (exists(dir ? `${dir}/${candidateName}` : candidateName, fileTree)) {
+      candidateName = `${base} copy ${counter}${ext}`;
+      counter++;
+    }
+    const newPath = dir ? `${dir}/${candidateName}` : candidateName;
+
+    try {
+      const res = await fetch("/api/files", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId, action: "copy", path, newPath }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        refreshWorkspace();
+      }
+    } catch (err) {
+      console.error("Failed to duplicate file", err);
+    }
+  }, [projectId, fileTree, refreshWorkspace]);
+
+  const handleFileDownload = useCallback((path: string) => {
+    const url = withProject(`/api/files?path=${encodeURIComponent(path)}&download=1`);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = path.split("/").pop() || path;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }, [withProject]);
+
+  const handleUploadFiles = useCallback(async (files: FileList, targetDir: string) => {
+    const formData = new FormData();
+    formData.append("projectId", projectId);
+    formData.append("path", targetDir);
+    Array.from(files).forEach((file) => formData.append("files", file));
+
+    try {
+      const res = await fetch("/api/files/upload", { method: "POST", body: formData });
+      const data = await res.json();
+      if (data.success) {
+        refreshWorkspace();
+      } else {
+        toast.error(data.error || "Failed to upload files");
+      }
+    } catch (err) {
+      console.error("Failed to upload files", err);
+      toast.error("Failed to upload files");
+    }
+  }, [projectId, refreshWorkspace]);
+
   // Autosave useEffect with debounce
   useEffect(() => {
     if (!selectedPath || loadedPathRef.current !== selectedPath || editedCode === currentCode) {
@@ -1855,6 +1925,26 @@ const Example = () => {
               >
                 <FolderPlus className="size-3.5" />
               </button>
+              <button
+                type="button"
+                onClick={() => uploadInputRef.current?.click()}
+                className="p-1 rounded border hover:bg-muted cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
+                title="Upload Files"
+              >
+                <Upload className="size-3.5" />
+              </button>
+              <input
+                ref={uploadInputRef}
+                type="file"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  if (e.target.files && e.target.files.length > 0) {
+                    handleUploadFiles(e.target.files, "");
+                  }
+                  e.target.value = "";
+                }}
+              />
             </div>
           </div>
           <div className="flex-1 overflow-auto p-1">
@@ -1865,6 +1955,9 @@ const Example = () => {
               selectedPath={selectedPath}
               onMove={handleFileMove}
               onDelete={setDeletePath}
+              onDuplicate={handleFileDuplicate}
+              onDownload={handleFileDownload}
+              onUploadFiles={handleUploadFiles}
             />
           </div>
         </div>
