@@ -290,7 +290,7 @@ class S3StorageProvider implements StorageProvider {
     const listResponse = await this.client.send(
       new ListObjectsV2Command({
         Bucket: this.bucket,
-        Prefix: srcPrefix,
+        Prefix: `${srcPrefix}/`,
       })
     );
 

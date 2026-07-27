@@ -501,6 +501,7 @@ const Example = () => {
   const selectingPathRef = useRef<string | null>(null);
   const [newItemName, setNewItemName] = useState<string>("");
   const uploadInputRef = useRef<HTMLInputElement>(null);
+  const [isUploading, setIsUploading] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   // Project-relative path of the last successfully compiled root .tex — SyncTeX
   // queries resolve the PDF/.synctex.gz from it. null until the first compile.
@@ -1429,6 +1430,9 @@ const Example = () => {
   }, [withProject]);
 
   const handleUploadFiles = useCallback(async (files: FileList, targetDir: string) => {
+    if (isUploading) return;
+    setIsUploading(true);
+
     const formData = new FormData();
     formData.append("projectId", projectId);
     formData.append("path", targetDir);
@@ -1445,8 +1449,10 @@ const Example = () => {
     } catch (err) {
       console.error("Failed to upload files", err);
       toast.error("Failed to upload files");
+    } finally {
+      setIsUploading(false);
     }
-  }, [projectId, refreshWorkspace]);
+  }, [projectId, refreshWorkspace, isUploading]);
 
   // Autosave useEffect with debounce
   useEffect(() => {
@@ -1940,7 +1946,11 @@ const Example = () => {
               <button
                 type="button"
                 onClick={() => uploadInputRef.current?.click()}
-                className="p-1 rounded border hover:bg-muted cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
+                disabled={isUploading}
+                className={cn(
+                  "p-1 rounded border hover:bg-muted cursor-pointer text-muted-foreground hover:text-foreground transition-colors",
+                  isUploading && "opacity-50 cursor-not-allowed hover:bg-transparent"
+                )}
                 title="Upload Files"
               >
                 <Upload className="size-3.5" />
