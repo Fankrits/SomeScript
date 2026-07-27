@@ -5,6 +5,7 @@ import { eq, desc } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { NewProjectDialog } from "@/components/new-project-dialog";
 import { ImportProjectDialog } from "@/components/import-project-dialog";
+import { DashboardDropzone } from "@/components/dashboard-dropzone";
 import { FileText } from "lucide-react";
 import ProjectsTable from "@/components/tables-01";
 
@@ -26,47 +27,49 @@ export default async function DashboardPage() {
   });
 
   return (
-    <main className="flex-1 flex flex-col overflow-hidden bg-background relative">
-      {/* Background Gradients */}
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(15,76,92,0.03),transparent_40%)] pointer-events-none" />
+    <DashboardDropzone>
+      <main className="flex-1 flex flex-col overflow-hidden bg-background relative min-h-screen">
+        {/* Background Gradients */}
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(15,76,92,0.03),transparent_40%)] pointer-events-none" />
 
-      {/* Top Header */}
-      <header className="border-b border-border py-6 px-8 flex items-center justify-between z-10">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">Projects</h1>
-          <p className="text-sm text-muted-foreground font-light mt-0.5">Manage and compile your LaTeX documents.</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <ImportProjectDialog />
-          <NewProjectDialog />
-        </div>
-      </header>
-
-      {/* Projects List */}
-      <div className="flex-1 overflow-y-auto p-8 z-10">
-        {workspaceProjects.length === 0 ? (
-          /* Empty State */
-          <div className="h-[400px] rounded-xl border border-dashed border-border bg-card/40 flex flex-col items-center justify-center text-center p-8 max-w-2xl mx-auto mt-12 shadow-sm">
-            <div className="h-12 w-12 rounded-lg bg-secondary/60 border border-border flex items-center justify-center text-primary mb-4">
-              <FileText className="h-6 w-6" />
-            </div>
-            <h3 className="text-lg font-semibold text-foreground">No projects yet</h3>
-            <p className="text-sm text-muted-foreground max-w-sm font-light mt-2 mb-6">
-              Create a new LaTeX project to generate, edit, and compile scientific documents in real-time with AI.
-            </p>
-            <div className="flex items-center gap-3">
-              <ImportProjectDialog />
-              <NewProjectDialog />
-            </div>
+        {/* Top Header */}
+        <header className="border-b border-border py-6 px-8 flex items-center justify-between z-10">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">Projects</h1>
+            <p className="text-sm text-muted-foreground font-light mt-0.5">Manage and compile your LaTeX documents.</p>
           </div>
-        ) : (
-          /* Projects Table */
-          <ProjectsTable
-            projects={workspaceProjects}
-            editorUrl={process.env.NEXT_PUBLIC_EDITOR_URL || "http://localhost:3002"}
-          />
-        )}
-      </div>
-    </main>
+          <div className="flex items-center gap-3">
+            <ImportProjectDialog />
+            <NewProjectDialog />
+          </div>
+        </header>
+
+        {/* Projects List */}
+        <div className="flex-1 overflow-y-auto p-8 z-10">
+          {workspaceProjects.length === 0 ? (
+            /* Empty State */
+            <div className="h-[400px] rounded-xl border border-dashed border-border bg-card/40 flex flex-col items-center justify-center text-center p-8 max-w-2xl mx-auto mt-12 shadow-sm">
+              <div className="h-12 w-12 rounded-lg bg-secondary/60 border border-border flex items-center justify-center text-primary mb-4">
+                <FileText className="h-6 w-6" />
+              </div>
+              <h3 className="text-lg font-semibold text-foreground">No projects yet</h3>
+              <p className="text-sm text-muted-foreground max-w-sm font-light mt-2 mb-6">
+                Create a new LaTeX project or drag and drop a .zip file anywhere to generate, edit, and compile scientific documents in real-time with AI.
+              </p>
+              <div className="flex items-center gap-3">
+                <ImportProjectDialog />
+                <NewProjectDialog />
+              </div>
+            </div>
+          ) : (
+            /* Projects Table */
+            <ProjectsTable
+              projects={workspaceProjects}
+              editorUrl={process.env.NEXT_PUBLIC_EDITOR_URL || "http://localhost:3002"}
+            />
+          )}
+        </div>
+      </main>
+    </DashboardDropzone>
   );
 }
