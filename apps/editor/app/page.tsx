@@ -1709,6 +1709,14 @@ const Example = () => {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot mount banner
     setTerminalOutput(`${mockTerminalLines.join("\n")}\n`);
+
+    // Ensure code panel is expanded on mount
+    const timer = setTimeout(() => {
+      if (codePanelRef.current?.isCollapsed()) {
+        codePanelRef.current.expand();
+      }
+    }, 150);
+    return () => clearTimeout(timer);
   }, []);
 
   const handleChatTextChange = useCallback(
@@ -2342,7 +2350,7 @@ const Example = () => {
                 id="code"
                 panelRef={codePanelRef}
                 collapsible
-                collapsedSize={2}
+                collapsedSize={0}
                 defaultSize={50}
                 minSize={20}
                 onResize={(size) => {
@@ -2351,6 +2359,22 @@ const Example = () => {
                 className={cn(isAnimatingPdf && "panel-transition")}
               >
                 <div className="h-full relative flex flex-col min-w-0">
+                  {isCodeCollapsed && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsAnimatingPdf(true);
+                        codePanelRef.current?.expand();
+                        setTimeout(() => setIsAnimatingPdf(false), 300);
+                      }}
+                      className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-2 bg-background/95 p-4 text-center cursor-pointer border-r border-border hover:bg-muted/20 transition-colors"
+                      title="Click to restore Code Editor"
+                    >
+                      <Play className="size-6 text-primary animate-pulse" />
+                      <span className="text-sm font-semibold text-foreground">Code Editor is Hidden</span>
+                      <span className="text-xs text-muted-foreground bg-muted px-2.5 py-1 rounded-md border">Click anywhere to open Code Editor</span>
+                    </button>
+                  )}
                   {selectedPath && viewMode === "code" && (
                     <EditorToolbar
                       onInsert={handleInsertText}
