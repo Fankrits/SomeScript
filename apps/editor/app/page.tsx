@@ -25,7 +25,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { Scissors, Copy, ClipboardPaste, TextCursor, Undo2, Redo2, FileText } from "lucide-react";
-import { Play, ListTodoIcon, FilePlus, FolderPlus, PanelLeft, PanelRight, Sparkles, Loader2, Check, Home, ChevronRight, ArrowLeft, Clock, Trash2, Plus, Settings, Search, Download, Upload } from "lucide-react";
+import { ListTodoIcon, FilePlus, FolderPlus, PanelLeft, PanelRight, Sparkles, Loader2, Check, Home, ChevronRight, ArrowLeft, Clock, Trash2, Plus, Settings, Search, Download, Upload } from "lucide-react";
 import { nanoid } from "nanoid";
 import { toast } from "sonner";
 import { useCallback, useEffect, useInsertionEffect, useRef, useState } from "react";
@@ -680,11 +680,7 @@ const Example = () => {
     if (typeof window === "undefined") return;
     const savedSidebar = localStorage.getItem("somescript-sidebar-open");
     // eslint-disable-next-line react-hooks/set-state-in-effect -- SSR-safe: hydrate layout from localStorage after mount
-    if (savedSidebar !== null) {
-      setIsLeftSidebarOpen(savedSidebar === "true");
-    } else if (window.innerWidth < 1024) {
-      setIsLeftSidebarOpen(false);
-    }
+    if (savedSidebar !== null) setIsLeftSidebarOpen(savedSidebar === "true");
     setMounted(true);
   }, []);
 
@@ -1657,24 +1653,15 @@ const Example = () => {
     refreshWorkspace();
   }, [refreshWorkspace]);
 
-  // Reopen the file the user last had open in this project, or auto-select main.tex / first file.
+  // Reopen the file the user last had open in this project (persisted like the layout).
   const didRestoreFile = useRef(false);
   useEffect(() => {
-    if (didRestoreFile.current && selectedPath) return;
+    if (didRestoreFile.current) return;
+    didRestoreFile.current = true;
     const last = localStorage.getItem(`somescript-last-file-${projectId}`);
-    if (last) {
-      didRestoreFile.current = true;
-      handleFileSelect(last);
-    } else if (fileTree && fileTree.length > 0) {
-      didRestoreFile.current = true;
-      const texFiles = getTexFiles(fileTree);
-      const mainPath = texFiles.find((p) => p === "main.tex" || p.endsWith("/main.tex"));
-      const target = mainPath || texFiles[0] || null;
-      if (target) {
-        handleFileSelect(target);
-      }
-    }
-  }, [projectId, handleFileSelect, fileTree, selectedPath, getTexFiles]);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot mount restore; ref-guarded, cannot cascade
+    if (last) handleFileSelect(last);
+  }, [projectId, handleFileSelect]);
 
   // Reload current file when selectedPath changes — but not when handleFileSelect
   // set it, since that already fetched the content. Renames (which set selectedPath
@@ -1722,31 +1709,6 @@ const Example = () => {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot mount banner
     setTerminalOutput(`${mockTerminalLines.join("\n")}\n`);
-
-    const enforceMobileSinglePanel = () => {
-      if (typeof window !== "undefined" && window.innerWidth < 1024) {
-        const codePanel = codePanelRef.current;
-        const pdfPanel = pdfPanelRef.current;
-        if (codePanel && pdfPanel) {
-          const isCodeOpen = !codePanel.isCollapsed();
-          const isPdfOpen = !pdfPanel.isCollapsed();
-          // On mobile/tablet screens (< 1024px), never allow 50/50 split. Collapse PDF so Code is 100% full width by default.
-          if (isCodeOpen && isPdfOpen) {
-            pdfPanel.collapse();
-            codePanel.expand();
-          } else if (!isCodeOpen && !isPdfOpen) {
-            codePanel.expand();
-          }
-        }
-      }
-    };
-
-    const timer = setTimeout(enforceMobileSinglePanel, 150);
-    window.addEventListener("resize", enforceMobileSinglePanel);
-    return () => {
-      clearTimeout(timer);
-      window.removeEventListener("resize", enforceMobileSinglePanel);
-    };
   }, []);
 
   const handleChatTextChange = useCallback(
@@ -1796,44 +1758,44 @@ const Example = () => {
   return (
     <div className="relative flex flex-col h-screen w-screen bg-background overflow-hidden">
       {/* Top Header */}
-      <header className="flex items-center justify-between border-b px-2.5 sm:px-4 h-14 bg-background z-30 shrink-0 gap-2">
-        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-          <div className="flex items-center gap-2 shrink-0" aria-label="SomeScript Editor">
+      <header className="flex items-center justify-between border-b px-4 h-14 bg-background z-30">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5 shrink-0" aria-label="SomeScript Editor">
             <Image
               src="/icon.svg"
               alt=""
               width={28}
               height={28}
-              className="size-7 shrink-0"
+              className="size-7"
               priority
             />
-            <div className="hidden lg:flex items-baseline gap-1.5 leading-none shrink-0">
+            <div className="hidden sm:flex items-baseline gap-1.5 leading-none">
               <span className="text-sm font-semibold tracking-tight text-foreground">SomeScript</span>
               <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Editor</span>
             </div>
           </div>
-          <div className="h-4 w-px bg-border hidden sm:block shrink-0" />
+          <div className="h-4 w-px bg-border" />
           <a
             href={dashboardUrl}
-            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground rounded-md border bg-muted/10 hover:bg-muted/30 transition-all cursor-pointer shrink-0"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground rounded-md border bg-muted/10 hover:bg-muted/30 transition-all cursor-pointer"
           >
             <ArrowLeft className="size-3.5" />
-            <span className="hidden sm:inline">Dashboard</span>
+            <span>Dashboard</span>
           </a>
-          <div className="h-4 w-px bg-border hidden md:block shrink-0" />
-          <nav className="hidden md:flex items-center gap-1.5 sm:gap-2 text-sm text-muted-foreground min-w-0">
-            <Home className="size-3.5 text-muted-foreground/80 shrink-0" />
-            <ChevronRight className="size-3 text-muted-foreground/50 shrink-0" />
-            <span className="font-semibold text-foreground bg-muted/40 px-2 py-0.5 rounded text-xs truncate max-w-[100px] lg:max-w-[160px]">
+          <div className="h-4 w-px bg-border" />
+          <nav className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Home className="size-4 text-muted-foreground/80" />
+            <ChevronRight className="size-3.5 text-muted-foreground/50" />
+            <span className="font-semibold text-foreground bg-muted/40 px-2 py-0.5 rounded text-xs">
               {projectName}
             </span>
             {selectedPath && (
               <>
-                <ChevronRight className="size-3 text-muted-foreground/50 shrink-0" />
-                <span className="font-mono text-xs text-foreground bg-muted/10 px-2 py-0.5 rounded font-medium truncate max-w-[120px] lg:max-w-[180px]">
+                <ChevronRight className="size-3.5 text-muted-foreground/50" />
+                <span className="font-mono text-xs text-foreground bg-muted/10 px-2 py-0.5 rounded font-medium">
                   {selectedPath}
                 </span>
-                <span className="flex items-center gap-1.5 text-[10px] text-muted-foreground px-2 py-0.5 rounded bg-muted/40 font-medium shrink-0">
+                <span className="flex items-center gap-1.5 text-[10px] text-muted-foreground px-2 py-0.5 rounded bg-muted/40 font-medium">
                   {saveStatus === "saving" && (
                     <>
                       <Loader2 className="size-3 animate-spin text-amber-500" />
@@ -1859,25 +1821,22 @@ const Example = () => {
         </div>
 
         {/* Top Header Right Controls */}
-        <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+        <div className="flex items-center gap-3">
           {/* Compile Button — current file first, falls back to the project's main file */}
           {getTexFiles(fileTree).length > 0 && (
             <button
               onClick={handleCompileLatex}
               disabled={isCompiling}
               title="Compiles the open file; falls back to the project's main file if it can't compile alone"
-              className="rounded-md border bg-muted/20 hover:bg-muted text-muted-foreground/80 hover:text-foreground px-2.5 sm:px-3 h-[36px] text-xs font-semibold cursor-pointer disabled:opacity-50 transition-colors flex items-center gap-1.5 shadow-xs shrink-0"
+              className="rounded-md border bg-muted/20 hover:bg-muted text-muted-foreground/80 hover:text-foreground px-3 h-[36px] text-xs font-semibold cursor-pointer disabled:opacity-50 transition-colors flex items-center gap-1.5 shadow-sm"
             >
               {isCompiling ? (
                 <>
-                  <Loader2 className="size-3.5 animate-spin text-primary" />
-                  <span className="hidden sm:inline">Compiling...</span>
+                  <Loader2 className="size-3 animate-spin" />
+                  <span>Compiling...</span>
                 </>
               ) : (
-                <>
-                  <Play className="size-3.5 text-emerald-500 fill-emerald-500" />
-                  <span className="hidden sm:inline">Compile</span>
-                </>
+                <span>Compile</span>
               )}
             </button>
           )}
@@ -1886,16 +1845,16 @@ const Example = () => {
           {pdfUrl && (
             <button
               onClick={handleDownloadPdf}
-              className="rounded-md border bg-emerald-500/10 border-emerald-500/20 hover:bg-emerald-500/25 text-emerald-600 dark:text-emerald-400 px-2.5 sm:px-3 h-[36px] text-xs font-semibold cursor-pointer transition-colors flex items-center gap-1.5 shadow-xs shrink-0"
+              className="rounded-md border bg-emerald-500/10 border-emerald-500/20 hover:bg-emerald-500/25 text-emerald-600 dark:text-emerald-400 px-3 h-[36px] text-xs font-semibold cursor-pointer transition-colors flex items-center gap-1.5 shadow-sm"
               title="Download compiled PDF"
             >
               <Download className="size-3.5" />
-              <span className="hidden sm:inline">PDF</span>
+              <span>Download PDF</span>
             </button>
           )}
 
           {/* VS Code Style Layout Toggles */}
-          <div className="flex items-center gap-0.5 sm:gap-1 border rounded-md p-0.5 bg-muted/20 shrink-0">
+          <div className="flex items-center gap-1 border rounded-md p-0.5 bg-muted/20">
             <button
               onClick={() => setIsLeftSidebarOpen((prev) => !prev)}
               className={cn(
@@ -1929,22 +1888,13 @@ const Example = () => {
             </button>
             <button
               onClick={() => {
-                const pdfPanel = pdfPanelRef.current;
-                const codePanel = codePanelRef.current;
-                if (pdfPanel) {
+                const panel = pdfPanelRef.current;
+                if (panel) {
                   setIsAnimatingPdf(true);
-                  if (pdfPanel.isCollapsed()) {
-                    pdfPanel.expand();
-                    // On mobile screens (< 1024px), collapse Code panel so PDF preview takes full size (100% width)
-                    if (typeof window !== "undefined" && window.innerWidth < 1024 && codePanel) {
-                      codePanel.collapse();
-                    }
+                  if (panel.isCollapsed()) {
+                    panel.expand();
                   } else {
-                    pdfPanel.collapse();
-                    // On mobile screens (< 1024px), expand Code panel back to full size (100% width) when hiding PDF
-                    if (typeof window !== "undefined" && window.innerWidth < 1024 && codePanel && codePanel.isCollapsed()) {
-                      codePanel.expand();
-                    }
+                    panel.collapse();
                   }
                   setTimeout(() => setIsAnimatingPdf(false), 300);
                 }
@@ -1971,19 +1921,19 @@ const Example = () => {
       <div className="relative flex flex-1 w-full overflow-hidden">
         {/* Backdrops for mobile view */}
         {isLeftSidebarOpen && (
-          <div
-            onClick={() => setIsLeftSidebarOpen(false)}
-            className="lg:hidden absolute inset-0 z-30 bg-black/50 backdrop-blur-xs transition-opacity"
-          />
-        )}
-
-        {/* Left Sidebar - File Tree & AI Chat Tabs */}
         <div
-          className={cn(
-            "flex flex-col border-r transition-all duration-300 ease-in-out overflow-hidden bg-background lg:static absolute top-0 bottom-0 left-0 z-40 shadow-2xl lg:shadow-none",
-            isLeftSidebarOpen ? "w-80 max-w-[85vw]" : "w-0 border-r-0"
-          )}
-        >
+          onClick={() => setIsLeftSidebarOpen(false)}
+          className="lg:hidden absolute inset-0 z-10 bg-background/80 backdrop-blur-sm"
+        />
+      )}
+
+      {/* Left Sidebar - File Tree & AI Chat Tabs */}
+      <div
+        className={cn(
+          "flex flex-col border-r transition-all duration-300 ease-in-out overflow-hidden z-20 bg-background lg:static absolute top-0 bottom-0 left-0 shadow-lg lg:shadow-none",
+          isLeftSidebarOpen ? "w-80" : "w-0 border-r-0"
+        )}
+      >
         {/* Tabs header — WAI-ARIA tabs: roving tabIndex, arrow-key navigation,
             and each panel below wired up via aria-controls/aria-labelledby. */}
         <div
@@ -2389,7 +2339,7 @@ const Example = () => {
                 id="code"
                 panelRef={codePanelRef}
                 collapsible
-                collapsedSize={0}
+                collapsedSize={2}
                 defaultSize={50}
                 minSize={20}
                 onResize={(size) => {
@@ -2398,22 +2348,6 @@ const Example = () => {
                 className={cn(isAnimatingPdf && "panel-transition")}
               >
                 <div className="h-full relative flex flex-col min-w-0">
-                  {isCodeCollapsed && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsAnimatingPdf(true);
-                        codePanelRef.current?.expand();
-                        setTimeout(() => setIsAnimatingPdf(false), 300);
-                      }}
-                      className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-2 bg-background/95 p-4 text-center cursor-pointer border-r border-border hover:bg-muted/20 transition-colors"
-                      title="Click to restore Code Editor"
-                    >
-                      <Play className="size-6 text-primary animate-pulse" />
-                      <span className="text-sm font-semibold text-foreground">Code Editor is Hidden</span>
-                      <span className="text-xs text-muted-foreground bg-muted px-2.5 py-1 rounded-md border">Click anywhere to open Code Editor</span>
-                    </button>
-                  )}
                   {selectedPath && viewMode === "code" && (
                     <EditorToolbar
                       onInsert={handleInsertText}
@@ -2533,23 +2467,8 @@ const Example = () => {
                         </ContextMenuContent>
                       </ContextMenu>
                     ) : (
-                      <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground text-sm font-mono bg-background p-4 text-center select-none">
-                        <FileText className="size-8 opacity-40 text-primary" />
-                        <span className="opacity-80 font-medium text-foreground text-xs">No file selected</span>
-                        {fileTree.length > 0 && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const texFiles = getTexFiles(fileTree);
-                              const mainPath = texFiles.find((p) => p === "main.tex" || p.endsWith("/main.tex"));
-                              const first = mainPath || texFiles[0] || null;
-                              if (first) handleFileSelect(first);
-                            }}
-                            className="px-3 py-1.5 rounded-md border border-border bg-muted/40 hover:bg-muted text-xs font-semibold text-foreground transition-colors cursor-pointer"
-                          >
-                            Open project file
-                          </button>
-                        )}
+                      <div className="flex items-center justify-center h-full text-muted-foreground text-sm font-mono bg-background">
+                        {"// Select a file from the sidebar to edit"}
                       </div>
                     )}
                   </div>
@@ -2559,7 +2478,6 @@ const Example = () => {
               <ResizableHandle
                 onDoubleClick={handlePdfDoubleClick}
                 className={cn(
-                  "hidden lg:flex",
                   (isPdfCollapsed || isCodeCollapsed) && "cursor-pointer"
                 )}
               />
