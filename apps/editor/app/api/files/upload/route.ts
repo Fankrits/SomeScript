@@ -14,12 +14,14 @@ export async function POST(req: NextRequest) {
 
     if (files.length === 0) throw new ApiError(400, "No files provided");
 
+    const oversized = files.find((file) => file.size > MAX_UPLOAD_BYTES);
+    if (oversized) throw new ApiError(413, `"${oversized.name}" is too large`);
+
     const tree = await storage.listProjectFiles(projectId);
     const existingPaths = flattenFilePaths(tree);
 
     const saved: string[] = [];
     for (const file of files) {
-      if (file.size > MAX_UPLOAD_BYTES) throw new ApiError(413, `"${file.name}" is too large`);
       const destPath = dedupeUploadName(existingPaths, targetDir, file.name);
       existingPaths.add(destPath);
       const buffer = Buffer.from(await file.arrayBuffer());
