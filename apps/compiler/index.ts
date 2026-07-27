@@ -20,6 +20,14 @@ if (!COMPILER_SECRET) {
   console.warn("[SECURITY] COMPILER_SECRET is not set — compiler accepts unauthenticated requests. Set it in production.");
 }
 
+// In-memory cache for compiled PDF output by project payload hash
+interface CachedCompileResult {
+  logs: string;
+  pdf: string;
+}
+const outputCache = new Map<string, CachedCompileResult>();
+const MAX_OUTPUT_CACHE_SIZE = 100;
+
 // Helper to safely write uploaded files to a directory
 async function writeFiles(baseDir: string, files: { path: string; content: string }[]) {
   for (const file of files) {
@@ -224,12 +232,12 @@ const server = Bun.serve({
 
           (async () => {
             try {
-              const flags = ["-C", "--synctex", resolvedTexPath];
+              const flags = ["-C", "-c", "--synctex", resolvedTexPath];
 
               let code = await runTectonic(flags);
               if (code !== 0) {
                 writer.write(encoder.encode(`\n[INFO] Cached compilation failed. Retrying with remote package fetching...\n`));
-                code = await runTectonic(["--synctex", resolvedTexPath]);
+                code = await runTectonic(["-c", "--synctex", resolvedTexPath]);
               }
 
               if (code === 0) {
@@ -257,6 +265,16 @@ const server = Bun.serve({
         if (mode === "upload") {
           if (!projectId || !fileRelativePath) {
             return Response.json({ error: "Missing projectId or fileRelativePath for upload mode" }, { status: 400 });
+          }
+
+          // Return instantly if identical payload hash was compiled before
+          if (projectHash && outputCache.has(projectHash)) {
+            const cached = outputCache.get(projectHash)!;
+            return Response.json({
+              success: true,
+              logs: cached.logs + "\n[INFO] Returned from output cache (0ms)\n",
+              pdf: cached.pdf,
+            });
           }
 
           const workspacesDir = path.resolve(process.cwd(), "workspaces");
@@ -355,27 +373,40 @@ const server = Bun.serve({
               });
             });
           };
- 
-          const flags = ["-C", "--synctex", resolvedTexPath];
+
+          const flags = ["-C", "-c", "--synctex", resolvedTexPath];
 
           let code = await runTectonicUpload(flags);
           if (code !== 0) {
             logs += `\n[INFO] Cached compilation failed or package missing. Retrying with remote package fetching...\n`;
-            code = await runTectonicUpload(["--synctex", resolvedTexPath]);
+            code = await runTectonicUpload(["-c", "--synctex", resolvedTexPath]);
           }
- 
+
           if (code === 0) {
             const pdfRelativePath = fileRelativePath.replace(/\.tex$/, ".pdf");
             const pdfAbsolutePath = path.resolve(projectDir, pdfRelativePath);
             const pdfBuffer = await fs.readFile(pdfAbsolutePath);
             const pdfBase64 = pdfBuffer.toString("base64");
- 
+
+            const finalLogs = logs + `\n[SUCCESS] ${pdfRelativePath}\n`;
+
+            if (projectHash) {
+              if (outputCache.size >= MAX_OUTPUT_CACHE_SIZE) {
+                const oldestKey = outputCache.keys().next().value;
+                if (oldestKey !== undefined) outputCache.delete(oldestKey);
+              }
+              outputCache.set(projectHash, {
+                logs: finalLogs,
+                pdf: pdfBase64,
+              });
+            }
+
             const responseObj = {
               success: true,
-              logs: logs + `\n[SUCCESS] ${pdfRelativePath}\n`,
+              logs: finalLogs,
               pdf: pdfBase64,
             };
- 
+
             return Response.json(responseObj);
           } else {
             return Response.json({
