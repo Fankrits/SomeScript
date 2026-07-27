@@ -680,7 +680,11 @@ const Example = () => {
     if (typeof window === "undefined") return;
     const savedSidebar = localStorage.getItem("somescript-sidebar-open");
     // eslint-disable-next-line react-hooks/set-state-in-effect -- SSR-safe: hydrate layout from localStorage after mount
-    if (savedSidebar !== null) setIsLeftSidebarOpen(savedSidebar === "true");
+    if (savedSidebar !== null) {
+      setIsLeftSidebarOpen(savedSidebar === "true");
+    } else if (window.innerWidth < 1024) {
+      setIsLeftSidebarOpen(false);
+    }
     setMounted(true);
   }, []);
 
