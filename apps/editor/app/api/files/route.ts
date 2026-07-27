@@ -21,6 +21,18 @@ export async function GET(req: NextRequest) {
       const ext = filePath.includes(".") ? `.${filePath.split(".").pop()!.toLowerCase()}` : "";
       const imageMime = IMAGE_MIME[ext];
 
+      if (searchParams.get("download") === "1") {
+        const buffer = await storage.readBinaryFile(projectId, filePath);
+        const filename = filePath.split("/").pop() || filePath;
+        return new Response(new Uint8Array(buffer), {
+          headers: {
+            "Content-Type": filePath.endsWith(".pdf") ? "application/pdf" : imageMime || "application/octet-stream",
+            "Content-Disposition": `attachment; filename="${filename}"`,
+            "Content-Length": buffer.length.toString(),
+          },
+        });
+      }
+
       if (filePath.endsWith(".pdf")) {
         const buffer = await storage.readBinaryFile(projectId, filePath);
         return new Response(new Uint8Array(buffer), {
@@ -87,6 +99,14 @@ export async function POST(req: NextRequest) {
 
     if (body.action === "move") {
       await storage.move(projectId, body.oldPath, body.newPath);
+      return Response.json({ success: true });
+    }
+
+    if (body.action === "copy") {
+      if (typeof body.path !== "string" || typeof body.newPath !== "string") {
+        throw new ApiError(400, "Missing path or newPath");
+      }
+      await storage.copy(projectId, body.path, body.newPath);
       return Response.json({ success: true });
     }
 
