@@ -2,7 +2,7 @@
 
 import { useRef, useEffect, useCallback, useState, type ReactNode, type CSSProperties } from "react";
 import { gsap } from "gsap";
-import { CheckCircle2, Sparkles, Copy, ThumbsUp, ArrowUp, Bot } from "lucide-react";
+import { CheckCircle2, Sparkles, Copy, ThumbsUp, ArrowUp, Bot, Building2, ChevronDown } from "lucide-react";
 import { LiquidGlassCard } from "@/components/kokonutui/liquid-glass-card";
 import { Avatar, AvatarImage, AvatarFallback, AvatarGroup, AvatarGroupCount, AvatarBadge } from "@/components/ui/avatar";
 import "./magic-bento.css";
@@ -40,6 +40,11 @@ const cardData: BentoCard[] = [
     title: "Real-Time Co-Authoring",
     description:
       "Edit LaTeX documents simultaneously with co-authors and AI agents with live presence and multi-cursor sync.",
+  },
+  {
+    label: "Task Management",
+    title: "Kanban Tasks",
+    description: "Organize your workflow with drag-and-drop kanban boards to track progress and sync with collaborators.",
   },
 ];
 
@@ -694,38 +699,66 @@ const RealtimeCollaborateCard = () => (
 );
 
 const WorkspaceCardVisual = () => (
-  <div className="w-full flex flex-col items-start gap-1.5 select-none">
-    <div className="flex items-center justify-between w-full font-mono text-[9.5px] text-muted-foreground">
-      <span>Team Members</span>
+  <div className="relative w-full h-[200px] sm:h-[210px] rounded-xl bg-gradient-to-b from-muted/30 to-muted/10 border border-border/40 p-3.5 flex flex-col justify-between overflow-hidden select-none">
+    {/* Subtle background grid pattern */}
+    <div className="absolute inset-0 bg-[radial-gradient(#1c2e36_1px,transparent_1px)] [background-size:12px_12px] opacity-[0.06]" />
+
+    {/* Header info */}
+    <div className="relative z-10 flex items-center justify-between w-full font-mono text-[9.5px] text-muted-foreground">
+      <span>Organization</span>
       <span className="text-[#1f9563] font-semibold flex items-center gap-1">
         <span className="h-1.5 w-1.5 rounded-full bg-[#1f9563] animate-pulse" />
-        +4 Online
+        Active Workspace
       </span>
     </div>
-    <AvatarGroup className="-space-x-2">
-      <Avatar size="sm" className="border-2 border-background shadow-xs">
-        <AvatarImage src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80" alt="Sarah" />
-        <AvatarFallback className="bg-[#0284c7] text-white text-[10px] font-bold">SK</AvatarFallback>
-        <AvatarBadge className="bg-[#1f9563]" />
-      </Avatar>
-      <Avatar size="sm" className="border-2 border-background shadow-xs">
-        <AvatarImage src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&auto=format&fit=crop&q=80" alt="John" />
-        <AvatarFallback className="bg-[#c026d3] text-white text-[10px] font-bold">JD</AvatarFallback>
-        <AvatarBadge className="bg-[#1f9563]" />
-      </Avatar>
-      <Avatar size="sm" className="border-2 border-background shadow-xs">
-        <AvatarImage src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&auto=format&fit=crop&q=80" alt="Alex" />
-        <AvatarFallback className="bg-[#18181b] text-white text-[10px] font-bold">AL</AvatarFallback>
-        <AvatarBadge className="bg-[#1f9563]" />
-      </Avatar>
-      <Avatar size="sm" className="border-2 border-background shadow-xs">
-        <AvatarImage src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&auto=format&fit=crop&q=80" alt="Michael" />
-        <AvatarFallback className="bg-[#dd7e21] text-white text-[10px] font-bold">MK</AvatarFallback>
-      </Avatar>
-      <AvatarGroupCount className="text-[10px] font-semibold bg-muted text-muted-foreground border-2 border-background">
-        +3
-      </AvatarGroupCount>
-    </AvatarGroup>
+
+    {/* Center Organization Card (matching user screenshot) */}
+    <div className="relative z-10 my-auto flex flex-col gap-1.5 w-full">
+      <div className="flex items-center justify-between w-full px-3.5 py-2.5 rounded-2xl bg-background border border-border/80 shadow-md shadow-black/5 hover:border-[#0f4c5c]/40 transition-all cursor-pointer">
+        <div className="flex items-center gap-3">
+          <div className="flex h-8.5 w-8.5 items-center justify-center rounded-xl bg-gradient-to-br from-[#0f4c5c] to-[#135d70] text-white shadow-xs">
+            <Building2 className="h-4.5 w-4.5" />
+          </div>
+          <div className="flex flex-col text-left">
+            <span className="font-semibold text-[13.5px] text-foreground tracking-tight leading-tight">My Organize</span>
+            <span className="text-[9.5px] text-muted-foreground font-medium">Enterprise Team</span>
+          </div>
+        </div>
+        <div className="flex items-center gap-1.5 text-muted-foreground">
+          <span className="flex h-2 w-2 rounded-full bg-[#1f9563]" />
+          <ChevronDown className="h-4 w-4" />
+        </div>
+      </div>
+    </div>
+
+    {/* Team Avatars Footer */}
+    <div className="relative z-10 flex items-center justify-between pt-2 border-t border-border/30">
+      <span className="text-[10px] font-medium text-muted-foreground font-mono">Team Members</span>
+      <AvatarGroup className="-space-x-2">
+        <Avatar size="sm" className="border-2 border-background shadow-xs">
+          <AvatarImage src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80" alt="Sarah" />
+          <AvatarFallback className="bg-[#0284c7] text-white text-[10px] font-bold">SK</AvatarFallback>
+          <AvatarBadge className="bg-[#1f9563]" />
+        </Avatar>
+        <Avatar size="sm" className="border-2 border-background shadow-xs">
+          <AvatarImage src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&auto=format&fit=crop&q=80" alt="John" />
+          <AvatarFallback className="bg-[#c026d3] text-white text-[10px] font-bold">JD</AvatarFallback>
+          <AvatarBadge className="bg-[#1f9563]" />
+        </Avatar>
+        <Avatar size="sm" className="border-2 border-background shadow-xs">
+          <AvatarImage src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&auto=format&fit=crop&q=80" alt="Alex" />
+          <AvatarFallback className="bg-[#18181b] text-white text-[10px] font-bold">AL</AvatarFallback>
+          <AvatarBadge className="bg-[#1f9563]" />
+        </Avatar>
+        <Avatar size="sm" className="border-2 border-background shadow-xs">
+          <AvatarImage src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&auto=format&fit=crop&q=80" alt="Michael" />
+          <AvatarFallback className="bg-[#dd7e21] text-white text-[10px] font-bold">MK</AvatarFallback>
+        </Avatar>
+        <AvatarGroupCount className="text-[10px] font-semibold bg-muted text-muted-foreground border-2 border-background">
+          +3
+        </AvatarGroupCount>
+      </AvatarGroup>
+    </div>
   </div>
 );
 
@@ -841,6 +874,95 @@ const DebugTerminalCardVisual = () => {
   );
 };
 
+const KanbanCardVisual = () => (
+  <div className="relative w-full h-[200px] sm:h-[210px] flex flex-col gap-2 select-none p-3 rounded-xl bg-gradient-to-b from-muted/30 to-muted/10 border border-border/40 overflow-hidden text-left font-sans">
+    {/* Background Grid Pattern */}
+    <div className="absolute inset-0 bg-[radial-gradient(#1c2e36_1px,transparent_1px)] [background-size:12px_12px] opacity-[0.06]" />
+
+    {/* Vertical Kanban Header / Sections */}
+    <div className="relative z-10 flex flex-col gap-1.5 h-full justify-between">
+      {/* TO DO SECTION */}
+      <div className="flex flex-col gap-1">
+        <div className="flex items-center justify-between text-[9px] font-bold uppercase tracking-wider text-muted-foreground/80">
+          <div className="flex items-center gap-1">
+            <span className="text-muted-foreground/60 text-[8px]">▼</span>
+            <span>TO DO</span>
+          </div>
+          <span className="bg-red-500/10 text-red-600 dark:text-red-400 font-bold px-1.5 py-0.2 rounded-full text-[8.5px]">
+            2
+          </span>
+        </div>
+
+        <div className="flex flex-col gap-1 pl-2">
+          <div className="bg-background border border-border/40 border-l-4 border-l-red-500 rounded-md p-1.5 shadow-xs text-[9.5px] flex items-center justify-between">
+            <span className="font-medium text-foreground/90 truncate">Write abstract</span>
+            <span className="text-[8px] text-muted-foreground font-mono shrink-0 ml-1">2h</span>
+          </div>
+
+          {/* Animated Drag Card */}
+          <div className="bento-kanban-card-animated bg-background border border-border/50 border-l-4 border-l-red-500 rounded-md p-1.5 shadow-sm text-[9.5px] flex items-center justify-between relative cursor-grab">
+            <span className="font-medium text-foreground truncate">Format citations</span>
+            <span className="text-[7.5px] px-1 py-0.5 rounded bg-muted text-muted-foreground font-mono shrink-0 ml-1">LaTeX</span>
+          </div>
+        </div>
+      </div>
+
+      {/* ON GOING SECTION */}
+      <div className="flex flex-col gap-1">
+        <div className="flex items-center justify-between text-[9px] font-bold uppercase tracking-wider text-muted-foreground/80">
+          <div className="flex items-center gap-1">
+            <span className="text-muted-foreground/60 text-[8px]">▼</span>
+            <span>ON GOING</span>
+          </div>
+          <span className="bg-orange-500/10 text-orange-600 dark:text-orange-400 font-bold px-1.5 py-0.2 rounded-full text-[8.5px]">
+            1
+          </span>
+        </div>
+
+        <div className="flex flex-col gap-1 pl-2">
+          {/* Animated drop target slot */}
+          <div className="h-[28px] border border-dashed border-orange-500/40 rounded-md bg-orange-500/5 bento-kanban-drop-slot flex items-center px-2 text-[8px] text-orange-600/70 font-medium">
+            <span>Drop task here...</span>
+          </div>
+        </div>
+      </div>
+
+      {/* FINISHED SECTION */}
+      <div className="flex flex-col gap-1">
+        <div className="flex items-center justify-between text-[9px] font-bold uppercase tracking-wider text-muted-foreground/80">
+          <div className="flex items-center gap-1">
+            <span className="text-muted-foreground/60 text-[8px]">▼</span>
+            <span>FINISHED</span>
+          </div>
+          <span className="bg-green-500/10 text-green-600 dark:text-green-400 font-bold px-1.5 py-0.2 rounded-full text-[8.5px]">
+            2
+          </span>
+        </div>
+
+        <div className="flex flex-col gap-1 pl-2">
+          <div className="bg-background border border-border/40 border-l-4 border-l-green-500 rounded-md p-1.5 shadow-xs text-[9.5px] flex items-center justify-between">
+            <span className="font-medium text-foreground/90 truncate">Revise Chapter 2</span>
+            <span className="text-[8px] text-muted-foreground font-mono shrink-0 ml-1">Done</span>
+          </div>
+          <div className="bg-background border border-border/40 border-l-4 border-l-green-500 rounded-md p-1.5 shadow-xs text-[9.5px] flex items-center justify-between opacity-70">
+            <span className="font-medium text-muted-foreground line-through truncate">Setup project</span>
+            <span className="text-[8px] text-muted-foreground font-mono shrink-0 ml-1">Done</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {/* Animated Dragging Cursor */}
+    <div className="absolute top-0 left-0 pointer-events-none z-30 bento-kanban-cursor-animated">
+      <div className="flex items-start gap-1">
+        <svg className="w-4 h-4 text-[#0f4c5c] drop-shadow-md" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 0 1 .35-.15h6.87c.45 0 .67-.54.35-.85L5.5 3.21z" />
+        </svg>
+      </div>
+    </div>
+  </div>
+);
+
 const CardVisual = ({ index }: { index: number }) => {
   switch (index) {
     case 0: // AI Co-Author Chat — visual AI chat card
@@ -851,6 +973,8 @@ const CardVisual = ({ index }: { index: number }) => {
       return <DebugTerminalCardVisual />;
     case 3: // Real-Time Co-Authoring — live collaboration windows & multi-cursors
       return <RealtimeCollaborateCard />;
+    case 4: // Kanban Tasks — kanban drag & drop feature
+      return <KanbanCardVisual />;
     default:
       return null;
   }
