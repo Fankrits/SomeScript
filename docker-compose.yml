@@ -48,6 +48,11 @@ services:
 
 
   compiler:
+    # Tectonic publishes no aarch64-linux-gnu build, and only the gnu build has
+    # working ICU (see apps/compiler/Dockerfile). Pinning to amd64 keeps Apple
+    # Silicon dev identical to production (Railway is amd64) instead of silently
+    # losing Thai/Lao/Khmer/CJK line breaking locally; the cost is emulation here.
+    platform: linux/amd64
     build:
       context: ./apps/compiler
       dockerfile: Dockerfile
