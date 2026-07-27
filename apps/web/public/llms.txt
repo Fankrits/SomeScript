@@ -1,0 +1,17 @@
+# SomeScript - Visual LaTeX Editor & AI Writing Suite
+
+> SomeScript is a modern visual LaTeX editor powered by AI (Eve assistant) and the Tectonic compilation engine.
+
+## Overview
+SomeScript combines a rich CodeMirror-based LaTeX editor with real-time PDF preview powered by `@embedpdf/react-pdf-viewer`, bidirectional SyncTeX navigation, and embedded AI collaboration tools.
+
+## Key Features
+- **Visual LaTeX Editing**: Syntax highlighting, autocompletion, and live rendering.
+- **Tectonic Compiler**: Fast, on-demand package downloading and compilation without full TeX Live setup.
+- **SyncTeX Integration**: Instant jump between editor code lines and compiled PDF positions.
+- **Eve AI Writing Assistant**: Embedded AI workspace for drafting, proofreading, and generating LaTeX structures.
+- **Monorepo Architecture**: Clean separation between landing site, compiler service, editor core, and documentation.
+
+## Links
+- Website: https://somescript.com
+- Documentation: https://docs.somescript.com

@@ -1,0 +1,14 @@
+# SomeScript Documentation
+
+> Documentation and technical guides for SomeScript - the AI-powered visual LaTeX editor.
+
+## Documentation Topics
+- Quickstart & Introduction to SomeScript
+- Monorepo & System Architecture
+- Eve AI Writing Assistant Integration
+- SyncTeX Bidirectional Navigation
+- Tectonic Compiler Setup and Capabilities
+
+## Site Map
+- Documentation Root: https://docs.somescript.com/
+- Main Application: https://somescript.com/
