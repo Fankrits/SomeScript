@@ -1,4 +1,4 @@
-import { storage } from "@/lib/storage";
+import { storage, isBinaryContent } from "@/lib/storage";
 import { requireProject, apiError, ApiError } from "@/lib/authz";
 import { NextRequest } from "next/server";
 
@@ -43,8 +43,13 @@ export async function GET(req: NextRequest) {
         });
       }
 
-      const content = await storage.readFile(projectId, filePath);
-      return Response.json({ content });
+      // Not a recognized image/PDF extension — could still be an unlisted binary
+      // format (docx, fonts, archives, ...); don't force-decode those as UTF-8.
+      const buffer = await storage.readBinaryFile(projectId, filePath);
+      if (isBinaryContent(buffer)) {
+        return Response.json({ unsupported: true });
+      }
+      return Response.json({ content: buffer.toString("utf-8") });
     }
 
     const tree = await storage.listProjectFiles(projectId);

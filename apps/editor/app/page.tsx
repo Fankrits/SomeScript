@@ -510,7 +510,8 @@ const Example = () => {
   const [isCompiling, setIsCompiling] = useState<boolean>(false);
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "unsaved" | "idle">("idle");
   // View mode: "code" for text | "image" for images | "pdf-standalone" for PDFs opened from tree
-  const [viewMode, setViewMode] = useState<"code" | "image" | "pdf-standalone">("code");
+  // | "unsupported" for binary files with no preview (set once /api/files sniffs the content)
+  const [viewMode, setViewMode] = useState<"code" | "image" | "pdf-standalone" | "unsupported">("code");
 
   // Terminal state
   const [terminalOutput, setTerminalOutput] = useState<string>("");
@@ -1176,6 +1177,14 @@ const Example = () => {
       // Selection moved again while this was in flight (rapid A→B clicks) —
       // drop the stale body or B's editor would show A's content.
       if (stateRef.current.selectedPath !== path) return;
+      if (data.unsupported) {
+        loadedPathRef.current = path;
+        setViewMode("unsupported");
+        setCurrentCode("");
+        setEditedCode("");
+        setSaveStatus("saved");
+        return;
+      }
       if (data.content !== undefined) {
         loadedPathRef.current = path;
         setCurrentCode(data.content);
@@ -2210,6 +2219,10 @@ const Example = () => {
                     ) : selectedPath && viewMode === "pdf-standalone" ? (
                       <div className="flex items-center justify-center h-full text-muted-foreground text-sm font-mono bg-background">
                         <span className="opacity-60">PDF displayed in preview pane →</span>
+                      </div>
+                    ) : selectedPath && viewMode === "unsupported" ? (
+                      <div className="flex items-center justify-center h-full text-muted-foreground text-sm font-mono bg-background">
+                        <span className="opacity-60">Preview is not available for this file type</span>
                       </div>
                     ) : selectedPath && viewMode === "code" ? (
                       <ContextMenu

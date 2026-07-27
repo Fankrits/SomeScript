@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { LocalStorageProvider } from "./storage";
+import { LocalStorageProvider, isBinaryContent } from "./storage";
 
 const p = new LocalStorageProvider();
 
@@ -20,4 +20,13 @@ test("normal relative paths are not flagged as traversal", async () => {
   } catch (e) {
     expect(e instanceof Error ? e.message : String(e)).not.toContain("Directory traversal");
   }
+});
+
+test("isBinaryContent flags a NUL byte", () => {
+  expect(isBinaryContent(Buffer.from([0x48, 0x69, 0x00, 0x21]))).toBe(true);
+});
+
+test("isBinaryContent treats plain text and empty buffers as text", () => {
+  expect(isBinaryContent(Buffer.from("Hello, world! éè", "utf-8"))).toBe(false);
+  expect(isBinaryContent(Buffer.alloc(0))).toBe(false);
 });

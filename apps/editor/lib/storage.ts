@@ -23,7 +23,15 @@ export interface StorageProvider {
 // Directories hidden from the file tree, code search, and zip export — checked as
 // a path *segment* (not just a basename) so both the local walker and the S3 key
 // lister exclude the same things.
-const EXCLUDED = new Set(["node_modules", ".git", ".next", ".eve", ".workflow-data", ".somescript"]);
+const EXCLUDED = new Set(["node_modules", ".git", ".next", ".eve", ".workflow-data", ".somescript", ".preview-cache"]);
+
+// Sniffs binary content via a NUL byte in the first 8KB (the same heuristic
+// git/grep -I use) instead of assuming everything is UTF-8 text — force-decoding
+// arbitrary binary bytes as UTF-8 silently mangles them, and re-saving that
+// mangled string overwrites the original file with corrupted bytes.
+export function isBinaryContent(buffer: Buffer): boolean {
+  return buffer.subarray(0, Math.min(buffer.length, 8000)).includes(0);
+}
 
 // -------------------------------------------------------------
 // 1. Local File System Storage Provider
@@ -92,9 +100,15 @@ export class LocalStorageProvider implements StorageProvider {
     const scan = async (dir: string, relativeRoot = ""): Promise<FileNode[]> => {
       const entries = await fs.readdir(dir, { withFileTypes: true });
       const nodes: FileNode[] = [];
+      // Hide a compiled main.pdf next to main.tex, but not a genuine PDF figure
+      // asset — those never share a same-directory basename with a .tex file.
+      const texBasenames = new Set(
+        entries.filter((e) => e.name.endsWith(".tex")).map((e) => e.name.slice(0, -4))
+      );
 
       for (const entry of entries) {
-        if (EXCLUDED.has(entry.name) || entry.name.endsWith(".pdf")) continue;
+        if (EXCLUDED.has(entry.name)) continue;
+        if (entry.name.endsWith(".pdf") && texBasenames.has(entry.name.slice(0, -4))) continue;
         const relPath = relativeRoot ? `${relativeRoot}/${entry.name}` : entry.name;
         const fullPath = path.join(dir, entry.name);
 
@@ -303,15 +317,25 @@ class S3StorageProvider implements StorageProvider {
 
     if (!response.Contents) return [];
 
+    // Hide a compiled main.pdf next to main.tex, but not a genuine PDF figure
+    // asset — those never share a directory + basename with a .tex file.
+    const texStems = new Set(
+      response.Contents
+        .map((o) => o.Key?.substring(prefix.length) ?? "")
+        .filter((p) => p.endsWith(".tex"))
+        .map((p) => p.slice(0, -4))
+    );
+
     const fileNodes: FileNode[] = [];
     const dirMap = new Map<string, FileNode>();
 
     for (const object of response.Contents) {
       if (!object.Key) continue;
-      
+
       // Get path relative to the project folder prefix
       const relativePath = object.Key.substring(prefix.length);
-      if (!relativePath || relativePath === ".keep" || relativePath.endsWith(".pdf")) continue;
+      if (!relativePath || relativePath === ".keep") continue;
+      if (relativePath.endsWith(".pdf") && texStems.has(relativePath.slice(0, -4))) continue;
       if (relativePath.split("/").some((s) => EXCLUDED.has(s))) continue;
 
       const parts = relativePath.split("/");
