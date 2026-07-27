@@ -90,6 +90,7 @@ import { CommandPalette } from "@/components/editor/command-palette";
 import { ImageViewer } from "@/components/editor/image-viewer";
 import { latex } from "codemirror-lang-latex";
 import { useCodeMirrorExtensions } from "@/hooks/use-codemirror-extensions";
+import { useIsMobile } from "@/hooks/use-mobile";
 import Image from "next/image";
 
 
@@ -860,6 +861,13 @@ const Example = () => {
   const [isAnimatingTerminal, setIsAnimatingTerminal] = useState<boolean>(false);
   const [isAnimatingPdf, setIsAnimatingPdf] = useState<boolean>(false);
 
+  // Mobile has no room for resizable split panes: below the mobile breakpoint, the
+  // center content renders exactly one of these full-screen instead, and the
+  // persisted resizable-panel layout (verticalLayout/horizontalLayout below) is
+  // never mounted, so it's never read from or written to localStorage.
+  const isMobile = useIsMobile();
+  const [mobileView, setMobileView] = useState<"code" | "pdf" | "terminal">("code");
+
   // CodeMirror instance & History States
   const editorViewRef = useRef<EditorView | null>(null);
   const [canUndo, setCanUndo] = useState<boolean>(false);
@@ -1159,10 +1167,11 @@ const Example = () => {
       loadedPathRef.current = path;
       setCurrentCode("");
       setEditedCode("");
-      // Expand PDF pane if it was collapsed
+      // Expand PDF pane if it was collapsed (desktop) / switch to it (mobile)
       if (pdfPanelRef.current?.isCollapsed()) {
         pdfPanelRef.current.expand();
       }
+      setMobileView("pdf");
       return;
     }
 
@@ -1251,10 +1260,12 @@ const Example = () => {
     const rel = toProjectRelative(filePath);
     setPendingLineJump({ path: rel, line });
     handleFileSelect(rel);
+    setMobileView("code");
   }, [handleFileSelect, toProjectRelative]);
 
   const handleSelectPdfPage = useCallback((page: number) => {
     if (pdfPanelRef.current?.isCollapsed()) pdfPanelRef.current.expand();
+    setMobileView("pdf");
     setPdfSyncRequest({ page, nonce: Date.now() });
   }, []);
 
@@ -1767,6 +1778,180 @@ const Example = () => {
 
   if (!mounted) return <EditorSkeleton />;
 
+  // Shared between the desktop resizable-panel layout and the mobile single-pane
+  // switcher below, so neither has to duplicate this JSX.
+  const codeEditorPane = (
+    <div className="h-full relative flex flex-col min-w-0">
+      {selectedPath && viewMode === "code" && (
+        <EditorToolbar
+          onInsert={handleInsertText}
+          onUndo={handleUndo}
+          onRedo={handleRedo}
+          canUndo={canUndo}
+          canRedo={canRedo}
+          tooltipsEnabled={true}
+          active={activeFormatKey}
+          onOpenPalette={() => setPaletteOpen(true)}
+        />
+      )}
+      <div className="flex-1 relative overflow-auto">
+        {selectedPath && viewMode === "image" ? (
+          <ImageViewer path={selectedPath} />
+        ) : selectedPath && viewMode === "pdf-standalone" ? (
+          <div className="flex items-center justify-center h-full text-muted-foreground text-sm font-mono bg-background">
+            <span className="opacity-60">PDF displayed in preview pane →</span>
+          </div>
+        ) : selectedPath && viewMode === "unsupported" ? (
+          <div className="flex items-center justify-center h-full text-muted-foreground text-sm font-mono bg-background">
+            <span className="opacity-60">Preview is not available for this file type</span>
+          </div>
+        ) : selectedPath && viewMode === "code" ? (
+          <ContextMenu
+            onOpenChange={(open) => {
+              if (open) {
+                setHasEditorSelection(
+                  !editorViewRef.current?.state.selection.main.empty
+                );
+              }
+            }}
+          >
+            {/* `select-text` undoes the trigger's default select-none,
+                which would otherwise make the editor unselectable. */}
+            <ContextMenuTrigger asChild className="select-text">
+              <div className="absolute inset-0" onDoubleClick={handleSyncToPdf}>
+                <CodeMirror
+                  value={editedCode}
+                  height="100%"
+                  theme="dark"
+                  extensions={extensions}
+                  basicSetup={{
+                    foldGutter: false,
+                    bracketMatching: false,
+                    autocompletion: false,
+                  }}
+                  onChange={(value) => setEditedCode(value)}
+                  onCreateEditor={(view) => {
+                    // eslint-disable-next-line react-hooks/immutability -- storing the imperative CodeMirror EditorView handle in a ref
+                    editorViewRef.current = view;
+                  }}
+                  onUpdate={handleUpdate}
+                  className="absolute inset-0 w-full h-full text-sm font-mono border-none focus:outline-none"
+                />
+              </div>
+            </ContextMenuTrigger>
+            {/* Focus is handed back to CodeMirror by each action, so
+                don't let the menu pull it onto the trigger on close. */}
+            <ContextMenuContent
+              className="w-56"
+              onCloseAutoFocus={(e) => e.preventDefault()}
+            >
+              <ContextMenuItem onClick={handleSendCodeToChat}>
+                <Sparkles className="size-3.5" />
+                {hasEditorSelection ? "Add selection to chat" : "Add file to chat"}
+              </ContextMenuItem>
+              <ContextMenuItem
+                disabled={!hasEditorSelection}
+                onClick={handleCreateTaskFromSelection}
+              >
+                <ListTodoIcon className="size-3.5" />
+                Create task from selection
+              </ContextMenuItem>
+              <ContextMenuItem onClick={handleSyncToPdf}>
+                <FileText className="size-3.5" />
+                Show in PDF
+              </ContextMenuItem>
+              <ContextMenuSeparator />
+              <ContextMenuItem
+                disabled={!hasEditorSelection}
+                onClick={() => handleClipboard(true)}
+              >
+                <Scissors className="size-3.5" />
+                Cut
+                <ContextMenuShortcut>⌘X</ContextMenuShortcut>
+              </ContextMenuItem>
+              <ContextMenuItem
+                disabled={!hasEditorSelection}
+                onClick={() => handleClipboard(false)}
+              >
+                <Copy className="size-3.5" />
+                Copy
+                <ContextMenuShortcut>⌘C</ContextMenuShortcut>
+              </ContextMenuItem>
+              <ContextMenuItem onClick={handlePasteFromClipboard}>
+                <ClipboardPaste className="size-3.5" />
+                Paste
+                <ContextMenuShortcut>⌘V</ContextMenuShortcut>
+              </ContextMenuItem>
+              <ContextMenuItem onClick={handleSelectAll}>
+                <TextCursor className="size-3.5" />
+                Select all
+                <ContextMenuShortcut>⌘A</ContextMenuShortcut>
+              </ContextMenuItem>
+              <ContextMenuSeparator />
+              <ContextMenuItem disabled={!canUndo} onClick={handleUndo}>
+                <Undo2 className="size-3.5" />
+                Undo
+                <ContextMenuShortcut>⌘Z</ContextMenuShortcut>
+              </ContextMenuItem>
+              <ContextMenuItem disabled={!canRedo} onClick={handleRedo}>
+                <Redo2 className="size-3.5" />
+                Redo
+                <ContextMenuShortcut>⇧⌘Z</ContextMenuShortcut>
+              </ContextMenuItem>
+            </ContextMenuContent>
+          </ContextMenu>
+        ) : (
+          <div className="flex items-center justify-center h-full text-muted-foreground text-sm font-mono bg-background">
+            {"// Select a file from the sidebar to edit"}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  const pdfPreviewPane = (
+    <div className="h-full flex flex-col bg-muted/5 min-w-0 pdf-viewer-workspace">
+      <div className="flex-1 relative overflow-hidden">
+        {pdfUrl ? (
+          <PdfPreview
+            pdfUrl={pdfUrl}
+            synctexQuery={synctexQuery}
+            selectedPath={toProjectRelative(selectedPath)}
+            pdfSyncRequest={pdfSyncRequest}
+            onSelectLine={handleSelectMatch}
+            onDownload={handleDownloadPdf}
+            onCreateTask={(text, page) => handleCreateTask(text, { page })}
+          />
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center text-xs font-mono text-muted-foreground">
+            {isCompiling ? "Compiling document..." : "Click Compile to generate PDF"}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  const terminalPane = (
+    <div className="relative h-full">
+      {terminalOutput && (
+        <button
+          onClick={handleSendTerminalToChat}
+          title="Send terminal output to Eve"
+          className="absolute right-3 top-2 z-10 flex items-center gap-1.5 rounded-md border border-zinc-700 bg-zinc-900/90 px-2 py-1 text-[11px] font-medium text-zinc-300 cursor-pointer transition-colors hover:bg-zinc-800 hover:text-zinc-100"
+        >
+          Send to chat
+        </button>
+      )}
+      <Terminal
+        className="h-full rounded-none border-0"
+        isStreaming={isTerminalStreaming}
+        output={terminalOutput}
+      >
+        <TerminalContent className="max-h-full" />
+      </Terminal>
+    </div>
+  );
+
   return (
     <div className="relative flex flex-col h-screen w-screen bg-background overflow-hidden">
       {/* Top Header */}
@@ -1883,6 +2068,10 @@ const Example = () => {
             </button>
              <button
               onClick={() => {
+                if (isMobile) {
+                  setMobileView((v) => (v === "terminal" ? "code" : "terminal"));
+                  return;
+                }
                 const panel = terminalPanelRef.current;
                 if (panel) {
                   setIsAnimatingTerminal(true);
@@ -1896,14 +2085,18 @@ const Example = () => {
               }}
               className={cn(
                 "p-1.5 rounded-sm hover:bg-muted cursor-pointer transition-colors",
-                !isTerminalCollapsed ? "text-foreground bg-muted/50" : "text-muted-foreground/60 hover:text-foreground"
+                (isMobile ? mobileView === "terminal" : !isTerminalCollapsed) ? "text-foreground bg-muted/50" : "text-muted-foreground/60 hover:text-foreground"
               )}
               title="Toggle Panel (Bottom Terminal)"
             >
-              <LayoutIconBottom active={!isTerminalCollapsed} />
+              <LayoutIconBottom active={isMobile ? mobileView === "terminal" : !isTerminalCollapsed} />
             </button>
             <button
               onClick={() => {
+                if (isMobile) {
+                  setMobileView((v) => (v === "pdf" ? "code" : "pdf"));
+                  return;
+                }
                 const panel = pdfPanelRef.current;
                 if (panel) {
                   setIsAnimatingPdf(true);
@@ -1917,11 +2110,11 @@ const Example = () => {
               }}
               className={cn(
                 "p-1.5 rounded-sm hover:bg-muted cursor-pointer transition-colors",
-                !isPdfCollapsed ? "text-foreground bg-muted/50" : "text-muted-foreground/60 hover:text-foreground"
+                (isMobile ? mobileView === "pdf" : !isPdfCollapsed) ? "text-foreground bg-muted/50" : "text-muted-foreground/60 hover:text-foreground"
               )}
               title="Toggle PDF Preview (Right Sidebar)"
             >
-              <LayoutIconRight active={!isPdfCollapsed} />
+              <LayoutIconRight active={isMobile ? mobileView === "pdf" : !isPdfCollapsed} />
             </button>
           </div>
         </div>
@@ -2332,249 +2525,102 @@ const Example = () => {
       </div>
 
       {/* Center Panel - Code + Terminal */}
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <ResizablePanelGroup
-          orientation="vertical"
-          defaultLayout={verticalLayout.defaultLayout}
-          onLayoutChanged={verticalLayout.onLayoutChanged}
-        >
-          <ResizablePanel
-            id="editor-main"
-            defaultSize={75}
-            minSize={30}
-            className={cn(isAnimatingTerminal && "panel-transition")}
+      {isMobile ? (
+        // Mobile: no room for a resizable split — exactly one pane fills the screen,
+        // switched via the header's terminal/PDF toggle buttons (see mobileView).
+        // The desktop layout's useDefaultLayout persistence never mounts here, so
+        // nothing is read from or written to its localStorage-backed layout.
+        <div className="flex flex-1 flex-col overflow-hidden">
+          <div className="flex-1 overflow-hidden">
+            {mobileView === "code" && codeEditorPane}
+            {mobileView === "pdf" && pdfPreviewPane}
+            {mobileView === "terminal" && terminalPane}
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-1 flex-col overflow-hidden">
+          <ResizablePanelGroup
+            orientation="vertical"
+            defaultLayout={verticalLayout.defaultLayout}
+            onLayoutChanged={verticalLayout.onLayoutChanged}
           >
-            {/* Editor + PDF Split Pane */}
-            <ResizablePanelGroup
-              orientation="horizontal"
-              defaultLayout={horizontalLayout.defaultLayout}
-              onLayoutChanged={horizontalLayout.onLayoutChanged}
+            <ResizablePanel
+              id="editor-main"
+              defaultSize={75}
+              minSize={30}
+              className={cn(isAnimatingTerminal && "panel-transition")}
             >
-              {/* Left: CodeMirror Editor */}
-              <ResizablePanel
-                id="code"
-                panelRef={codePanelRef}
-                collapsible
-                collapsedSize={0}
-                defaultSize={50}
-                minSize={25}
-                onResize={(size) => {
-                  setIsCodeCollapsed(size.asPercentage <= 1);
-                }}
-                className={cn(isAnimatingPdf && "panel-transition")}
+              {/* Editor + PDF Split Pane */}
+              <ResizablePanelGroup
+                orientation="horizontal"
+                defaultLayout={horizontalLayout.defaultLayout}
+                onLayoutChanged={horizontalLayout.onLayoutChanged}
               >
-                <div className="h-full relative flex flex-col min-w-0">
-                  {selectedPath && viewMode === "code" && (
-                    <EditorToolbar
-                      onInsert={handleInsertText}
-                      onUndo={handleUndo}
-                      onRedo={handleRedo}
-                      canUndo={canUndo}
-                      canRedo={canRedo}
-                      tooltipsEnabled={true}
-                      active={activeFormatKey}
-                      onOpenPalette={() => setPaletteOpen(true)}
-                    />
-                  )}
-                  <div className="flex-1 relative overflow-auto">
-                    {selectedPath && viewMode === "image" ? (
-                      <ImageViewer path={selectedPath} />
-                    ) : selectedPath && viewMode === "pdf-standalone" ? (
-                      <div className="flex items-center justify-center h-full text-muted-foreground text-sm font-mono bg-background">
-                        <span className="opacity-60">PDF displayed in preview pane →</span>
-                      </div>
-                    ) : selectedPath && viewMode === "unsupported" ? (
-                      <div className="flex items-center justify-center h-full text-muted-foreground text-sm font-mono bg-background">
-                        <span className="opacity-60">Preview is not available for this file type</span>
-                      </div>
-                    ) : selectedPath && viewMode === "code" ? (
-                      <ContextMenu
-                        onOpenChange={(open) => {
-                          if (open) {
-                            setHasEditorSelection(
-                              !editorViewRef.current?.state.selection.main.empty
-                            );
-                          }
-                        }}
-                      >
-                        {/* `select-text` undoes the trigger's default select-none,
-                            which would otherwise make the editor unselectable. */}
-                        <ContextMenuTrigger asChild className="select-text">
-                          <div className="absolute inset-0" onDoubleClick={handleSyncToPdf}>
-                            <CodeMirror
-                              value={editedCode}
-                              height="100%"
-                              theme="dark"
-                              extensions={extensions}
-                              basicSetup={{
-                                foldGutter: false,
-                                bracketMatching: false,
-                                autocompletion: false,
-                              }}
-                              onChange={(value) => setEditedCode(value)}
-                              onCreateEditor={(view) => {
-                                // eslint-disable-next-line react-hooks/immutability -- storing the imperative CodeMirror EditorView handle in a ref
-                                editorViewRef.current = view;
-                              }}
-                              onUpdate={handleUpdate}
-                              className="absolute inset-0 w-full h-full text-sm font-mono border-none focus:outline-none"
-                            />
-                          </div>
-                        </ContextMenuTrigger>
-                        {/* Focus is handed back to CodeMirror by each action, so
-                            don't let the menu pull it onto the trigger on close. */}
-                        <ContextMenuContent
-                          className="w-56"
-                          onCloseAutoFocus={(e) => e.preventDefault()}
-                        >
-                          <ContextMenuItem onClick={handleSendCodeToChat}>
-                            <Sparkles className="size-3.5" />
-                            {hasEditorSelection ? "Add selection to chat" : "Add file to chat"}
-                          </ContextMenuItem>
-                          <ContextMenuItem
-                            disabled={!hasEditorSelection}
-                            onClick={handleCreateTaskFromSelection}
-                          >
-                            <ListTodoIcon className="size-3.5" />
-                            Create task from selection
-                          </ContextMenuItem>
-                          <ContextMenuItem onClick={handleSyncToPdf}>
-                            <FileText className="size-3.5" />
-                            Show in PDF
-                          </ContextMenuItem>
-                          <ContextMenuSeparator />
-                          <ContextMenuItem
-                            disabled={!hasEditorSelection}
-                            onClick={() => handleClipboard(true)}
-                          >
-                            <Scissors className="size-3.5" />
-                            Cut
-                            <ContextMenuShortcut>⌘X</ContextMenuShortcut>
-                          </ContextMenuItem>
-                          <ContextMenuItem
-                            disabled={!hasEditorSelection}
-                            onClick={() => handleClipboard(false)}
-                          >
-                            <Copy className="size-3.5" />
-                            Copy
-                            <ContextMenuShortcut>⌘C</ContextMenuShortcut>
-                          </ContextMenuItem>
-                          <ContextMenuItem onClick={handlePasteFromClipboard}>
-                            <ClipboardPaste className="size-3.5" />
-                            Paste
-                            <ContextMenuShortcut>⌘V</ContextMenuShortcut>
-                          </ContextMenuItem>
-                          <ContextMenuItem onClick={handleSelectAll}>
-                            <TextCursor className="size-3.5" />
-                            Select all
-                            <ContextMenuShortcut>⌘A</ContextMenuShortcut>
-                          </ContextMenuItem>
-                          <ContextMenuSeparator />
-                          <ContextMenuItem disabled={!canUndo} onClick={handleUndo}>
-                            <Undo2 className="size-3.5" />
-                            Undo
-                            <ContextMenuShortcut>⌘Z</ContextMenuShortcut>
-                          </ContextMenuItem>
-                          <ContextMenuItem disabled={!canRedo} onClick={handleRedo}>
-                            <Redo2 className="size-3.5" />
-                            Redo
-                            <ContextMenuShortcut>⇧⌘Z</ContextMenuShortcut>
-                          </ContextMenuItem>
-                        </ContextMenuContent>
-                      </ContextMenu>
-                    ) : (
-                      <div className="flex items-center justify-center h-full text-muted-foreground text-sm font-mono bg-background">
-                        {"// Select a file from the sidebar to edit"}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </ResizablePanel>
-
-              <ResizableHandle
-                onDoubleClick={handlePdfDoubleClick}
-                className={cn(
-                  (isPdfCollapsed || isCodeCollapsed) && "cursor-pointer"
-                )}
-              />
-
-              {/* Right: PDF Preview */}
-              <ResizablePanel
-                id="pdf"
-                panelRef={pdfPanelRef}
-                collapsible
-                collapsedSize={0}
-                defaultSize={50}
-                minSize={25}
-                onResize={(size) => {
-                  setIsPdfCollapsed(size.asPercentage <= 1);
-                }}
-                className={cn(isAnimatingPdf && "panel-transition")}
-              >
-                <div className="h-full flex flex-col bg-muted/5 min-w-0 pdf-viewer-workspace">
-
-                  <div className="flex-1 relative overflow-hidden">
-                    {pdfUrl ? (
-                      <PdfPreview
-                        pdfUrl={pdfUrl}
-                        synctexQuery={synctexQuery}
-                        selectedPath={toProjectRelative(selectedPath)}
-                        pdfSyncRequest={pdfSyncRequest}
-                        onSelectLine={handleSelectMatch}
-                        onDownload={handleDownloadPdf}
-                        onCreateTask={(text, page) => handleCreateTask(text, { page })}
-                      />
-                    ) : (
-                      <div className="absolute inset-0 flex items-center justify-center text-xs font-mono text-muted-foreground">
-                        {isCompiling ? "Compiling document..." : "Click Compile to generate PDF"}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </ResizablePanel>
-            </ResizablePanelGroup>
-          </ResizablePanel>
-
-          <ResizableHandle
-            onDoubleClick={handleTerminalDoubleClick}
-            className={cn(
-              isTerminalCollapsed && "cursor-pointer"
-            )}
-          />
-
-          <ResizablePanel
-            id="terminal"
-            panelRef={terminalPanelRef}
-            collapsible
-            collapsedSize={0}
-            defaultSize={25}
-            minSize={10}
-            onResize={(size) => {
-              setIsTerminalCollapsed(size.asPercentage <= 2);
-            }}
-            className={cn(isAnimatingTerminal && "panel-transition")}
-          >
-            <div className="relative h-full">
-              {terminalOutput && (
-                <button
-                  onClick={handleSendTerminalToChat}
-                  title="Send terminal output to Eve"
-                  className="absolute right-3 top-2 z-10 flex items-center gap-1.5 rounded-md border border-zinc-700 bg-zinc-900/90 px-2 py-1 text-[11px] font-medium text-zinc-300 cursor-pointer transition-colors hover:bg-zinc-800 hover:text-zinc-100"
+                {/* Left: CodeMirror Editor */}
+                <ResizablePanel
+                  id="code"
+                  panelRef={codePanelRef}
+                  collapsible
+                  collapsedSize={0}
+                  defaultSize={50}
+                  minSize={25}
+                  onResize={(size) => {
+                    setIsCodeCollapsed(size.asPercentage <= 1);
+                  }}
+                  className={cn(isAnimatingPdf && "panel-transition")}
                 >
-                  Send to chat
-                </button>
+                  {codeEditorPane}
+                </ResizablePanel>
+
+                <ResizableHandle
+                  onDoubleClick={handlePdfDoubleClick}
+                  className={cn(
+                    (isPdfCollapsed || isCodeCollapsed) && "cursor-pointer"
+                  )}
+                />
+
+                {/* Right: PDF Preview */}
+                <ResizablePanel
+                  id="pdf"
+                  panelRef={pdfPanelRef}
+                  collapsible
+                  collapsedSize={0}
+                  defaultSize={50}
+                  minSize={25}
+                  onResize={(size) => {
+                    setIsPdfCollapsed(size.asPercentage <= 1);
+                  }}
+                  className={cn(isAnimatingPdf && "panel-transition")}
+                >
+                  {pdfPreviewPane}
+                </ResizablePanel>
+              </ResizablePanelGroup>
+            </ResizablePanel>
+
+            <ResizableHandle
+              onDoubleClick={handleTerminalDoubleClick}
+              className={cn(
+                isTerminalCollapsed && "cursor-pointer"
               )}
-              <Terminal
-                className="h-full rounded-none border-0"
-                isStreaming={isTerminalStreaming}
-                output={terminalOutput}
-              >
-                <TerminalContent className="max-h-full" />
-              </Terminal>
-            </div>
-          </ResizablePanel>
-        </ResizablePanelGroup>
-      </div>
+            />
+
+            <ResizablePanel
+              id="terminal"
+              panelRef={terminalPanelRef}
+              collapsible
+              collapsedSize={0}
+              defaultSize={25}
+              minSize={10}
+              onResize={(size) => {
+                setIsTerminalCollapsed(size.asPercentage <= 2);
+              }}
+              className={cn(isAnimatingTerminal && "panel-transition")}
+            >
+              {terminalPane}
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        </div>
+      )}
       </div>
 
       <AlertDialog open={deletePath !== null} onOpenChange={(open) => !open && setDeletePath(null)}>
