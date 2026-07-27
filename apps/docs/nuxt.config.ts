@@ -22,7 +22,10 @@ const defaultSiteUrl = process.env.NUXT_PUBLIC_SITE_URL || 'http://localhost:300
 
 export default defineNuxtConfig({
   extends: ['docus'],
-  modules: ['@vercel/analytics/nuxt'],
+  modules: [
+    '@vercel/analytics/nuxt',
+    '@vercel/speed-insights/nuxt',
+  ],
   alias: {
     'docus/server/utils/content': fileURLToPath(new URL('./lib/docus-content.ts', import.meta.url)),
   },
