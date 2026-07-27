@@ -148,6 +148,10 @@ export default function RootLayout({
       signInFallbackRedirectUrl="/dashboard"
       signUpFallbackRedirectUrl="/dashboard"
       appearance={{ cssLayerName: "clerk" }}
+      // The editor is a separate origin (its own domain in prod, a different port in
+      // local dev). Without allowlisting it, Clerk treats "open project" as an unsafe
+      // redirect and falls back to a dev-instance handshake through accounts.dev instead.
+      allowedRedirectOrigins={[process.env.NEXT_PUBLIC_EDITOR_URL || "http://localhost:3002"]}
     >
       <html
         lang="en"
