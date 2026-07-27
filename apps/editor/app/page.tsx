@@ -1710,13 +1710,30 @@ const Example = () => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot mount banner
     setTerminalOutput(`${mockTerminalLines.join("\n")}\n`);
 
-    // Ensure code panel is expanded on mount
-    const timer = setTimeout(() => {
-      if (codePanelRef.current?.isCollapsed()) {
-        codePanelRef.current.expand();
+    const enforceMobileSinglePanel = () => {
+      if (typeof window !== "undefined" && window.innerWidth < 1024) {
+        const codePanel = codePanelRef.current;
+        const pdfPanel = pdfPanelRef.current;
+        if (codePanel && pdfPanel) {
+          const isCodeOpen = !codePanel.isCollapsed();
+          const isPdfOpen = !pdfPanel.isCollapsed();
+          // On mobile/tablet screens (< 1024px), never allow 50/50 split. Collapse PDF so Code is 100% full width by default.
+          if (isCodeOpen && isPdfOpen) {
+            pdfPanel.collapse();
+            codePanel.expand();
+          } else if (!isCodeOpen && !isPdfOpen) {
+            codePanel.expand();
+          }
+        }
       }
-    }, 150);
-    return () => clearTimeout(timer);
+    };
+
+    const timer = setTimeout(enforceMobileSinglePanel, 150);
+    window.addEventListener("resize", enforceMobileSinglePanel);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("resize", enforceMobileSinglePanel);
+    };
   }, []);
 
   const handleChatTextChange = useCallback(
@@ -2514,6 +2531,7 @@ const Example = () => {
               <ResizableHandle
                 onDoubleClick={handlePdfDoubleClick}
                 className={cn(
+                  "hidden lg:flex",
                   (isPdfCollapsed || isCodeCollapsed) && "cursor-pointer"
                 )}
               />
