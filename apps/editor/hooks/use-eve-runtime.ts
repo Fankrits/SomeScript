@@ -32,18 +32,21 @@ import { notifyCreditsUpdated } from "@/hooks/use-credit-status";
 // see them in rendered text or thread titles.
 const MARKER_PREFIX = /^(?:\[(?:projectId|mode): [^\]]*\]\n?)+/;
 
-// eve's NDJSON turn stream can go silent forever without erroring on Vercel
-// deployments: the CDN brotli-compresses the low-throughput stream (our
-// vercel.json + apps/editor/next.config.ts's withEve match the setup in the
-// report below exactly), and the final bytes — carrying the turn's terminal
-// event — sit in the compression buffer and never flush. Short replies (a
-// one-word prompt's answer) are the highest-risk case since there's little
-// data to force a flush. agent.status then never leaves "submitted"/
-// "streaming" and the composer spins forever. Open upstream, unfixed as of
-// eve 0.27.6 (latest): https://github.com/vercel/eve/issues/1159 — real fix
-// in flight at https://github.com/vercel/eve/pull/1186 (adds a native
-// streamIdleTimeoutMs idle-reconnect).
-const STALL_TIMEOUT_MS = 30_000;
+// eve's NDJSON turn stream can go silent forever without erroring — no error,
+// no close, so agent.status never leaves "submitted"/"streaming" and the
+// composer spins forever. Confirmed both on Vercel deployments (the CDN
+// brotli-compresses the low-throughput stream — our vercel.json + next.
+// config.ts's withEve match that report's setup exactly — and the final
+// bytes carrying the turn's terminal event sit in the compression buffer and
+// never flush) and locally against eve's own dev host, so this isn't only a
+// Vercel-CDN trigger. Short replies (a one-word prompt's answer) are the
+// highest-risk case either way, since there's little data to force a flush
+// or keep the connection visibly alive. Open upstream, unfixed as of eve
+// 0.27.6 (latest): https://github.com/vercel/eve/issues/1159 — real fix in
+// flight at https://github.com/vercel/eve/pull/1186 (adds a native
+// streamIdleTimeoutMs idle-reconnect). Matches the 15s idle threshold that
+// issue's reporter validated in production.
+const STALL_TIMEOUT_MS = 15_000;
 
 // assistant-ui only ships Simple adapters for images and text. PDFs get the
 // same treatment: read as a data URL, forward as a generic `file` content
@@ -96,6 +99,13 @@ export function useEveRuntime(
 ) {
   const completedToolCalls = useRef<Set<string>>(new Set());
   const processedSteps = useRef<Set<string>>(new Set());
+  // Stall-watchdog bookkeeping (see STALL_TIMEOUT_MS below): the exact args of
+  // the in-flight send, so a stall can be retried verbatim; whether that retry
+  // has already been used for the current message; and whether a retry is
+  // waiting for the aborted turn to actually reach "ready" before firing.
+  const lastSendArgsRef = useRef<Parameters<typeof agent.send>[0] | null>(null);
+  const retriedRef = useRef(false);
+  const pendingRetryRef = useRef(false);
   // Read inside onNew, which assistant-ui may hold across renders — a ref keeps
   // the marker in sync with the live selection without rebuilding the runtime.
   const modeRef = useRef(mode);
@@ -371,16 +381,18 @@ export function useEveRuntime(
         }
 
         const firstPart = parts[0];
+        const sendArgs: Parameters<typeof agent.send>[0] =
+          parts.length === 1 && firstPart.type === "text"
+            ? { message: firstPart.text }
+            : {
+                message: parts as unknown as Parameters<typeof agent.send>[0]["message"],
+              };
+        lastSendArgsRef.current = sendArgs;
+        retriedRef.current = false;
         try {
           setSendError(null);
           sentModeRef.current = modeRef.current;
-          if (parts.length === 1 && firstPart.type === "text") {
-            await agent.send({ message: firstPart.text });
-          } else {
-            await agent.send({
-              message: parts as unknown as Parameters<typeof agent.send>[0]["message"],
-            });
-          }
+          await agent.send(sendArgs);
         } catch (e) {
           // Rethrowing would reject into assistant-ui's send handler and vanish
           // silently, leaving a cleared composer and no message on screen.
@@ -409,21 +421,40 @@ export function useEveRuntime(
   // (an AbortError eve's client already treats as a clean terminal state)
   // instead of leaving the spinner stuck forever. Re-armed on every event via
   // the `agent` dependency, since useEveAgent hands back a new snapshot object
-  // on each one.
-  // ponytail: this ends the turn (any partial answer already streamed stays
-  // visible; the user re-sends) rather than transparently resuming mid-stream
-  // like eve#1186 will — eve/react's public surface (send/stop/reset) has no
-  // lower-level "resume this stream" hook to do better from here. Drop once
-  // eve ships streamIdleTimeoutMs and the dependency is bumped past it.
+  // on each one. First stall of a given message queues one silent retry;
+  // a second stall on the same message gives up and surfaces the error.
+  // ponytail: only one retry, and it resends the same message rather than
+  // transparently resuming mid-stream like eve#1186 will — eve/react's public
+  // surface (send/stop/reset) has no lower-level "resume this stream" hook to
+  // do better from here. Drop once eve ships streamIdleTimeoutMs and the
+  // dependency is bumped past it.
   useEffect(() => {
     if (!isBusy) return;
     const timer = setTimeout(() => {
-      setSendError(
-        "Eve stopped responding — this is a known eve streaming issue on some deployments (github.com/vercel/eve/issues/1159). Please try again.",
-      );
+      if (retriedRef.current) {
+        setSendError(
+          "Eve stopped responding twice in a row — this is a known eve streaming issue on some deployments (github.com/vercel/eve/issues/1159). Please try again.",
+        );
+      } else {
+        retriedRef.current = true;
+        pendingRetryRef.current = true;
+      }
       agent.stop();
     }, STALL_TIMEOUT_MS);
     return () => clearTimeout(timer);
+  }, [agent, isBusy]);
+
+  // Fires the queued retry once the aborted turn has actually settled back to
+  // "ready" — agent.send() throws immediately if called while still
+  // "streaming"/"submitted", so this can't happen in the same tick as stop().
+  useEffect(() => {
+    if (isBusy || !pendingRetryRef.current) return;
+    pendingRetryRef.current = false;
+    const args = lastSendArgsRef.current;
+    if (!args) return;
+    agent.send(args).catch((e) => {
+      setSendError(e instanceof Error ? e.message : String(e));
+    });
   }, [agent, isBusy]);
 
   useEffect(() => {
