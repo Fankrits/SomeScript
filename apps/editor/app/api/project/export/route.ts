@@ -10,13 +10,13 @@ export async function GET(req: NextRequest) {
     const type = searchParams.get("type"); // "pdf" | "zip"
 
     if (type === "pdf") {
-      // Force a final (non-draft) compile before serving — otherwise this would
-      // hand back whatever's cached, which defaults to draft mode and has every
-      // figure replaced with an empty box. See draft-mode.ts.
+      // Force a fresh compile before serving — otherwise this would hand back
+      // whatever's already cached, which may be stale relative to the user's
+      // latest edits.
       const compileRes = await fetch(new URL("/api/compile", req.url), {
         method: "POST",
         headers: { "Content-Type": "application/json", cookie: req.headers.get("cookie") ?? "" },
-        body: JSON.stringify({ projectId, path: "main.tex", draftMode: false }),
+        body: JSON.stringify({ projectId, path: "main.tex" }),
       });
       const compileLog = await compileRes.text();
       if (!compileRes.ok || !compileLog.includes("[SUCCESS]")) {

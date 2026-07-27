@@ -106,6 +106,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { pickDetectedMainFile } from "@/lib/main-file";
 
 
 // Types
@@ -559,7 +560,6 @@ const Example = () => {
     mainFilePath: string;
     compilerEngine: string;
     tooltipsEnabled: boolean;
-    draftMode: boolean;
     vimModeEnabled: boolean;
     foldingEnabled: boolean;
     autocompleteEnabled: boolean;
@@ -568,7 +568,6 @@ const Example = () => {
     mainFilePath: "main.tex",
     compilerEngine: "tectonic",
     tooltipsEnabled: true,
-    draftMode: true,
     vimModeEnabled: false,
     foldingEnabled: true,
     autocompleteEnabled: true,
@@ -655,7 +654,6 @@ const Example = () => {
           mainFilePath: parsed.mainFilePath ?? "main.tex",
           compilerEngine: parsed.compilerEngine ?? "tectonic",
           tooltipsEnabled: parsed.tooltipsEnabled ?? (typeof parsed.tooltipsEnabled === "boolean" ? parsed.tooltipsEnabled : true),
-          draftMode: parsed.draftMode ?? true,
           vimModeEnabled: parsed.vimModeEnabled ?? false,
           foldingEnabled: parsed.foldingEnabled ?? true,
           autocompleteEnabled: parsed.autocompleteEnabled ?? true,
@@ -669,7 +667,6 @@ const Example = () => {
         mainFilePath: "main.tex",
         compilerEngine: "tectonic",
         tooltipsEnabled: true,
-        draftMode: true,
         vimModeEnabled: false,
         foldingEnabled: true,
         autocompleteEnabled: true,
@@ -1468,13 +1465,12 @@ const Example = () => {
   }, [selectedPath, editedCode, currentCode, saveCurrentFile]);
 
   /**
-   * Resolve which .tex file Compile should build, in the same order Overleaf's
-   * CLSI resolves a project's root document: the project's configured main
-   * file (if it still exists) → a file literally named main.tex → the
-   * project's only .tex file, if there's exactly one. Otherwise null — with
-   * more than one candidate and no configured file, guessing (e.g. the
-   * currently open file) would silently compile the wrong document in a
-   * multi-file project that \input/\include's chapters from a root.
+   * Resolve the project's configured root document, in the same order
+   * Overleaf's CLSI resolves one: the configured main file (if it still
+   * exists) → a file literally named main.tex → the project's only .tex
+   * file, if there's exactly one. Otherwise null. Used directly by Download,
+   * and as Compile's fallback when the currently open file can't stand alone
+   * (see handleCompileLatex below).
    */
   const resolveMainFile = useCallback((): string | null => {
     const texFiles = getTexFiles(fileTree);
@@ -1487,20 +1483,49 @@ const Example = () => {
     return texFiles.length === 1 ? texFiles[0] : null;
   }, [settings.mainFilePath, fileTree, getTexFiles, toProjectRelative]);
 
-  // Shared by the preview compile and the download button below, which forces
-  // draft off - download must run its own compile rather than just re-serving
-  // whatever draft/final state happens to already be showing in the preview.
-  const runCompile = useCallback(async (draft: boolean): Promise<{ pdfPath: string; compilePath: string } | null> => {
-    if (isCompiling) return null;
+  // Content-based fallback for resolveMainFile, e.g. right after a zip import
+  // with several .tex files and no main.tex: only the LaTeX root document
+  // contains \documentclass, so the one file that has it is the root. Reuses
+  // the existing search API (greps every project file server-side) instead of
+  // fetching each candidate file. Persists a unique match so this only runs
+  // once per project.
+  // ponytail: plain substring match, doesn't strip comments — a commented-out
+  // `%\documentclass{...}` in a chapter would false-positive; upgrade to a
+  // comment-aware scan if that shows up in practice.
+  const detectMainFile = useCallback(async (): Promise<string | null> => {
+    const texFiles = getTexFiles(fileTree);
+    if (texFiles.length < 2) return null;
+    try {
+      const res = await fetch(withProject(`/api/search?query=${encodeURIComponent("\\documentclass")}`));
+      if (!res.ok) return null;
+      const data = await res.json();
+      const detected = pickDetectedMainFile(texFiles, Object.keys(data.resultsByFile ?? {}));
+      if (!detected) return null;
+      saveSettings({ ...settings, mainFilePath: detected });
+      return detected;
+    } catch {
+      return null;
+    }
+  }, [fileTree, getTexFiles, withProject, settings, saveSettings]);
 
-    const compilePath = resolveMainFile();
-    if (!compilePath) {
+  // resolveMainFile with the detectMainFile fallback folded in, plus the
+  // user-facing error when neither finds anything to compile.
+  const resolveOrToastMainFile = useCallback(async (): Promise<string | null> => {
+    const mainPath = resolveMainFile() ?? (await detectMainFile());
+    if (!mainPath) {
       toast.error(
         "No main file specified. This project has multiple .tex files and none is named main.tex — set the Main Entry File in the Settings tab."
       );
-      return null;
     }
-    setIsCompiling(true);
+    return mainPath;
+  }, [resolveMainFile, detectMainFile]);
+
+  // Compiles one already-resolved path and streams its log into the terminal.
+  // A pure "run this compile" primitive — callers own picking compilePath and
+  // guarding re-entrancy (see handleCompileLatex/handleDownloadPdf), since
+  // handleCompileLatex below may need to run this twice in one click (current
+  // file, then the main-file fallback) without the button re-enabling in between.
+  const runCompile = useCallback(async (compilePath: string): Promise<{ pdfPath: string; compilePath: string } | null> => {
     setTerminalOutput("");
     setIsTerminalStreaming(true);
 
@@ -1511,7 +1536,7 @@ const Example = () => {
       const res = await fetch("/api/compile", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId, path: compilePath, draftMode: draft }),
+        body: JSON.stringify({ projectId, path: compilePath }),
       });
 
       if (!res.ok) {
@@ -1552,10 +1577,9 @@ const Example = () => {
             // Normalize in case the compiler echoes an absolute container path.
             const rawPdfPath = toProjectRelative(match[1].trim());
             pdfPath = rawPdfPath.startsWith(".preview-cache/") ? rawPdfPath : `.preview-cache/${rawPdfPath}`;
-          } else if (selectedPath) {
-            // Derive PDF filename from current selected .tex file path
-            const derivedPdf = toProjectRelative(selectedPath).replace(/\.tex$/, ".pdf");
-            pdfPath = `.preview-cache/${derivedPdf}`;
+          } else {
+            // Derive PDF filename from the file we actually compiled.
+            pdfPath = `.preview-cache/${compilePath.replace(/\.tex$/, ".pdf")}`;
           }
         }
       }
@@ -1568,32 +1592,60 @@ const Example = () => {
       setTerminalOutput((prev) => `${prev}\n\u001B[31mError compiling LaTeX:\u001B[0m ${errMessage}\n`);
       return null;
     } finally {
-      setIsCompiling(false);
       setIsTerminalStreaming(false);
     }
-  }, [isCompiling, projectId, selectedPath, toProjectRelative, saveCurrentFile, resolveMainFile]);
+  }, [projectId, toProjectRelative, saveCurrentFile]);
 
+  // Single Compile action: try the currently open .tex file as its own root
+  // document first (fast, precise — e.g. a self-contained chapter); only fall
+  // back to the project's configured main file if that fails or nothing's
+  // open. Skips the redundant re-run when the open file already *is* the main
+  // file. isCompiling is owned here (not inside runCompile) so the button
+  // stays disabled across both attempts, not just each one individually.
   const handleCompileLatex = useCallback(async () => {
-    const result = await runCompile(settings.draftMode ?? true);
-    if (!result) return;
-    setPdfUrl(withProject(`${window.location.origin}/api/files?path=${encodeURIComponent(result.pdfPath)}&t=${Date.now()}`));
-    setCompiledPath(result.compilePath);
-  }, [runCompile, settings.draftMode, withProject]);
+    if (isCompiling) return;
+    setIsCompiling(true);
+    try {
+      const currentPath = selectedPath && selectedPath.endsWith(".tex") ? toProjectRelative(selectedPath) : null;
 
-  // Always compiles final (non-draft), independent of the preview pane's
-  // current draft/final state, so the downloaded file never has figures
-  // replaced with draft-mode placeholder boxes.
+      let result = currentPath ? await runCompile(currentPath) : null;
+
+      if (!result) {
+        const mainPath = await resolveOrToastMainFile();
+        if (mainPath && mainPath !== currentPath) {
+          result = await runCompile(mainPath);
+        }
+      }
+
+      if (!result) return;
+      setPdfUrl(withProject(`${window.location.origin}/api/files?path=${encodeURIComponent(result.pdfPath)}&t=${Date.now()}`));
+      setCompiledPath(result.compilePath);
+    } finally {
+      setIsCompiling(false);
+    }
+  }, [isCompiling, selectedPath, toProjectRelative, runCompile, resolveOrToastMainFile, withProject]);
+
+  // Always the project's main file, never "whatever's open" — a download is
+  // the finished project, not whichever chapter happens to be open.
   const handleDownloadPdf = useCallback(async () => {
-    const result = await runCompile(false);
-    if (!result) return;
-    const url = withProject(`${window.location.origin}/api/files?path=${encodeURIComponent(result.pdfPath)}&t=${Date.now()}`);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "document.pdf";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  }, [runCompile, withProject]);
+    if (isCompiling) return;
+    setIsCompiling(true);
+    try {
+      const mainPath = await resolveOrToastMainFile();
+      if (!mainPath) return;
+      const result = await runCompile(mainPath);
+      if (!result) return;
+      const url = withProject(`${window.location.origin}/api/files?path=${encodeURIComponent(result.pdfPath)}&t=${Date.now()}`);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "document.pdf";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } finally {
+      setIsCompiling(false);
+    }
+  }, [isCompiling, resolveOrToastMainFile, runCompile, withProject]);
 
   // Load tree on mount
   useEffect(() => {
@@ -1770,11 +1822,12 @@ const Example = () => {
 
         {/* Top Header Right Controls */}
         <div className="flex items-center gap-3">
-          {/* Compile Button */}
-          {selectedPath && selectedPath.endsWith(".tex") && (
+          {/* Compile Button — current file first, falls back to the project's main file */}
+          {getTexFiles(fileTree).length > 0 && (
             <button
               onClick={handleCompileLatex}
               disabled={isCompiling}
+              title="Compiles the open file; falls back to the project's main file if it can't compile alone"
               className="rounded-md border bg-muted/20 hover:bg-muted text-muted-foreground/80 hover:text-foreground px-3 h-[36px] text-xs font-semibold cursor-pointer disabled:opacity-50 transition-colors flex items-center gap-1.5 shadow-sm"
             >
               {isCompiling ? (
@@ -2161,27 +2214,6 @@ const Example = () => {
                 type="checkbox"
                 checked={settings.tooltipsEnabled}
                 onChange={(e) => saveSettings({ ...settings, tooltipsEnabled: e.target.checked })}
-                className="mt-0.5 size-4 rounded border-border text-primary focus:ring-primary cursor-pointer"
-              />
-            </div>
-
-            <hr className="border-border/60" />
-
-            <div className="flex items-start justify-between gap-3">
-              <div className="space-y-0.5">
-                <label htmlFor="draft-mode-toggle" className="text-xs font-semibold text-muted-foreground">
-                  Draft Mode (Fast Compile)
-                </label>
-                <div className="text-[11px] text-muted-foreground leading-relaxed">
-                  Skip rendering images — figures compile as empty boxes. References
-                  and the table of contents still resolve.
-                </div>
-              </div>
-              <input
-                id="draft-mode-toggle"
-                type="checkbox"
-                checked={settings.draftMode ?? true}
-                onChange={(e) => saveSettings({ ...settings, draftMode: e.target.checked })}
                 className="mt-0.5 size-4 rounded border-border text-primary focus:ring-primary cursor-pointer"
               />
             </div>

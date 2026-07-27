@@ -11,18 +11,13 @@ interface DifferentialFile {
   content: string;
 }
 
-// Images must round-trip as bytes: readFile() decodes as UTF-8, which silently
-// mangles binary. The compiler decodes these back from base64 (see writeFiles).
-const BINARY_UPLOAD = /\.(png|jpe?g|gif|webp)$/i;
-// Every text format a LaTeX build commonly \input's or loads: sources, custom
-// classes/styles, bibliography styles, plotted/tabulated data, SVG figures.
-const TEXT_UPLOAD = /\.(tex|bib|cls|sty|bst|csv|dat|svg|txt|md)$/i;
-// ponytail: .pdf/.eps figures still can't compile in upload mode — storage's
-// listProjectFiles skips .pdf keys entirely (lib/storage.ts), so they never
-// reach this route. Supporting them means changing the tree listing, which
-// also feeds the file-tree UI.
-
-// Recursively gather all project files via the unified storage provider
+// Recursively gather all project files via the unified storage provider. Every
+// file is read as bytes and sent as base64 (see writeFiles in apps/compiler/index.ts,
+// which always decodes it back) — a LaTeX project can \input or \includegraphics
+// any extension (.bbx/.cbx biblatex styles, .mps figures, whatever comes next), so
+// an allow-list of "known" extensions is always one project away from being wrong.
+// Base64 round-trips text just as losslessly as binary, so there's no need for a
+// separate text path.
 async function getAllStorageFiles(projectId: string, nodes: FileNode[]): Promise<{ path: string; content: string }[]> {
   const files: { path: string; content: string }[] = [];
 
@@ -31,13 +26,8 @@ async function getAllStorageFiles(projectId: string, nodes: FileNode[]): Promise
       const subFiles = await getAllStorageFiles(projectId, node.children);
       files.push(...subFiles);
     } else if (!node.isDir) {
-      if (BINARY_UPLOAD.test(node.path)) {
-        const buffer = await storage.readBinaryFile(projectId, node.path);
-        files.push({ path: node.path, content: buffer.toString("base64") });
-      } else if (TEXT_UPLOAD.test(node.path)) {
-        const content = await storage.readFile(projectId, node.path);
-        files.push({ path: node.path, content });
-      }
+      const buffer = await storage.readBinaryFile(projectId, node.path);
+      files.push({ path: node.path, content: buffer.toString("base64") });
     }
   }
   return files;
@@ -48,8 +38,7 @@ import { checkRate } from "@/lib/rate-limit";
 export async function POST(req: NextRequest) {
   try {
     await checkRate("compile", 10, 60_000);
-    const { projectId: rawProjectId, path: fileRelativePath, draftMode } = await req.json();
-    const isDraft = draftMode ?? true;
+    const { projectId: rawProjectId, path: fileRelativePath } = await req.json();
     if (!fileRelativePath) throw new ApiError(400, "Path parameter is required");
     if (!fileRelativePath.endsWith(".tex")) throw new ApiError(400, "Only .tex files can be compiled");
 
@@ -81,7 +70,6 @@ export async function POST(req: NextRequest) {
           mode: "local",
           localProjectPath: projectPath,
           fileRelativePath,
-          draft: isDraft,
         }),
       });
 
@@ -105,7 +93,6 @@ export async function POST(req: NextRequest) {
       const sortedFiles = [...allFiles].sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
       const projectHash = createHash("sha256")
         .update(JSON.stringify(sortedFiles.map(f => ({ path: f.path, content: f.content }))))
-        .update(isDraft ? "draft" : "final")
         .update(fileRelativePath)
         .digest("hex");
 
@@ -147,7 +134,6 @@ export async function POST(req: NextRequest) {
         mode: "upload",
         projectId,
         fileRelativePath,
-        draft: isDraft,
         syncType,
         files: syncType === "full" ? allFiles : changedFiles,
         deletedFiles,
@@ -181,7 +167,6 @@ export async function POST(req: NextRequest) {
               mode: "upload",
               projectId,
               fileRelativePath,
-              draft: isDraft,
               syncType: "full",
               files: allFiles,
               deletedFiles: [],

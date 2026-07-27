@@ -13,7 +13,6 @@ export interface EditorSettings {
   mainFilePath: string;
   compilerEngine: string;
   tooltipsEnabled: boolean;
-  draftMode: boolean;
   vimModeEnabled: boolean;
   foldingEnabled: boolean;
   autocompleteEnabled: boolean;
