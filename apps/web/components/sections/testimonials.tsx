@@ -84,7 +84,7 @@ export function TestimonialCard({ item }: { item: TestimonialCardProps }) {
   return (
     <LiquidGlassCard
       glassSize="sm"
-      className="mb-4 flex w-full flex-col justify-between gap-4 border-border bg-background rounded-xl hover:-translate-y-0.5 transition-all duration-300"
+      className="mb-4 flex w-full flex-col justify-between gap-4 border border-border/60 bg-background/95 shadow-sm rounded-xl hover:-translate-y-0.5 transition-all duration-300"
     >
       <div className="space-y-3">
         <div className="flex gap-0.5 text-amber-500">
@@ -129,7 +129,7 @@ export function Testimonials() {
 
       {/* Grid container with fading mask applied at the top and bottom of the container */}
       <div
-        className="relative grid h-[550px] grid-cols-1 gap-4 overflow-hidden md:grid-cols-2 lg:h-[650px] lg:grid-cols-3"
+        className="relative grid h-[550px] grid-cols-1 gap-4 overflow-hidden md:grid-cols-2 lg:h-[650px] lg:grid-cols-3 p-1.5"
         style={{
           maskImage: "linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.1) 10%, rgba(0,0,0,0.6) 30%, black 48%, black 52%, rgba(0,0,0,0.6) 70%, rgba(0,0,0,0.1) 90%, transparent 100%)",
           WebkitMaskImage: "linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.1) 10%, rgba(0,0,0,0.6) 30%, black 48%, black 52%, rgba(0,0,0,0.6) 70%, rgba(0,0,0,0.1) 90%, transparent 100%)"
@@ -140,14 +140,14 @@ export function Testimonials() {
           { reverse: true },
           { reverse: false }
         ].map((mq, i) => (
-          <div key={i} className="relative h-full animate-fade-in">
+          <div key={i} className="relative h-full animate-fade-in p-1">
             <MarqueeEffect
               gap={16}
               direction="vertical"
               reverse={mq.reverse}
               speed={20}
               speedOnHover={2}
-              className="h-full"
+              className="h-full p-1"
             >
               {testimonials.slice(i * 3, (i + 1) * 3).map((testimonial, index) => (
                 <TestimonialCard key={index} item={testimonial} />
