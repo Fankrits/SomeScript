@@ -1657,15 +1657,24 @@ const Example = () => {
     refreshWorkspace();
   }, [refreshWorkspace]);
 
-  // Reopen the file the user last had open in this project (persisted like the layout).
+  // Reopen the file the user last had open in this project, or auto-select main.tex / first file.
   const didRestoreFile = useRef(false);
   useEffect(() => {
-    if (didRestoreFile.current) return;
-    didRestoreFile.current = true;
+    if (didRestoreFile.current && selectedPath) return;
     const last = localStorage.getItem(`somescript-last-file-${projectId}`);
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot mount restore; ref-guarded, cannot cascade
-    if (last) handleFileSelect(last);
-  }, [projectId, handleFileSelect]);
+    if (last) {
+      didRestoreFile.current = true;
+      handleFileSelect(last);
+    } else if (fileTree && fileTree.length > 0) {
+      didRestoreFile.current = true;
+      const texFiles = getTexFiles(fileTree);
+      const mainPath = texFiles.find((p) => p === "main.tex" || p.endsWith("/main.tex"));
+      const target = mainPath || texFiles[0] || null;
+      if (target) {
+        handleFileSelect(target);
+      }
+    }
+  }, [projectId, handleFileSelect, fileTree, selectedPath, getTexFiles]);
 
   // Reload current file when selectedPath changes — but not when handleFileSelect
   // set it, since that already fetched the content. Renames (which set selectedPath
@@ -2524,8 +2533,23 @@ const Example = () => {
                         </ContextMenuContent>
                       </ContextMenu>
                     ) : (
-                      <div className="flex items-center justify-center h-full text-muted-foreground text-sm font-mono bg-background">
-                        {"// Select a file from the sidebar to edit"}
+                      <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground text-sm font-mono bg-background p-4 text-center select-none">
+                        <FileText className="size-8 opacity-40 text-primary" />
+                        <span className="opacity-80 font-medium text-foreground text-xs">No file selected</span>
+                        {fileTree.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const texFiles = getTexFiles(fileTree);
+                              const mainPath = texFiles.find((p) => p === "main.tex" || p.endsWith("/main.tex"));
+                              const first = mainPath || texFiles[0] || null;
+                              if (first) handleFileSelect(first);
+                            }}
+                            className="px-3 py-1.5 rounded-md border border-border bg-muted/40 hover:bg-muted text-xs font-semibold text-foreground transition-colors cursor-pointer"
+                          >
+                            Open project file
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
