@@ -194,9 +194,9 @@ export default function HeroMockup({ overlay }: HeroMockupProps) {
             </div>
 
             {/* Typed Math Formula */}
-            <div className="text-[#1f9563] font-medium flex items-center min-h-[12px] sm:min-h-[14px]">
-              <span className="whitespace-pre">{typedText}</span>
-              <span className="w-0.5 h-3 sm:h-3.5 bg-[#1f9563] ml-0.5 animate-pulse" />
+            <div className="text-[#1f9563] font-medium flex items-center min-h-[12px] sm:min-h-[14px] overflow-x-auto scrollbar-none">
+              <span className="whitespace-pre truncate sm:whitespace-pre">{typedText}</span>
+              <span className="w-0.5 h-3 sm:h-3.5 bg-[#1f9563] ml-0.5 animate-pulse shrink-0" />
             </div>
 
             <div className="flex items-center gap-1 pl-2 sm:pl-3">

@@ -14,21 +14,21 @@ const InstagramIcon = ({ className }: { className?: string }) => (
 export default function Footer() {
   return (
     <footer className="w-full bg-[#0e161b] text-white z-10">
-      <div className="max-w-7xl mx-auto px-6 pt-16 pb-10">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-12 sm:pt-16 pb-8 sm:pb-10">
         {/* Top Section */}
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-10 pb-12 border-b border-white/10">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-12 gap-8 sm:gap-10 pb-10 sm:pb-12 border-b border-white/10">
           {/* Branding Column */}
-          <div className="md:col-span-4 space-y-5">
+          <div className="sm:col-span-2 md:col-span-4 space-y-4">
             <Link href="/" className="flex items-center gap-2 hover:opacity-90 transition-opacity">
-              <Image src="/logo.svg" alt="SomeScript Logo" width={36} height={36} className="h-9 w-9" />
-              <span className="font-semibold text-xl tracking-tight text-white">
+              <Image src="/logo.svg" alt="SomeScript Logo" width={36} height={36} className="h-8 w-8 sm:h-9 sm:w-9" />
+              <span className="font-semibold text-lg sm:text-xl tracking-tight text-white">
                 SomeScript
               </span>
             </Link>
-            <p className="text-white/60 text-sm font-light max-w-xs leading-relaxed">
+            <p className="text-white/60 text-xs sm:text-sm font-light max-w-xs leading-relaxed">
               Bridging the gap between raw manuscripts and prestigious academic publications with AI-driven rigor.
             </p>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 pt-1">
               <a
                 href="https://www.instagram.com/fankrits/"
                 target="_blank"
@@ -49,30 +49,33 @@ export default function Footer() {
           </div>
 
           {/* Product */}
-          <div className="md:col-span-2 space-y-4">
-            <h4 className="text-xs font-semibold uppercase tracking-wider text-white/40">Product</h4>
-            <ul className="space-y-2.5 text-sm text-white/60 font-light">
-              <li><Link href="/dashboard" className="hover:text-white transition-colors">Editor</Link></li>
+          <div className="sm:col-span-1 md:col-span-2 space-y-3">
+            <h4 className="text-[11px] font-semibold uppercase tracking-wider text-white/40">Product</h4>
+            <ul className="space-y-2 text-xs sm:text-sm text-white/60 font-light">
+              <li><Link href="#features" className="hover:text-white transition-colors">Features</Link></li>
+              <li><Link href="#how-it-works" className="hover:text-white transition-colors">How it Works</Link></li>
+              <li><Link href="/dashboard" className="hover:text-white transition-colors">Editor & Dashboard</Link></li>
             </ul>
           </div>
 
           {/* Resources */}
-          <div className="md:col-span-2 space-y-4">
-            <h4 className="text-xs font-semibold uppercase tracking-wider text-white/40">Resources</h4>
-            <ul className="space-y-2.5 text-sm text-white/60 font-light">
+          <div className="sm:col-span-1 md:col-span-2 space-y-3">
+            <h4 className="text-[11px] font-semibold uppercase tracking-wider text-white/40">Resources</h4>
+            <ul className="space-y-2 text-xs sm:text-sm text-white/60 font-light">
               <li>
                 <a href="https://docs.somescript.com" target="_blank" rel="noreferrer" className="hover:text-white transition-colors">
                   Documentation
                 </a>
               </li>
               <li><Link href="/about" className="hover:text-white transition-colors">About Us</Link></li>
+              <li><Link href="#faq" className="hover:text-white transition-colors">FAQ</Link></li>
             </ul>
           </div>
 
           {/* Newsletter */}
-          <div className="md:col-span-4 space-y-4">
-            <h4 className="text-xs font-semibold uppercase tracking-wider text-white/40">Stay Updated</h4>
-            <p className="text-sm text-white/60 font-light">
+          <div className="sm:col-span-2 md:col-span-4 space-y-3">
+            <h4 className="text-[11px] font-semibold uppercase tracking-wider text-white/40">Stay Updated</h4>
+            <p className="text-xs sm:text-sm text-white/60 font-light">
               Subscribe to our newsletter for the latest updates.
             </p>
             <form
@@ -84,12 +87,12 @@ export default function Footer() {
                 required
                 placeholder="Enter your email"
                 aria-label="Email address"
-                className="flex-1 h-10 rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-white placeholder:text-white/40 outline-none focus:border-primary/60 focus:ring-1 focus:ring-primary/40 transition-colors"
+                className="flex-1 h-9 sm:h-10 rounded-lg border border-white/10 bg-white/5 px-3 text-xs sm:text-sm text-white placeholder:text-white/40 outline-none focus:border-primary/60 focus:ring-1 focus:ring-primary/40 transition-colors"
               />
               <button
                 type="submit"
                 aria-label="Subscribe"
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                className="flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors cursor-pointer"
               >
                 <Send className="h-4 w-4" />
               </button>
@@ -98,11 +101,11 @@ export default function Footer() {
         </div>
 
         {/* Bottom Section */}
-        <div className="pt-8 flex flex-col sm:flex-row items-center justify-between text-xs text-white/40 gap-4">
+        <div className="pt-6 sm:pt-8 flex flex-col sm:flex-row items-center justify-between text-xs text-white/40 gap-4">
           <span className="font-light text-center sm:text-left">
             © 2026 SomeScript Inc. All rights reserved.
           </span>
-          <div className="flex gap-6 font-light">
+          <div className="flex flex-wrap justify-center gap-4 sm:gap-6 font-light">
             <Link href="/contact" className="hover:text-white transition-colors">Contact</Link>
             <Link href="/legal" className="hover:text-white transition-colors">Privacy Policy</Link>
             <Link href="/legal" className="hover:text-white transition-colors">Terms of Service</Link>

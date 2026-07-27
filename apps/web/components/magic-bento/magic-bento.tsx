@@ -823,7 +823,7 @@ const DebugTerminalCardVisual = () => {
             </div>
             <div className="pt-1.5 text-amber-400">
               <div>System Status: <span className="font-semibold">SYNTAX ERROR</span></div>
-              <div className="text-amber-300/90 text-[10px] pt-0.5">✖ main.tex:42: Unclosed bracket in \equation. Click &apos;Send to chat&apos; for AI repair.</div>
+              <div className="text-amber-300/90 text-[9px] sm:text-[10px] pt-0.5 break-words">✖ main.tex:42: Unclosed bracket in \equation. Click &apos;Send to chat&apos; for AI repair.</div>
             </div>
           </>
         )}

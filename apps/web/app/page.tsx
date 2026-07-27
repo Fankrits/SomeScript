@@ -20,7 +20,7 @@ export default function Home() {
       <Header dark={false} />
 
       {/* Hero Section */}
-      <section className="flex flex-col items-center justify-center px-6 relative w-full max-w-7xl mx-auto z-10 py-6 lg:h-[calc(100svh-72px)] bg-background overflow-hidden">
+      <section className="flex flex-col items-center justify-center px-4 sm:px-6 relative w-full max-w-7xl mx-auto z-10 py-8 lg:py-16 min-h-[calc(100vh-72px)] bg-background overflow-hidden">
         <GridBackgroundDemo className="absolute inset-0" />
         <div className="w-full max-w-6xl">
           <HeroMockup

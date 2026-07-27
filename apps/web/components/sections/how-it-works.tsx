@@ -49,18 +49,82 @@ export function HowItWorks() {
   });
 
   const handleStepClick = (idx: number) => {
+    setActiveStep(idx);
     if (!containerRef.current) return;
-    const container = containerRef.current;
-    const containerTop = container.getBoundingClientRect().top + window.scrollY - 72;
-    const containerHeight = container.offsetHeight - window.innerHeight;
-    const targetY = containerTop + (idx / 2) * containerHeight;
-    window.scrollTo({ top: targetY, behavior: "smooth" });
+    if (window.innerWidth >= 1024) {
+      const container = containerRef.current;
+      const containerTop = container.getBoundingClientRect().top + window.scrollY - 72;
+      const containerHeight = container.offsetHeight - window.innerHeight;
+      const targetY = containerTop + (idx / 2) * containerHeight;
+      window.scrollTo({ top: targetY, behavior: "smooth" });
+    }
   };
 
   return (
     <section id="how-it-works" className="w-full border-t border-border/40 relative z-10">
-      {/* Scroll track container */}
-      <div ref={containerRef} className="relative h-[250vh] bg-background">
+      {/* Mobile/Tablet Adaptive View (< 1024px) */}
+      <div className="block lg:hidden px-4 sm:px-6 py-12 bg-background">
+        <div className="text-center mb-8">
+          <h2 className="text-2xl sm:text-3xl font-medium font-serif tracking-tight text-foreground">
+            How It Works
+          </h2>
+          <p className="mt-2 text-xs sm:text-sm text-foreground/70 font-light max-w-xl mx-auto">
+            From prompt or scratch draft to a publication-ready PDF in minutes.
+          </p>
+        </div>
+
+        {/* Step Selector Buttons */}
+        <div className="flex gap-2 justify-center mb-6 overflow-x-auto pb-2 scrollbar-none">
+          {steps.map((step, idx) => {
+            const isActive = activeStep === idx;
+            return (
+              <button
+                key={step.number}
+                type="button"
+                onClick={() => handleStepClick(idx)}
+                className={`px-3 py-2 rounded-lg text-xs font-mono font-medium flex items-center gap-1.5 transition-all shrink-0 cursor-pointer ${
+                  isActive
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "bg-foreground/5 text-foreground/70 hover:bg-foreground/10"
+                }`}
+              >
+                <span className="font-bold">{step.number}</span>
+                <span className="font-sans font-medium">{step.title}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Selected Step Description & Interactive Canvas */}
+        <div className="flex flex-col gap-6 max-w-2xl mx-auto">
+          <div className="p-4 rounded-xl border border-primary/20 bg-foreground/5">
+            <h3 className="text-base font-serif font-semibold text-foreground">
+              {steps[activeStep].number}. {steps[activeStep].title}
+            </h3>
+            <p className="mt-1.5 text-xs sm:text-sm text-foreground/80 leading-relaxed font-light">
+              {steps[activeStep].description}
+            </p>
+          </div>
+
+          <div className="w-full flex justify-center overflow-x-hidden">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={activeStep}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.25 }}
+                className="w-full flex justify-center"
+              >
+                {steps[activeStep].canvas}
+              </motion.div>
+            </AnimatePresence>
+          </div>
+        </div>
+      </div>
+
+      {/* Desktop Sticky Scroll View (>= 1024px) */}
+      <div ref={containerRef} className="hidden lg:block relative h-[250vh] bg-background">
         {/* Sticky viewport frame - pinned under 72px Header */}
         <div className="sticky top-[72px] h-[calc(100vh-72px)] flex flex-col justify-center max-w-7xl mx-auto px-6 py-6 overflow-hidden">
           {/* Header */}
@@ -74,9 +138,9 @@ export function HowItWorks() {
           </div>
 
           {/* Main Split Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center flex-1 max-h-[550px]">
+          <div className="grid grid-cols-12 gap-8 lg:gap-12 items-center flex-1 max-h-[550px]">
             {/* Left Column: Steps List */}
-            <div className="lg:col-span-5 flex flex-col gap-4 justify-center">
+            <div className="col-span-5 flex flex-col gap-4 justify-center">
               {steps.map((step, idx) => {
                 const isActive = activeStep === idx;
                 return (
@@ -116,7 +180,7 @@ export function HowItWorks() {
             </div>
 
             {/* Right Column: Dynamic Stage Canvas */}
-            <div className="lg:col-span-7 flex items-center justify-center min-h-[300px]">
+            <div className="col-span-7 flex items-center justify-center min-h-[300px]">
               <AnimatePresence mode="wait">
                 <motion.div
                   key={activeStep}
@@ -136,3 +200,4 @@ export function HowItWorks() {
     </section>
   );
 }
+

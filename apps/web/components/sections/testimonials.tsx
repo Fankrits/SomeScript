@@ -136,11 +136,11 @@ export function Testimonials() {
         }}
       >
         {[
-          { reverse: false },
-          { reverse: true },
-          { reverse: false }
+          { reverse: false, visibility: "block" },
+          { reverse: true, visibility: "hidden md:block" },
+          { reverse: false, visibility: "hidden lg:block" }
         ].map((mq, i) => (
-          <div key={i} className="relative h-full animate-fade-in p-1">
+          <div key={i} className={`relative h-full animate-fade-in p-1 ${mq.visibility}`}>
             <MarqueeEffect
               gap={16}
               direction="vertical"

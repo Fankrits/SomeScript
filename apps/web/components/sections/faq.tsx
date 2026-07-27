@@ -39,24 +39,24 @@ const faqs = [
 
 export function Faq() {
   return (
-    <section id="faq" className="w-full max-w-3xl mx-auto px-6 py-20 relative z-10 border-t border-border/40">
-      <div className="text-center mb-12">
-        <h2 className="text-3xl sm:text-4xl font-medium font-serif tracking-tight text-foreground">
+    <section id="faq" className="w-full max-w-3xl mx-auto px-4 sm:px-6 py-12 sm:py-20 relative z-10 border-t border-border/40">
+      <div className="text-center mb-8 sm:mb-12">
+        <h2 className="text-2xl sm:text-3xl lg:text-4xl font-medium font-serif tracking-tight text-foreground">
           Frequently Asked Questions
         </h2>
       </div>
 
       <LiquidGlassCard
         glassSize="default"
-        className="border-border bg-background rounded-xl"
+        className="border-border bg-background rounded-xl p-4 sm:p-6"
       >
         <Accordion type="single" collapsible className="w-full">
           {faqs.map(({ question, answer }) => (
             <AccordionItem key={question} value={question} className="border-border last:border-0">
-              <AccordionTrigger className="font-serif text-base text-foreground hover:text-foreground/80 hover:no-underline transition-colors py-4">
+              <AccordionTrigger className="font-serif text-sm sm:text-base text-foreground hover:text-foreground/80 hover:no-underline transition-colors py-3.5 sm:py-4 text-left">
                 {question}
               </AccordionTrigger>
-              <AccordionContent className="text-foreground/70 font-light leading-relaxed pb-4">
+              <AccordionContent className="text-xs sm:text-sm text-foreground/70 font-light leading-relaxed pb-4">
                 {answer}
               </AccordionContent>
             </AccordionItem>

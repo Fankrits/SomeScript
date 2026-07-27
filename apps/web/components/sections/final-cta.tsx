@@ -4,22 +4,22 @@ import { Button } from "@/components/ui/button";
 
 export function FinalCta() {
   return (
-    <section className="w-full max-w-7xl mx-auto px-6 py-20 relative z-10 border-t border-border/40">
+    <section className="w-full max-w-7xl mx-auto px-4 sm:px-6 py-12 sm:py-20 relative z-10 border-t border-border/40">
       <div className="mx-auto flex max-w-2xl flex-col items-center gap-4 text-center">
-        <h2 className="text-3xl sm:text-4xl font-medium font-serif tracking-tight leading-tight text-foreground">
+        <h2 className="text-2xl sm:text-3xl lg:text-4xl font-medium font-serif tracking-tight leading-tight text-foreground">
           Start Writing Perfect Research Today
         </h2>
-        <p className="text-sm sm:text-base text-foreground/70 leading-relaxed font-light max-w-xl">
+        <p className="text-xs sm:text-base text-foreground/70 leading-relaxed font-light max-w-xl">
           Join researchers using SomeScript for flawless math, citations, and typesetting.
         </p>
         <div className="flex w-full justify-center">
           <Button
             asChild
             size="lg"
-            className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-primary-foreground px-8 py-5 rounded-lg text-base shadow-lg shadow-primary/15 transition-all font-semibold cursor-pointer"
+            className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-primary-foreground px-6 sm:px-8 py-4 sm:py-5 rounded-lg text-sm sm:text-base shadow-lg shadow-primary/15 transition-all font-semibold cursor-pointer"
           >
             <Link href="/dashboard">
-              Start Typesetting Free <ChevronRight className="ml-1.5 h-5 w-5" />
+              Start Typesetting Free <ChevronRight className="ml-1.5 h-4 sm:h-5 w-4 sm:w-5" />
             </Link>
           </Button>
         </div>
