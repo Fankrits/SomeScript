@@ -52,7 +52,7 @@ export function ImportProjectDialog() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" className="border-border hover:bg-secondary text-foreground font-medium gap-1.5 rounded-md shadow-sm">
+        <Button variant="outline" className="w-full sm:w-auto border-border hover:bg-secondary text-foreground font-medium gap-1.5 rounded-md shadow-sm">
           <Upload className="h-4 w-4" /> Import ZIP
         </Button>
       </DialogTrigger>
