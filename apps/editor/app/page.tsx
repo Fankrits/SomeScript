@@ -682,6 +682,18 @@ const Example = () => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- SSR-safe: hydrate layout from localStorage after mount
     if (savedSidebar !== null) setIsLeftSidebarOpen(savedSidebar === "true");
     setMounted(true);
+
+    // After the layout is restored from localStorage, ensure the code panel is never
+    // stuck collapsed on load. A brief rAF delay lets react-resizable-panels finish
+    // its own restoration before we inspect / correct the panel state.
+    const raf = requestAnimationFrame(() => {
+      if (codePanelRef.current?.isCollapsed()) {
+        codePanelRef.current.expand();
+      }
+    });
+    return () => cancelAnimationFrame(raf);
+  // codePanelRef is a stable ref — safe to omit from deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Persist sidebar open state whenever it changes (post-mount to avoid clobbering the stored value).
@@ -2339,11 +2351,11 @@ const Example = () => {
                 id="code"
                 panelRef={codePanelRef}
                 collapsible
-                collapsedSize={2}
+                collapsedSize={0}
                 defaultSize={50}
-                minSize={20}
+                minSize={25}
                 onResize={(size) => {
-                  setIsCodeCollapsed(size.asPercentage <= 2);
+                  setIsCodeCollapsed(size.asPercentage <= 1);
                 }}
                 className={cn(isAnimatingPdf && "panel-transition")}
               >
@@ -2489,9 +2501,9 @@ const Example = () => {
                 collapsible
                 collapsedSize={0}
                 defaultSize={50}
-                minSize={20}
+                minSize={25}
                 onResize={(size) => {
-                  setIsPdfCollapsed(size.asPercentage <= 2);
+                  setIsPdfCollapsed(size.asPercentage <= 1);
                 }}
                 className={cn(isAnimatingPdf && "panel-transition")}
               >
