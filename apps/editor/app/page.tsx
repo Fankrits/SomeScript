@@ -1376,10 +1376,22 @@ const Example = () => {
       return false;
     };
 
+    const findNode = (candidate: string, nodes: FileNode[]): FileNode | undefined => {
+      for (const n of nodes) {
+        if (n.path === candidate) return n;
+        if (n.children) {
+          const found = findNode(candidate, n.children);
+          if (found) return found;
+        }
+      }
+      return undefined;
+    };
+
     const lastSlash = path.lastIndexOf("/");
     const dir = lastSlash >= 0 ? path.slice(0, lastSlash) : "";
     const name = lastSlash >= 0 ? path.slice(lastSlash + 1) : path;
-    const dotIdx = name.lastIndexOf(".");
+    const isDir = findNode(path, fileTree)?.isDir ?? false;
+    const dotIdx = isDir ? -1 : name.lastIndexOf(".");
     const base = dotIdx > 0 ? name.slice(0, dotIdx) : name;
     const ext = dotIdx > 0 ? name.slice(dotIdx) : "";
 
