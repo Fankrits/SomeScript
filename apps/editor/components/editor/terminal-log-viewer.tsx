@@ -101,6 +101,19 @@ export function TerminalLogViewer({
 
         <div className="flex items-center gap-2">
           <TerminalStatus />
+          {output && onSendToChat && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => onSendToChat()}
+              title="Send terminal output to chat"
+              className="h-7 px-2.5 text-xs font-medium gap-1.5 border-zinc-700 bg-zinc-800/80 text-zinc-200 hover:bg-zinc-700 hover:text-zinc-100 transition-colors"
+            >
+              <SparklesIcon className="size-3.5 text-amber-400" />
+              <span>Send to chat</span>
+            </Button>
+          )}
           <TerminalActions>
             <TerminalCopyButton />
             {onClear && <TerminalClearButton />}
