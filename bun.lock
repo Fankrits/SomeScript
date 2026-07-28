@@ -84,6 +84,7 @@
         "embla-carousel-react": "^8.6.0",
         "eve": "^0.27.6",
         "input-otp": "^1.4.2",
+        "ioredis": "^5.11.1",
         "jszip": "^3.10.1",
         "lucide-react": "^1.27.0",
         "media-chrome": "^4.19.2",
