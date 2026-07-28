@@ -108,6 +108,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { pickDetectedMainFile } from "@/lib/main-file";
+import { threadsListKey, activeThreadIdKey } from "@/lib/thread-history";
 
 
 // Types
@@ -769,8 +770,8 @@ const Example = () => {
   useEffect(() => {
     const syncThreads = () => {
       if (typeof window === "undefined") return;
-      const listRaw = localStorage.getItem("eve-threads-list");
-      const activeId = localStorage.getItem("eve-active-thread-id");
+      const listRaw = localStorage.getItem(threadsListKey(projectId));
+      const activeId = localStorage.getItem(activeThreadIdKey(projectId));
       let currentList = [];
       let currentActiveId = "";
 
@@ -790,8 +791,8 @@ const Example = () => {
         const defaultThread = { id: defaultId, title: "New Chat", createdAt: Date.now() };
         currentList = [defaultThread];
         currentActiveId = defaultId;
-        localStorage.setItem("eve-threads-list", JSON.stringify(currentList));
-        localStorage.setItem("eve-active-thread-id", defaultId);
+        localStorage.setItem(threadsListKey(projectId), JSON.stringify(currentList));
+        localStorage.setItem(activeThreadIdKey(projectId), defaultId);
       }
 
       // Active id missing or pointing at a deleted thread: fall back to the first
@@ -799,7 +800,7 @@ const Example = () => {
       // "somescript:attach-to-chat" events (no composer to receive them).
       if (!currentList.some((t: { id: string }) => t.id === currentActiveId)) {
         currentActiveId = currentList[0].id;
-        localStorage.setItem("eve-active-thread-id", currentActiveId);
+        localStorage.setItem(activeThreadIdKey(projectId), currentActiveId);
       }
 
       setThreads(currentList);
@@ -809,24 +810,24 @@ const Example = () => {
     syncThreads();
     window.addEventListener("storage", syncThreads);
     return () => window.removeEventListener("storage", syncThreads);
-  }, []);
+  }, [projectId]);
 
   const handleNewChat = useCallback(() => {
     const newId = typeof crypto !== "undefined" ? crypto.randomUUID() : Math.random().toString(36).substring(2);
     const newThread = { id: newId, title: "New Chat", createdAt: Date.now() };
     const updatedList = [newThread, ...threads];
-    localStorage.setItem("eve-threads-list", JSON.stringify(updatedList));
-    localStorage.setItem("eve-active-thread-id", newId);
+    localStorage.setItem(threadsListKey(projectId), JSON.stringify(updatedList));
+    localStorage.setItem(activeThreadIdKey(projectId), newId);
     setThreads(updatedList);
     setActiveThreadId(newId);
     setShowHistory(false);
-  }, [threads]);
+  }, [threads, projectId]);
 
   const handleSwitchChat = useCallback((id: string) => {
-    localStorage.setItem("eve-active-thread-id", id);
+    localStorage.setItem(activeThreadIdKey(projectId), id);
     setActiveThreadId(id);
     setShowHistory(false);
-  }, []);
+  }, [projectId]);
 
   const handleDeleteChat = useCallback((id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -845,11 +846,11 @@ const Example = () => {
       }
     }
 
-    localStorage.setItem("eve-threads-list", JSON.stringify(updatedList));
-    localStorage.setItem("eve-active-thread-id", nextActiveId);
+    localStorage.setItem(threadsListKey(projectId), JSON.stringify(updatedList));
+    localStorage.setItem(activeThreadIdKey(projectId), nextActiveId);
     setThreads(updatedList);
     setActiveThreadId(nextActiveId);
-  }, [threads, activeThreadId]);
+  }, [threads, activeThreadId, projectId]);
 
   // Resizable Panel Refs & States
   const codePanelRef = useRef<PanelImperativeHandle>(null);
@@ -1936,7 +1937,7 @@ const Example = () => {
       {terminalOutput && (
         <button
           onClick={handleSendTerminalToChat}
-          title="Send terminal output to Eve"
+          title="Send terminal output to chat"
           className="absolute right-3 top-2 z-10 flex items-center gap-1.5 rounded-md border border-zinc-700 bg-zinc-900/90 px-2 py-1 text-[11px] font-medium text-zinc-300 cursor-pointer transition-colors hover:bg-zinc-800 hover:text-zinc-100"
         >
           Send to chat

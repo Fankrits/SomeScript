@@ -439,7 +439,7 @@ export function useEveRuntime(
     const timer = setTimeout(() => {
       if (retriedRef.current) {
         setSendError(
-          "Eve stopped responding — its stream stalled (a known eve issue on some deployments: github.com/vercel/eve/issues/1159). Continue to try picking up where it left off.",
+          "The assistant stopped responding. Continue to try picking up where it left off.",
         );
         setCanContinue(true);
       } else {

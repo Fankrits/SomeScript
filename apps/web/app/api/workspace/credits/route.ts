@@ -87,7 +87,7 @@ export async function POST(req: Request): Promise<Response> {
       workspaceId,
       delta: -cost,
       reason: "usage",
-      description: `Eve (${mode}): ${outputTokens} output tokens`,
+      description: `AI usage (${mode}): ${outputTokens} output tokens`,
     });
   });
 

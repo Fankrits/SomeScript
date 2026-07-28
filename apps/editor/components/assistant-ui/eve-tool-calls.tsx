@@ -550,7 +550,7 @@ export function WriteFileCard({ args, result }: { args: ToolCardArgs; result?: u
       <AlertDialog open={confirmOverwrite} onOpenChange={(open) => !open && resolveOverwriteConfirm(false)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>File changed since Eve's edit</AlertDialogTitle>
+            <AlertDialogTitle>File changed since last edit</AlertDialogTitle>
             <AlertDialogDescription>
               Revert anyway and overwrite the current content?
             </AlertDialogDescription>

@@ -26,7 +26,7 @@ const PLANS = [
       `${PLAN_LIMITS.free.maxMembers} members`,
       `${PLAN_LIMITS.free.maxProjects} projects`,
       `${PLAN_LIMITS.free.monthlyAiCredits.toLocaleString()} AI credits/mo`,
-      "Lite Eve mode",
+      "Lite AI mode",
     ],
   },
   {
@@ -39,7 +39,7 @@ const PLANS = [
       `${PLAN_LIMITS.pro.maxMembers} members`,
       "Unlimited projects",
       `${PLAN_LIMITS.pro.monthlyAiCredits.toLocaleString()} AI credits/mo`,
-      "All Eve modes",
+      "All AI modes",
     ],
   },
   {
@@ -51,7 +51,7 @@ const PLANS = [
       "Per-seat members",
       "Unlimited projects",
       `${PLAN_LIMITS.team.monthlyAiCredits.toLocaleString()} AI credits/mo`,
-      "All Eve modes",
+      "All AI modes",
     ],
   },
 ];

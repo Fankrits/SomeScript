@@ -18,7 +18,7 @@ const faqs = [
   {
     question: "Can the AI write my whole paper for me?",
     answer:
-      "Eve can draft outlines, equations, tables, and citations from a prompt, but it's designed to accelerate your writing, not replace your judgment as the author.",
+      "The AI assistant can draft outlines, equations, tables, and citations from a prompt, but it's designed to accelerate your writing, not replace your judgment as the author.",
   },
   {
     question: "Is there a free tier?",

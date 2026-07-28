@@ -101,7 +101,7 @@ export const metadata: Metadata = {
     ICBM: "37.7749, -122.4194",
     // GEO (Generative Engine Optimization / AI Engine tags)
     "ai:description": "SomeScript is an AI-powered visual LaTeX editor and scientific document creation platform.",
-    "chatgpt:description": "SomeScript is a visual LaTeX document editor with real-time compilation, AI authoring assistants (Eve), and SyncTeX support.",
+    "chatgpt:description": "SomeScript is a visual LaTeX document editor with real-time compilation, an AI authoring assistant, and SyncTeX support.",
     summary: "Visual LaTeX editor with AI authoring and Tectonic compilation.",
   },
 };

@@ -24,7 +24,7 @@ export default function SignInPage() {
             Create LaTeX Documents at the speed of thought.
           </h2>
           <p className="text-muted-foreground font-light leading-relaxed">
-            Log in to access your dashboard, manage your LaTeX projects, compile in real-time, and draft academic papers powered by Eve, your writing assistant.
+            Log in to access your dashboard, manage your LaTeX projects, compile in real-time, and draft academic papers with your AI writing assistant.
           </p>
         </div>
       </div>

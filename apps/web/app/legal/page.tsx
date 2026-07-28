@@ -70,7 +70,7 @@ export default function LegalPage() {
                 </p>
                 <h3 className="text-base font-serif font-semibold text-foreground mt-4">2. How We Use Document Content</h3>
                 <p>
-                  Document content (your `.tex` and `.bib` files) is used solely to provide visual editing capabilities, AI co-authoring suggestions through Eve, and server-side PDF typesetting. We do not inspect, publish, or sell your research content or metadata.
+                  Document content (your `.tex` and `.bib` files) is used solely to provide visual editing capabilities, AI co-authoring suggestions, and server-side PDF typesetting. We do not inspect, publish, or sell your research content or metadata.
                 </p>
                 <h3 className="text-base font-serif font-semibold text-foreground mt-4">3. Data Sharing & Security</h3>
                 <p>
