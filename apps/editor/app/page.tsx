@@ -3,7 +3,7 @@
 import {
   FileTree,
 } from "@/components/ai-elements/file-tree";
-import { Terminal, TerminalContent } from "@/components/ai-elements/terminal";
+import { TerminalLogViewer } from "@/components/editor/terminal-log-viewer";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -36,6 +36,8 @@ import { SearchPanel, SearchPanelHandle } from "@/components/editor/search-panel
 import { TasksPanel, TasksPanelHandle } from "@/components/editor/tasks-panel";
 import type { Task } from "@/lib/tasks";
 import { search as searchExtension, SearchQuery, setSearchQuery } from "@codemirror/search";
+import { setDiagnostics, type Diagnostic } from "@codemirror/lint";
+import { parseCompileErrors, type CompileError } from "@/lib/compile-errors";
 import nextDynamic from "next/dynamic";
 
 // The PDF stack (embedpdf + the ~3.5MB pdfium.wasm it fetches from the CDN) is only
@@ -522,6 +524,10 @@ const Example = () => {
   const [terminalOutput, setTerminalOutput] = useState<string>("");
   const [isTerminalStreaming, setIsTerminalStreaming] =
     useState<boolean>(false);
+  // Errors from the last failed compile (cleared as soon as a new compile starts).
+  // Drives the terminal badge dot and the editor gutter markers.
+  const [compileErrors, setCompileErrors] = useState<CompileError[]>([]);
+  const [hasCompileError, setHasCompileError] = useState<boolean>(false);
 
   // Chat state
   const [chatText, setChatText] = useState<string>("");
@@ -887,7 +893,47 @@ const Example = () => {
         setActiveFormatKey(activeFormats(view.state));
       }
     }
-  }, []);
+
+    // Optimistically drop a gutter error marker the moment its own line gets
+    // edited — a real re-check only happens on the next compile, but this
+    // makes the marker feel responsive to "you're fixing it" instead of
+    // sitting there stale until you hit Compile again.
+    if (update.docChanged) {
+      const relPath = selectedPath ? toProjectRelative(selectedPath) : null;
+      setCompileErrors((prev) => {
+        if (!relPath || prev.length === 0) return prev;
+        const remaining = prev.filter((err) => {
+          if (err.file !== relPath) return true;
+          if (err.line < 1 || err.line > update.startState.doc.lines) return true;
+          const { from, to } = update.startState.doc.line(err.line);
+          return !update.changes.touchesRange(from, to);
+        });
+        if (remaining.length === prev.length) return prev;
+        if (remaining.length === 0) setHasCompileError(false);
+        return remaining;
+      });
+    }
+  }, [selectedPath, toProjectRelative]);
+
+  // Pushes the current compileErrors into the CodeMirror gutter (via
+  // @codemirror/lint's lintGutter, added in useCodeMirrorExtensions) whenever
+  // the error set changes or the user switches to a different file — only
+  // errors for the currently-open file get a marker.
+  useEffect(() => {
+    const view = editorViewRef.current;
+    if (!view) return;
+    const relPath = selectedPath ? toProjectRelative(selectedPath) : null;
+    const diagnostics: Diagnostic[] = relPath
+      ? compileErrors
+          .filter((err) => err.file === relPath)
+          .map((err) => {
+            const lineNum = Math.min(Math.max(err.line, 1), view.state.doc.lines);
+            const { from, to } = view.state.doc.line(lineNum);
+            return { from, to, severity: "error", message: err.message };
+          })
+      : [];
+    view.dispatch(setDiagnostics(view.state, diagnostics));
+  }, [compileErrors, selectedPath, toProjectRelative]);
 
   // Double-click in the editor jumps the PDF to that line (forward SyncTeX).
   // The `nonce` lets the same line re-trigger a scroll on a repeat double-click.
@@ -1052,21 +1098,30 @@ const Example = () => {
     view.focus();
   }, []);
 
-  const handleSendTerminalToChat = useCallback(() => {
-    // ponytail: last 300 lines, ANSI stripped — full Tectonic logs are megabytes
-    // of context. Bump/summarize if the agent starts missing earlier errors.
-    const clean = terminalOutput.replace(/\u001B\[[0-9;]*m/g, "");
-    const lines = clean.split("\n");
-    const clipped =
-      lines.length > 300 ? `…(truncated)\n${lines.slice(-300).join("\n")}` : clean;
+  const handleSendTerminalToChat = useCallback((customText?: string) => {
+    let textToSend: string;
+    let filename: string;
+
+    if (typeof customText === "string" && customText.trim()) {
+      textToSend = customText.trim();
+      filename = `error-${new Date().toTimeString().slice(0, 8).replace(/:/g, "-")}.log`;
+    } else {
+      // ponytail: last 300 lines, ANSI stripped — full Tectonic logs are megabytes
+      // of context. Bump/summarize if the agent starts missing earlier errors.
+      const clean = terminalOutput.replace(/\u001B\[[0-9;]*m/g, "");
+      const lines = clean.split("\n");
+      textToSend =
+        lines.length > 300 ? `…(truncated)\n${lines.slice(-300).join("\n")}` : clean;
+      filename = `terminal-${new Date().toTimeString().slice(0, 8).replace(/:/g, "-")}.log`;
+    }
 
     setIsLeftSidebarOpen(true);
     setActiveTab("chat");
     window.dispatchEvent(
       new CustomEvent("somescript:attach-to-chat", {
         detail: {
-          name: `terminal-${new Date().toTimeString().slice(0, 8).replace(/:/g, "-")}.log`,
-          text: clipped.trim(),
+          name: filename,
+          text: textToSend.trim(),
         },
       })
     );
@@ -1549,9 +1604,14 @@ const Example = () => {
   // guarding re-entrancy (see handleCompileLatex/handleDownloadPdf), since
   // handleCompileLatex below may need to run this twice in one click (current
   // file, then the main-file fallback) without the button re-enabling in between.
-  const runCompile = useCallback(async (compilePath: string): Promise<{ pdfPath: string; compilePath: string } | null> => {
+  const runCompile = useCallback(async (compilePath: string): Promise<{ pdfPath: string; compilePath: string } | { pdfPath: null; compilePath: string; log: string }> => {
     setTerminalOutput("");
     setIsTerminalStreaming(true);
+    // Clear stale error state as soon as a new attempt starts — including the
+    // first of two attempts in handleCompileLatex's open-file/main-file fallback,
+    // since a real failure gets set again by the caller once all attempts are exhausted.
+    setCompileErrors([]);
+    setHasCompileError(false);
 
     try {
       // First save the current file content to ensure it compiles current edits
@@ -1569,7 +1629,7 @@ const Example = () => {
           const errData = await res.json().catch(() => ({}));
           if (errData.error) {
             setTerminalOutput(errData.error);
-            return null;
+            return { pdfPath: null, compilePath, log: errData.error };
           }
         }
         throw new Error("Failed to start compilation");
@@ -1608,17 +1668,36 @@ const Example = () => {
         }
       }
 
-      return pdfPath ? { pdfPath, compilePath } : null;
+      return pdfPath ? { pdfPath, compilePath } : { pdfPath: null, compilePath, log: logBuffer };
     } catch (err) {
       console.error("Compilation error", err);
       const errMessage = err instanceof Error ? err.message : String(err);
       // Put compilation error into the terminal output
-      setTerminalOutput((prev) => `${prev}\n\u001B[31mError compiling LaTeX:\u001B[0m ${errMessage}\n`);
-      return null;
+      const errLog = `\u001B[31mError compiling LaTeX:\u001B[0m ${errMessage}\n`;
+      setTerminalOutput((prev) => `${prev}\n${errLog}`);
+      return { pdfPath: null, compilePath, log: errLog };
     } finally {
       setIsTerminalStreaming(false);
     }
   }, [projectId, toProjectRelative, saveCurrentFile]);
+
+  // Final-failure handler: parses the failed compile's log for `error: file:line:
+  // message` entries (Tectonic's own format) and surfaces them as a toast, a
+  // badge dot on the terminal toggle, and gutter markers on the errored lines.
+  // Callers must only invoke this after every fallback attempt is exhausted —
+  // runCompile itself stays a silent "compile this path" primitive so an
+  // expected intermediate failure (e.g. the open file can't stand alone) never
+  // flashes an error before the main-file fallback gets a chance to succeed.
+  const surfaceCompileFailure = useCallback((result: { compilePath: string; log: string }) => {
+    const errs = parseCompileErrors(result.log, result.compilePath);
+    setCompileErrors(errs);
+    setHasCompileError(true);
+    toast.error(
+      errs[0]
+        ? `Compile failed \u2014 line ${errs[0].line}: ${errs[0].message}`
+        : "Compile failed \u2014 see terminal for details"
+    );
+  }, []);
 
   // Single Compile action: try the currently open .tex file as its own root
   // document first (fast, precise — e.g. a self-contained chapter); only fall
@@ -1634,20 +1713,23 @@ const Example = () => {
 
       let result = currentPath ? await runCompile(currentPath) : null;
 
-      if (!result) {
+      if (!result || result.pdfPath === null) {
         const mainPath = await resolveOrToastMainFile();
         if (mainPath && mainPath !== currentPath) {
           result = await runCompile(mainPath);
         }
       }
 
-      if (!result) return;
+      if (!result || result.pdfPath === null) {
+        if (result) surfaceCompileFailure(result);
+        return;
+      }
       setPdfUrl(withProject(`${window.location.origin}/api/files?path=${encodeURIComponent(result.pdfPath)}&t=${Date.now()}`));
       setCompiledPath(result.compilePath);
     } finally {
       setIsCompiling(false);
     }
-  }, [isCompiling, selectedPath, toProjectRelative, runCompile, resolveOrToastMainFile, withProject]);
+  }, [isCompiling, selectedPath, toProjectRelative, runCompile, resolveOrToastMainFile, withProject, surfaceCompileFailure]);
 
   // Always the project's main file, never "whatever's open" — a download is
   // the finished project, not whichever chapter happens to be open.
@@ -1658,7 +1740,10 @@ const Example = () => {
       const mainPath = await resolveOrToastMainFile();
       if (!mainPath) return;
       const result = await runCompile(mainPath);
-      if (!result) return;
+      if (result.pdfPath === null) {
+        surfaceCompileFailure(result);
+        return;
+      }
       const url = withProject(`${window.location.origin}/api/files?path=${encodeURIComponent(result.pdfPath)}&t=${Date.now()}`);
       const link = document.createElement("a");
       link.href = url;
@@ -1669,7 +1754,7 @@ const Example = () => {
     } finally {
       setIsCompiling(false);
     }
-  }, [isCompiling, resolveOrToastMainFile, runCompile, withProject]);
+  }, [isCompiling, resolveOrToastMainFile, runCompile, withProject, surfaceCompileFailure]);
 
   // Load tree on mount
   useEffect(() => {
@@ -1932,25 +2017,21 @@ const Example = () => {
     </div>
   );
 
+  const compilePath = compiledPath || selectedPath || "main.tex";
+  const projectPath = projectId;
+
   const terminalPane = (
-    <div className="relative h-full">
-      {terminalOutput && (
-        <button
-          onClick={handleSendTerminalToChat}
-          title="Send terminal output to chat"
-          className="absolute right-3 top-2 z-10 flex items-center gap-1.5 rounded-md border border-zinc-700 bg-zinc-900/90 px-2 py-1 text-[11px] font-medium text-zinc-300 cursor-pointer transition-colors hover:bg-zinc-800 hover:text-zinc-100"
-        >
-          Send to chat
-        </button>
-      )}
-      <Terminal
-        className="h-full rounded-none border-0"
-        isStreaming={isTerminalStreaming}
-        output={terminalOutput}
-      >
-        <TerminalContent className="max-h-full" />
-      </Terminal>
-    </div>
+    <TerminalLogViewer
+      output={terminalOutput}
+      isStreaming={isTerminalStreaming}
+      compilePath={compilePath}
+      onSelectError={(file, line) => {
+        const fullPath = file.startsWith("/") ? file : `${projectPath}/${file.replace(/^\.\//, "")}`;
+        handleSelectMatch(fullPath, line);
+      }}
+      onSendToChat={handleSendTerminalToChat}
+      onClear={() => setTerminalOutput("")}
+    />
   );
 
   return (
@@ -2085,12 +2166,15 @@ const Example = () => {
                 }
               }}
               className={cn(
-                "p-1.5 rounded-sm hover:bg-muted cursor-pointer transition-colors",
+                "relative p-1.5 rounded-sm hover:bg-muted cursor-pointer transition-colors",
                 (isMobile ? mobileView === "terminal" : !isTerminalCollapsed) ? "text-foreground bg-muted/50" : "text-muted-foreground/60 hover:text-foreground"
               )}
-              title="Toggle Panel (Bottom Terminal)"
+              title={hasCompileError ? "Toggle Panel (Bottom Terminal) — last compile failed" : "Toggle Panel (Bottom Terminal)"}
             >
               <LayoutIconBottom active={isMobile ? mobileView === "terminal" : !isTerminalCollapsed} />
+              {hasCompileError && (isMobile ? mobileView !== "terminal" : isTerminalCollapsed) && (
+                <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-red-500" />
+              )}
             </button>
             <button
               onClick={() => {
