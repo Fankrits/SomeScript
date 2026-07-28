@@ -10,6 +10,7 @@ import {
 import { EVE_MODES, isEveMode } from "@/lib/eve-modes";
 import { useModelMode } from "@/components/chat/model-mode-context";
 import { useCreditStatus } from "@/hooks/use-credit-status";
+import { useAuiState } from "@assistant-ui/react";
 
 /**
  * Model-mode picker for the Eve composer (Lite / Pro / Expert). Sits in the
@@ -25,6 +26,11 @@ export function ModelModeSelect() {
   const { mode, setMode } = useModelMode();
   const current = EVE_MODES.find((m) => m.id === mode);
   const credits = useCreditStatus();
+  // eve-thread.tsx remounts the whole runtime (key={mode}) on a mode switch to
+  // pick up the new attachment adapter — fine between turns, but mid-stream it
+  // would tear down the in-flight turn's live updates. Disabling here is
+  // simpler and safer than trying to make the remount survive an active turn.
+  const isRunning = useAuiState((s) => s.thread.isRunning);
 
   return (
     <Select
@@ -32,6 +38,7 @@ export function ModelModeSelect() {
       onValueChange={(v) => {
         if (isEveMode(v)) setMode(v);
       }}
+      disabled={isRunning}
     >
       <SelectTrigger
         size="sm"
