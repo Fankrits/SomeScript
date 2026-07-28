@@ -2,9 +2,38 @@ import { requireProject, apiError, ApiError, projectDirFor } from "@/lib/authz";
 import { storage, FileNode } from "@/lib/storage";
 import { NextRequest } from "next/server";
 import { createHash } from "crypto";
+import { checkRate } from "@/lib/rate-limit";
+import { redisHGetAll, redisHSet, redisHDel } from "@/lib/redis";
 
-// Simple in-memory cache to track file content hashes per project
-const uploadedFilesCache = new Map<string, string>(); // Key: `${projectId}:${filePath}`, Value: contentHash
+// In-memory fallback if Redis is unavailable
+const fallbackUploadedFilesCache = new Map<string, string>();
+
+async function getProjectFileHashes(projectId: string): Promise<Record<string, string>> {
+  const redisHashes = await redisHGetAll(`project:${projectId}:hashes`);
+  if (redisHashes) return redisHashes;
+
+  const result: Record<string, string> = {};
+  for (const [key, val] of fallbackUploadedFilesCache.entries()) {
+    if (key.startsWith(`${projectId}:`)) {
+      result[key.substring(projectId.length + 1)] = val;
+    }
+  }
+  return result;
+}
+
+async function updateProjectFileHash(projectId: string, filePath: string, hash: string): Promise<void> {
+  fallbackUploadedFilesCache.set(`${projectId}:${filePath}`, hash);
+  await redisHSet(`project:${projectId}:hashes`, filePath, hash, 7 * 86400); // 7 day TTL
+}
+
+async function deleteProjectFileHashes(projectId: string, filePaths: string[]): Promise<void> {
+  for (const p of filePaths) {
+    fallbackUploadedFilesCache.delete(`${projectId}:${p}`);
+  }
+  if (filePaths.length > 0) {
+    await redisHDel(`project:${projectId}:hashes`, filePaths);
+  }
+}
 
 interface DifferentialFile {
   path: string;
@@ -39,8 +68,6 @@ async function getAllStorageFiles(projectId: string, nodes: FileNode[]): Promise
   collectNodes(nodes);
   return Promise.all(filePromises);
 }
-
-import { checkRate } from "@/lib/rate-limit";
 
 export async function POST(req: NextRequest) {
   try {
@@ -97,45 +124,40 @@ export async function POST(req: NextRequest) {
       const projectTree = await storage.listProjectFiles(projectId);
       const allFiles = await getAllStorageFiles(projectId, projectTree);
 
-      const sortedFiles = [...allFiles].sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
+      const sortedFiles = [...allFiles].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
       const projectHash = createHash("sha256")
-        .update(JSON.stringify(sortedFiles.map(f => ({ path: f.path, content: f.content }))))
+        .update(JSON.stringify(sortedFiles.map((f) => ({ path: f.path, content: f.content }))))
         .update(fileRelativePath)
         .digest("hex");
 
-      // Find modified and deleted files compared to our cache
-      const changedFiles: DifferentialFile[] = [];
-      const currentProjectKeys = new Set<string>();
+      const cachedHashes = await getProjectFileHashes(projectId);
 
-      let pendingCacheUpdates = new Map<string, string>();
-      let pendingCacheDeletions = new Set<string>();
+      const changedFiles: DifferentialFile[] = [];
+      const currentPaths = new Set<string>();
+      const pendingUpdates: { path: string; hash: string }[] = [];
 
       for (const file of allFiles) {
-        const cacheKey = `${projectId}:${file.path}`;
-        currentProjectKeys.add(cacheKey);
-
+        currentPaths.add(file.path);
         const contentHash = createHash("sha256").update(file.content).digest("hex");
-        const cachedHash = uploadedFilesCache.get(cacheKey);
+        const cachedHash = cachedHashes[file.path];
 
         if (cachedHash !== contentHash) {
           changedFiles.push(file);
-          pendingCacheUpdates.set(cacheKey, contentHash);
+          pendingUpdates.push({ path: file.path, hash: contentHash });
         }
       }
 
-      // Detect deleted files
       const deletedFiles: string[] = [];
-      for (const cacheKey of uploadedFilesCache.keys()) {
-        if (cacheKey.startsWith(`${projectId}:`) && !currentProjectKeys.has(cacheKey)) {
-          const filePath = cacheKey.substring(projectId.length + 1);
-          deletedFiles.push(filePath);
-          pendingCacheDeletions.add(cacheKey);
+      for (const existingPath of Object.keys(cachedHashes)) {
+        if (!currentPaths.has(existingPath)) {
+          deletedFiles.push(existingPath);
         }
       }
 
-      // Determine if we need full or differential sync
-      // If cache was completely empty for this project, force a full sync
-      const syncType = currentProjectKeys.size === changedFiles.length ? "full" : "differential";
+      const syncType =
+        Object.keys(cachedHashes).length === 0 || changedFiles.length === allFiles.length
+          ? "full"
+          : "differential";
 
       const compilePayload = {
         mode: "upload",
@@ -158,14 +180,11 @@ export async function POST(req: NextRequest) {
         const responseClone = response.clone();
         const errData = await responseClone.json().catch(() => ({}));
         if (errData.requireFullSync) {
-          // Clear cache and retry with a full upload
-          const projectCacheKeys = Array.from(uploadedFilesCache.keys()).filter(k => k.startsWith(`${projectId}:`));
-          pendingCacheDeletions = new Set(projectCacheKeys);
-          pendingCacheUpdates = new Map();
-          allFiles.forEach(file => {
-            const hash = createHash("sha256").update(file.content).digest("hex");
-            pendingCacheUpdates.set(`${projectId}:${file.path}`, hash);
-          });
+          pendingUpdates.length = 0;
+          for (const file of allFiles) {
+            const contentHash = createHash("sha256").update(file.content).digest("hex");
+            pendingUpdates.push({ path: file.path, hash: contentHash });
+          }
 
           response = await fetch(`${compilerUrl}/compile`, {
             method: "POST",
@@ -188,18 +207,13 @@ export async function POST(req: NextRequest) {
         return Response.json({ error: errData.logs || "Compiler service error" }, { status: response.status });
       }
 
-      // Commit the pending updates and deletions to the global cache on success
-      for (const key of pendingCacheDeletions) {
-        uploadedFilesCache.delete(key);
-      }
-      for (const [cacheKey, contentHash] of pendingCacheUpdates.entries()) {
-        if (uploadedFilesCache.size >= 1000 && !uploadedFilesCache.has(cacheKey)) {
-          const oldestKey = uploadedFilesCache.keys().next().value;
-          if (oldestKey !== undefined) {
-            uploadedFilesCache.delete(oldestKey);
-          }
+      if (response.ok) {
+        for (const item of pendingUpdates) {
+          await updateProjectFileHash(projectId, item.path, item.hash);
         }
-        uploadedFilesCache.set(cacheKey, contentHash);
+        if (deletedFiles.length > 0) {
+          await deleteProjectFileHashes(projectId, deletedFiles);
+        }
       }
 
       const result = await response.json();
