@@ -138,6 +138,13 @@ export function useEveRuntime(
   // True once the silent auto-retry below has also stalled: surfaces a
   // "Continue" action instead of a dead-end error banner.
   const [canContinue, setCanContinue] = useState(false);
+  // onNew does real async work (credit pre-flight, force-save) *before* it ever
+  // reaches agent.send(), and agent.status stays "ready" that whole time. Since
+  // assistant-ui clears the composer the moment it hands off to onNew, relying
+  // on agent.status alone leaves a window where the typed message has vanished
+  // and nothing indicates the app is working — which reads exactly like a stuck
+  // send. This covers that gap; see isPending below.
+  const [isSending, setIsSending] = useState(false);
 
   // Load initial state synchronously on mount/remount. A blob written by a
   // different eve client is replayed into this one's reducer and session, so a
@@ -312,97 +319,109 @@ export function useEveRuntime(
 
   const onNew = useCallback(
     async (message: AppendMessage) => {
-      // Pre-flight credit/mode-access check. This is a UX gate, not the security
-      // boundary — a client that skips it still gets billed (and can go negative)
-      // by the server-side deduction below, so failing open on a network hiccup
-      // here is safe: it doesn't bypass accounting, just the friendly early block.
+      setIsSending(true);
       try {
-        const res = await fetch("/api/eve/credits");
-        if (res.ok) {
-          const status: {
-            includedBalance: number;
-            purchasedBalance: number;
-            allowedModes: EveMode[];
-          } = await res.json();
-          if (!status.allowedModes.includes(modeRef.current)) {
-            setSendError(`${modeRef.current} mode isn't available on your plan. Upgrade to unlock it.`);
-            return;
-          }
-          if (status.includedBalance + status.purchasedBalance <= 0) {
-            setSendError("Out of AI credits for this workspace this month. Upgrade or buy a top-up to continue.");
-            return;
-          }
-        }
-      } catch (e) {
-        console.error("Credit pre-flight check failed, sending anyway", e);
-      }
-
-      // Force save any unsaved changes in the editor before sending
-      const promises: Promise<unknown>[] = [];
-      window.dispatchEvent(
-        new CustomEvent("somescript:force-save", { detail: { promises } })
-      );
-      if (promises.length > 0) {
+        // Pre-flight credit/mode-access check. This is a UX gate, not the security
+        // boundary — a client that skips it still gets billed (and can go negative)
+        // by the server-side deduction below, so failing open on a network hiccup
+        // here is safe: it doesn't bypass accounting, just the friendly early block.
+        // Bounded: without a deadline a hung request would strand the send forever,
+        // and the catch below already fails open, which is the intended behaviour.
         try {
-          await Promise.all(promises);
+          const res = await fetch("/api/eve/credits", {
+            signal: AbortSignal.timeout(5000),
+          });
+          if (res.ok) {
+            const status: {
+              includedBalance: number;
+              purchasedBalance: number;
+              allowedModes: EveMode[];
+            } = await res.json();
+            if (!status.allowedModes.includes(modeRef.current)) {
+              setSendError(`${modeRef.current} mode isn't available on your plan. Upgrade to unlock it.`);
+              return;
+            }
+            if (status.includedBalance + status.purchasedBalance <= 0) {
+              setSendError("Out of AI credits for this workspace this month. Upgrade or buy a top-up to continue.");
+              return;
+            }
+          }
         } catch (e) {
-          console.error("Failed to force save before sending message", e);
+          console.error("Credit pre-flight check failed, sending anyway", e);
         }
-      }
 
-      // Attachments arrive already converted by the adapters above: text files
-      // as an <attachment> text part, images as a data URL. Names are kept
-      // alongside the pixels so the tile can show the real filename.
-      const parts: OutgoingPart[] = [];
-      for (const part of message.content) {
-        if (part.type === "text") parts.push({ type: "text", text: part.text });
-      }
-      let attachmentParts = attachmentsToParts(message.attachments ?? []).parts;
-      // Defensive: Lite is text-only, so drop any image/PDF that slipped
-      // through — e.g. attached in Pro, then switched to Lite before sending
-      // (the adapter swap doesn't remove already-pending attachments).
-      if (modeRef.current === "lite") {
-        attachmentParts = attachmentParts.filter(
-          (p) =>
-            !(
-              p.type === "file" &&
-              (p.mediaType.startsWith("image/") || p.mediaType === "application/pdf")
-            ),
+        // Force save any unsaved changes in the editor before sending
+        const promises: Promise<unknown>[] = [];
+        window.dispatchEvent(
+          new CustomEvent("somescript:force-save", { detail: { promises } })
         );
-      }
-      parts.push(...attachmentParts);
-
-      if (parts.length > 0) {
-        const marker = `[mode: ${modeRef.current}]\n[projectId: ${projectId}]`;
-        const textPart = parts.find(
-          (p): p is Extract<OutgoingPart, { type: "text" }> => p.type === "text"
-        );
-        if (textPart) {
-          textPart.text = `${marker}\n${textPart.text}`;
-        } else {
-          parts.unshift({ type: "text", text: marker });
+        if (promises.length > 0) {
+          try {
+            await Promise.all(promises);
+          } catch (e) {
+            console.error("Failed to force save before sending message", e);
+          }
         }
 
-        const firstPart = parts[0];
-        const sendArgs: Parameters<typeof agent.send>[0] =
-          parts.length === 1 && firstPart.type === "text"
-            ? { message: firstPart.text }
-            : {
-                message: parts as unknown as Parameters<typeof agent.send>[0]["message"],
-              };
-        lastSendArgsRef.current = sendArgs;
-        retriedRef.current = false;
-        try {
-          setSendError(null);
-          setCanContinue(false);
-          sentModeRef.current = modeRef.current;
-          await agent.send(sendArgs);
-        } catch (e) {
-          // Rethrowing would reject into assistant-ui's send handler and vanish
-          // silently, leaving a cleared composer and no message on screen.
-          setSendError(e instanceof Error ? e.message : String(e));
-          console.error("Failed to send message to Eve", e);
+        // Attachments arrive already converted by the adapters above: text files
+        // as an <attachment> text part, images as a data URL. Names are kept
+        // alongside the pixels so the tile can show the real filename.
+        const parts: OutgoingPart[] = [];
+        for (const part of message.content) {
+          if (part.type === "text") parts.push({ type: "text", text: part.text });
         }
+        let attachmentParts = attachmentsToParts(message.attachments ?? []).parts;
+        // Defensive: Lite is text-only, so drop any image/PDF that slipped
+        // through — e.g. attached in Pro, then switched to Lite before sending
+        // (the adapter swap doesn't remove already-pending attachments).
+        if (modeRef.current === "lite") {
+          attachmentParts = attachmentParts.filter(
+            (p) =>
+              !(
+                p.type === "file" &&
+                (p.mediaType.startsWith("image/") || p.mediaType === "application/pdf")
+              ),
+          );
+        }
+        parts.push(...attachmentParts);
+
+        if (parts.length > 0) {
+          const marker = `[mode: ${modeRef.current}]\n[projectId: ${projectId}]`;
+          const textPart = parts.find(
+            (p): p is Extract<OutgoingPart, { type: "text" }> => p.type === "text"
+          );
+          if (textPart) {
+            textPart.text = `${marker}\n${textPart.text}`;
+          } else {
+            parts.unshift({ type: "text", text: marker });
+          }
+
+          const firstPart = parts[0];
+          const sendArgs: Parameters<typeof agent.send>[0] =
+            parts.length === 1 && firstPart.type === "text"
+              ? { message: firstPart.text }
+              : {
+                  message: parts as unknown as Parameters<typeof agent.send>[0]["message"],
+                };
+          lastSendArgsRef.current = sendArgs;
+          retriedRef.current = false;
+          try {
+            setSendError(null);
+            setCanContinue(false);
+            sentModeRef.current = modeRef.current;
+            await agent.send(sendArgs);
+          } catch (e) {
+            // Rethrowing would reject into assistant-ui's send handler and vanish
+            // silently, leaving a cleared composer and no message on screen.
+            setSendError(e instanceof Error ? e.message : String(e));
+            console.error("Failed to send message to Eve", e);
+          }
+        }
+      } finally {
+        // Every exit path — the two early plan/credit returns, a thrown
+        // pre-flight, an empty message, or a completed send — has to clear
+        // this, or the composer stays disabled for the rest of the session.
+        setIsSending(false);
       }
     },
     [agent, projectId],
@@ -410,13 +429,18 @@ export function useEveRuntime(
 
   const isBusy =
     agent.status === "submitted" || agent.status === "streaming";
+  // agent.status only turns busy once eve accepts the turn, so the pre-send
+  // async work in onNew has to be folded in here — otherwise the composer is
+  // both cleared and idle-looking while that runs. Also gates isDisabled, so a
+  // second message can't be submitted into the same in-flight onNew.
+  const isPending = isBusy || isSending;
 
   const runtime = useExternalStoreRuntime<EveMessage>({
-    isRunning: isBusy,
+    isRunning: isPending,
     messages: agent.data.messages as EveMessage[],
     convertMessage: convertEveMessage,
     onNew,
-    isDisabled: isBusy,
+    isDisabled: isPending,
     adapters: { attachments: attachmentAdapter },
   });
 
