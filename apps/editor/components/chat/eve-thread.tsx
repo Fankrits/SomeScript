@@ -61,15 +61,36 @@ function ComposerInbox() {
 
 /**
  * A failed send clears the composer and leaves no message behind, so without
- * this the whole turn just disappears with nothing to explain it.
+ * this the whole turn just disappears with nothing to explain it. When the
+ * failure is a recoverable stall, `onContinue` offers a one-click way to
+ * send "continue" instead of leaving the user to figure out what to do.
  */
-function ChatError({ message, onDismiss }: { message: string; onDismiss: () => void }) {
+function ChatError({
+  message,
+  canContinue,
+  onContinue,
+  onDismiss,
+}: {
+  message: string;
+  canContinue: boolean;
+  onContinue: () => void;
+  onDismiss: () => void;
+}) {
   return (
     <div
       role="alert"
       className="mx-2 mb-2 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
     >
       <span className="min-w-0 flex-1 wrap-break-word">{message}</span>
+      {canContinue && (
+        <button
+          type="button"
+          onClick={onContinue}
+          className="shrink-0 rounded-md border border-destructive/40 bg-background px-2 py-0.5 text-xs font-medium hover:bg-destructive/10"
+        >
+          Continue
+        </button>
+      )}
       <button
         type="button"
         onClick={onDismiss}
@@ -105,7 +126,11 @@ function EveThreadInner({
   projectId: string;
   mode: EveMode;
 }) {
-  const { runtime, agent, error, dismissError } = useEveRuntime(threadId, projectId, mode);
+  const { runtime, agent, error, canContinue, continueTurn, dismissError } = useEveRuntime(
+    threadId,
+    projectId,
+    mode,
+  );
 
   return (
     <EveAgentContext.Provider value={agent}>
@@ -135,7 +160,14 @@ function EveThreadInner({
           <div className="min-h-0 flex-1">
             <Thread />
           </div>
-          {error && <ChatError message={error} onDismiss={dismissError} />}
+          {error && (
+            <ChatError
+              message={error}
+              canContinue={canContinue}
+              onContinue={continueTurn}
+              onDismiss={dismissError}
+            />
+          )}
         </div>
       </AssistantRuntimeProvider>
     </EveAgentContext.Provider>

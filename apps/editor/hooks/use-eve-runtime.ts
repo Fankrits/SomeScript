@@ -24,7 +24,7 @@ import {
 } from "@/lib/attachment-blocks";
 import type { EveMode } from "@/lib/eve-modes";
 import type { HandleMessageStreamEvent, SessionState } from "eve/client";
-import { loadThreadHistory, saveThreadHistory } from "@/lib/thread-history";
+import { loadThreadHistory, saveThreadHistory, threadsListKey } from "@/lib/thread-history";
 import { notifyCreditsUpdated } from "@/hooks/use-credit-status";
 
 // Leading "[mode: …]" / "[projectId: …]" context markers we inject in onNew: the
@@ -135,6 +135,9 @@ export function useEveRuntime(
   // cleared — so the failure has to be surfaced or it looks like nothing
   // happened at all.
   const [sendError, setSendError] = useState<string | null>(null);
+  // True once the silent auto-retry below has also stalled: surfaces a
+  // "Continue" action instead of a dead-end error banner.
+  const [canContinue, setCanContinue] = useState(false);
 
   // Load initial state synchronously on mount/remount. A blob written by a
   // different eve client is replayed into this one's reducer and session, so a
@@ -391,6 +394,7 @@ export function useEveRuntime(
         retriedRef.current = false;
         try {
           setSendError(null);
+          setCanContinue(false);
           sentModeRef.current = modeRef.current;
           await agent.send(sendArgs);
         } catch (e) {
@@ -421,20 +425,23 @@ export function useEveRuntime(
   // (an AbortError eve's client already treats as a clean terminal state)
   // instead of leaving the spinner stuck forever. Re-armed on every event via
   // the `agent` dependency, since useEveAgent hands back a new snapshot object
-  // on each one. First stall of a given message queues one silent retry;
-  // a second stall on the same message gives up and surfaces the error.
-  // ponytail: only one retry, and it resends the same message rather than
-  // transparently resuming mid-stream like eve#1186 will — eve/react's public
-  // surface (send/stop/reset) has no lower-level "resume this stream" hook to
-  // do better from here. Drop once eve ships streamIdleTimeoutMs and the
-  // dependency is bumped past it.
+  // on each one. First stall of a given message queues one silent retry; a
+  // second stall gives up silent recovery and asks the user to continue —
+  // per feedback, a magic invisible retry that can also fail is worse than
+  // telling the user plainly and letting them decide.
+  // ponytail: the retry (silent or user-triggered) resends the message rather
+  // than transparently resuming mid-stream like eve#1186 will — eve/react's
+  // public surface (send/stop/reset) has no lower-level "resume this stream"
+  // hook to do better from here. Drop once eve ships streamIdleTimeoutMs and
+  // the dependency is bumped past it.
   useEffect(() => {
     if (!isBusy) return;
     const timer = setTimeout(() => {
       if (retriedRef.current) {
         setSendError(
-          "Eve stopped responding twice in a row — this is a known eve streaming issue on some deployments (github.com/vercel/eve/issues/1159). Please try again.",
+          "Eve stopped responding — its stream stalled (a known eve issue on some deployments: github.com/vercel/eve/issues/1159). Continue to try picking up where it left off.",
         );
+        setCanContinue(true);
       } else {
         retriedRef.current = true;
         pendingRetryRef.current = true;
@@ -457,16 +464,33 @@ export function useEveRuntime(
     });
   }, [agent, isBusy]);
 
+  // User-triggered recovery from the "stopped responding" banner: sends a
+  // plain "continue" turn rather than replaying the original message
+  // verbatim, since eve/the model may have already produced partial output
+  // worth building on. Goes through the same retry watchdog as any other
+  // send (isBusy re-arms it), so a stalled continue gets its own one silent
+  // retry before asking again.
+  const continueTurn = useCallback(() => {
+    setSendError(null);
+    setCanContinue(false);
+    retriedRef.current = false;
+    const args: Parameters<typeof agent.send>[0] = { message: "continue" };
+    lastSendArgsRef.current = args;
+    agent.send(args).catch((e) => {
+      setSendError(e instanceof Error ? e.message : String(e));
+    });
+  }, [agent]);
+
   useEffect(() => {
     if (agent.session?.sessionId) {
       // Never throws: losing saved history is survivable, but an error out of
       // this effect unmounts the thread mid-conversation.
-      if (!saveThreadHistory(threadId, stripEventFileData(agent.events), agent.session)) {
+      if (!saveThreadHistory(threadId, projectId, stripEventFileData(agent.events), agent.session)) {
         console.error("Failed to persist chat history: localStorage is full");
       }
 
       // Auto-update the title of the conversation in the threads list based on the first user message
-      const threadListRaw = localStorage.getItem("eve-threads-list");
+      const threadListRaw = localStorage.getItem(threadsListKey(projectId));
       if (threadListRaw) {
         try {
           const list = JSON.parse(threadListRaw) as { id: string; title: string }[];
@@ -489,7 +513,7 @@ export function useEveRuntime(
               if (cleanText) {
                 list[threadIndex].title =
                   cleanText.length > 25 ? cleanText.substring(0, 22) + "..." : cleanText;
-                localStorage.setItem("eve-threads-list", JSON.stringify(list));
+                localStorage.setItem(threadsListKey(projectId), JSON.stringify(list));
                 window.dispatchEvent(new Event("storage"));
               }
             }
@@ -499,7 +523,7 @@ export function useEveRuntime(
         }
       }
     }
-  }, [threadId, agent.events, agent.session, agent.data?.messages]);
+  }, [threadId, projectId, agent.events, agent.session, agent.data?.messages]);
 
   // Watch agent messages/events for completed tool calls
   useEffect(() => {
@@ -590,5 +614,15 @@ export function useEveRuntime(
 
   const error = sendError ?? (agent.error ? agent.error.message : null);
 
-  return { runtime, agent, error, dismissError: () => setSendError(null) };
+  return {
+    runtime,
+    agent,
+    error,
+    canContinue,
+    continueTurn,
+    dismissError: () => {
+      setSendError(null);
+      setCanContinue(false);
+    },
+  };
 }
