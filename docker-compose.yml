@@ -62,7 +62,21 @@ services:
     environment:
       - PORT=3001
 
+  redis:
+    image: redis:7-alpine
+    container_name: latex_editor_redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    volumes:
+      - redis_data:/data
 
 volumes:
   postgres_data:
   rustfs_data:
+  redis_data:
+
