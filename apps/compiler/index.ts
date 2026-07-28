@@ -2,6 +2,8 @@ import { spawn } from "child_process";
 import { existsSync } from "fs";
 import fs from "fs/promises";
 import path from "path";
+import Redis from "ioredis";
+
 
 const PORT = process.env.PORT || 3001;
 
@@ -27,6 +29,50 @@ interface CachedCompileResult {
 }
 const outputCache = new Map<string, CachedCompileResult>();
 const MAX_OUTPUT_CACHE_SIZE = 100;
+
+const REDIS_URL = process.env.REDIS_URL;
+let redisClient: Redis | null = null;
+
+if (REDIS_URL) {
+  try {
+    redisClient = new Redis(REDIS_URL, { maxRetriesPerRequest: 1, lazyConnect: true });
+    redisClient.connect().catch((err) => console.warn("[COMPILER REDIS] Connect failed:", err.message));
+  } catch (err: any) {
+    console.warn("[COMPILER REDIS] Init error:", err.message);
+  }
+}
+
+async function getCachedCompile(hash: string): Promise<CachedCompileResult | null> {
+  if (outputCache.has(hash)) {
+    return outputCache.get(hash)!;
+  }
+  if (redisClient && redisClient.status === "ready") {
+    try {
+      const raw = await redisClient.get(`compile:cache:${hash}`);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        outputCache.set(hash, parsed);
+        return parsed;
+      }
+    } catch {}
+  }
+  return null;
+}
+
+async function setCachedCompile(hash: string, result: CachedCompileResult): Promise<void> {
+  if (outputCache.size >= MAX_OUTPUT_CACHE_SIZE) {
+    const oldestKey = outputCache.keys().next().value;
+    if (oldestKey !== undefined) outputCache.delete(oldestKey);
+  }
+  outputCache.set(hash, result);
+
+  if (redisClient && redisClient.status === "ready") {
+    try {
+      await redisClient.set(`compile:cache:${hash}`, JSON.stringify(result), "EX", 86400); // 24 hour TTL
+    } catch {}
+  }
+}
+
 
 // Helper to safely write uploaded files to a directory
 async function writeFiles(baseDir: string, files: { path: string; content: string }[]) {
@@ -268,13 +314,15 @@ const server = Bun.serve({
           }
 
           // Return instantly if identical payload hash was compiled before
-          if (projectHash && outputCache.has(projectHash)) {
-            const cached = outputCache.get(projectHash)!;
-            return Response.json({
-              success: true,
-              logs: cached.logs + "\n[INFO] Returned from output cache (0ms)\n",
-              pdf: cached.pdf,
-            });
+          if (projectHash) {
+            const cached = await getCachedCompile(projectHash);
+            if (cached) {
+              return Response.json({
+                success: true,
+                logs: cached.logs + "\n[INFO] Returned from output cache (0ms)\n",
+                pdf: cached.pdf,
+              });
+            }
           }
 
           const workspacesDir = path.resolve(process.cwd(), "workspaces");
@@ -391,11 +439,7 @@ const server = Bun.serve({
             const finalLogs = logs + `\n[SUCCESS] ${pdfRelativePath}\n`;
 
             if (projectHash) {
-              if (outputCache.size >= MAX_OUTPUT_CACHE_SIZE) {
-                const oldestKey = outputCache.keys().next().value;
-                if (oldestKey !== undefined) outputCache.delete(oldestKey);
-              }
-              outputCache.set(projectHash, {
+              await setCachedCompile(projectHash, {
                 logs: finalLogs,
                 pdf: pdfBase64,
               });

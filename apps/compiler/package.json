@@ -7,6 +7,7 @@
     "start": "bun index.ts"
   },
   "dependencies": {
+    "ioredis": "^5.11.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {
