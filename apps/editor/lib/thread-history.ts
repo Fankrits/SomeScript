@@ -13,6 +13,13 @@ export const HISTORY_VERSION = "eve-0.26";
 export const THREAD_KEY_PREFIX = "eve-thread-";
 export const threadKey = (id: string) => `${THREAD_KEY_PREFIX}${id}`;
 
+// Thread blobs (above) key by the thread's own UUID, which never collides
+// across projects — only the "which threads exist / which is active" pointers
+// need to be per-project, so a chat sidebar opened for one project doesn't
+// show another project's history.
+export const threadsListKey = (projectId: string) => `eve-threads-list-${projectId}`;
+export const activeThreadIdKey = (projectId: string) => `eve-active-thread-id-${projectId}`;
+
 export type ThreadSnapshot<E = unknown, S = unknown> = {
   version: string;
   events: E[];
@@ -41,10 +48,10 @@ export function loadThreadHistory<E = unknown, S = unknown>(
 }
 
 /** Drops saved blobs for threads the sidebar can no longer reach. */
-function pruneOrphanedThreads(keepKey: string, storage: Storage) {
+function pruneOrphanedThreads(keepKey: string, listKey: string, storage: Storage) {
   let live: { id: string }[];
   try {
-    live = JSON.parse(storage.getItem("eve-threads-list") ?? "[]");
+    live = JSON.parse(storage.getItem(listKey) ?? "[]");
     if (!Array.isArray(live)) return;
   } catch {
     return; // Unreadable list — deleting on a guess would drop real threads.
@@ -76,6 +83,7 @@ function pruneOrphanedThreads(keepKey: string, storage: Storage) {
  */
 export function saveThreadHistory(
   threadId: string,
+  projectId: string,
   events: readonly unknown[],
   sessionState: unknown,
   storage: Storage = localStorage,
@@ -94,7 +102,7 @@ export function saveThreadHistory(
     // Out of quota — escalate.
   }
 
-  pruneOrphanedThreads(key, storage);
+  pruneOrphanedThreads(key, threadsListKey(projectId), storage);
   try {
     write(events);
     return true;
@@ -116,4 +124,43 @@ export function saveThreadHistory(
     }
   }
   return false;
+}
+
+/** Reads a thread's current title from the sidebar list page.tsx owns. */
+export function getThreadTitle(projectId: string, threadId: string, storage: Storage = localStorage): string {
+  try {
+    const list = JSON.parse(storage.getItem(threadsListKey(projectId)) ?? "[]") as { id: string; title: string }[];
+    return list.find((t) => t.id === threadId)?.title ?? "New Chat";
+  } catch {
+    return "New Chat";
+  }
+}
+
+/**
+ * Best-effort write-through backup to /api/eve/threads/[id] (which forwards
+ * to the web app's chat_threads table — see apps/web/db/schema.ts). Never
+ * throws: a failed backup must not disrupt the conversation, and localStorage
+ * (already saved by the caller before this runs) remains the source of truth
+ * for reads — this exists only so a cleared browser or quota eviction doesn't
+ * lose history outright. Skipped for "default", the local sandbox project,
+ * which has no server-side project row to attach to.
+ */
+export async function syncThreadToCloud(
+  threadId: string,
+  projectId: string,
+  title: string,
+  events: readonly unknown[],
+  sessionState: unknown,
+): Promise<void> {
+  if (projectId === "default") return;
+  try {
+    const res = await fetch(`/api/eve/threads/${threadId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ projectId, title, events, sessionState }),
+    });
+    if (!res.ok) console.error("Cloud thread backup rejected", res.status, await res.text());
+  } catch (e) {
+    console.error("Cloud thread backup failed", e);
+  }
 }

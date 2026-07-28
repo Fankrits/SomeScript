@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, uuid, index, integer, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, uuid, index, integer, pgEnum, jsonb } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
   id: text("id").primaryKey(), // Clerk User ID
@@ -104,3 +104,25 @@ export const documents = pgTable("documents", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+// Durable backing store for Eve chat threads, mirroring the shape already
+// persisted client-side to localStorage (see apps/editor/lib/thread-history.ts)
+// so the sync layer is a straight passthrough, not a reshape. `id` is the
+// client-generated threadId (crypto.randomUUID()), not server-assigned —
+// defaultRandom() only covers the (unused) case of a server-side insert.
+// The local sandbox project ("default", not a real uuid) never reaches this
+// table — requireProject() in apps/editor/lib/authz.ts rejects it outside
+// project ownership, so those threads stay localStorage-only, same as today.
+export const chatThreads = pgTable(
+  "chat_threads",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+    title: text("title").notNull().default("New Chat"),
+    events: jsonb("events").notNull().default([]),
+    sessionState: jsonb("session_state"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [index("chat_threads_project_id_idx").on(table.projectId)]
+);

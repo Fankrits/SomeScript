@@ -24,7 +24,13 @@ import {
 } from "@/lib/attachment-blocks";
 import type { EveMode } from "@/lib/eve-modes";
 import type { HandleMessageStreamEvent, SessionState } from "eve/client";
-import { loadThreadHistory, saveThreadHistory, threadsListKey } from "@/lib/thread-history";
+import {
+  loadThreadHistory,
+  saveThreadHistory,
+  syncThreadToCloud,
+  getThreadTitle,
+  threadsListKey,
+} from "@/lib/thread-history";
 import { notifyCreditsUpdated } from "@/hooks/use-credit-status";
 
 // Leading "[mode: …]" / "[projectId: …]" context markers we inject in onNew: the
@@ -47,6 +53,11 @@ const MARKER_PREFIX = /^(?:\[(?:projectId|mode): [^\]]*\]\n?)+/;
 // streamIdleTimeoutMs idle-reconnect). Matches the 15s idle threshold that
 // issue's reporter validated in production.
 const STALL_TIMEOUT_MS = 15_000;
+
+// How long a thread's events must stay quiet before the cloud backup fires
+// (see syncThreadToCloud in lib/thread-history.ts) — coalesces a whole burst
+// of per-token stream events into one write instead of one per event.
+const CLOUD_SYNC_DEBOUNCE_MS = 4_000;
 
 // assistant-ui only ships Simple adapters for images and text. PDFs get the
 // same treatment: read as a data URL, forward as a generic `file` content
@@ -106,6 +117,10 @@ export function useEveRuntime(
   const lastSendArgsRef = useRef<Parameters<typeof agent.send>[0] | null>(null);
   const retriedRef = useRef(false);
   const pendingRetryRef = useRef(false);
+  // Debounce for the cloud backup below: the autosave effect re-runs on every
+  // stream event (token deltas included), but a network call per event would
+  // hammer the API for no benefit — only the settled result needs to land.
+  const cloudSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Read inside onNew, which assistant-ui may hold across renders — a ref keeps
   // the marker in sync with the live selection without rebuilding the runtime.
   const modeRef = useRef(mode);
@@ -546,8 +561,30 @@ export function useEveRuntime(
           console.error("Failed to update thread title", e);
         }
       }
+
+      // Cloud backup (durability only — reads still come from localStorage
+      // above; see syncThreadToCloud's doc comment). Re-armed on every event,
+      // same debounce pattern as the stall watchdog earlier in this file.
+      if (cloudSyncTimerRef.current) clearTimeout(cloudSyncTimerRef.current);
+      cloudSyncTimerRef.current = setTimeout(() => {
+        syncThreadToCloud(
+          threadId,
+          projectId,
+          getThreadTitle(projectId, threadId),
+          stripEventFileData(agent.events),
+          agent.session,
+        );
+      }, CLOUD_SYNC_DEBOUNCE_MS);
     }
   }, [threadId, projectId, agent.events, agent.session, agent.data?.messages]);
+
+  // Flush isn't needed on unmount: a mode switch remounts this whole hook
+  // (key={mode} in eve-thread.tsx) mid-debounce, but the next turn's autosave
+  // re-arms the same debounce and catches up — this is a backup copy, not
+  // something a few seconds of lag can corrupt.
+  useEffect(() => () => {
+    if (cloudSyncTimerRef.current) clearTimeout(cloudSyncTimerRef.current);
+  }, []);
 
   // Watch agent messages/events for completed tool calls
   useEffect(() => {
