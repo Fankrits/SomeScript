@@ -42,6 +42,13 @@ if (REDIS_URL) {
   }
 }
 
+function evictOldestCacheIfNeeded() {
+  if (outputCache.size >= MAX_OUTPUT_CACHE_SIZE) {
+    const oldestKey = outputCache.keys().next().value;
+    if (oldestKey !== undefined) outputCache.delete(oldestKey);
+  }
+}
+
 async function getCachedCompile(hash: string): Promise<CachedCompileResult | null> {
   if (outputCache.has(hash)) {
     return outputCache.get(hash)!;
@@ -51,6 +58,7 @@ async function getCachedCompile(hash: string): Promise<CachedCompileResult | nul
       const raw = await redisClient.get(`compile:cache:${hash}`);
       if (raw) {
         const parsed = JSON.parse(raw);
+        evictOldestCacheIfNeeded();
         outputCache.set(hash, parsed);
         return parsed;
       }
@@ -60,10 +68,7 @@ async function getCachedCompile(hash: string): Promise<CachedCompileResult | nul
 }
 
 async function setCachedCompile(hash: string, result: CachedCompileResult): Promise<void> {
-  if (outputCache.size >= MAX_OUTPUT_CACHE_SIZE) {
-    const oldestKey = outputCache.keys().next().value;
-    if (oldestKey !== undefined) outputCache.delete(oldestKey);
-  }
+  evictOldestCacheIfNeeded();
   outputCache.set(hash, result);
 
   if (redisClient && redisClient.status === "ready") {

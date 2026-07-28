@@ -40,11 +40,11 @@ end
 
 if tokens >= 1 then
   tokens = tokens - 1
-  redis.call('HMSET', key, 'tokens', tokens, 'last', last)
+  redis.call('HSET', key, 'tokens', tokens, 'last', last)
   redis.call('PEXPIRE', key, window_ms)
   return 1
 else
-  redis.call('HMSET', key, 'tokens', tokens, 'last', last)
+  redis.call('HSET', key, 'tokens', tokens, 'last', last)
   redis.call('PEXPIRE', key, window_ms)
   return 0
 end
