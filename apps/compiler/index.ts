@@ -232,12 +232,12 @@ const server = Bun.serve({
 
           (async () => {
             try {
-              const flags = ["-C", "-c", "--synctex", resolvedTexPath];
+              const flags = ["-C", "--synctex", resolvedTexPath];
 
               let code = await runTectonic(flags);
               if (code !== 0) {
                 writer.write(encoder.encode(`\n[INFO] Cached compilation failed. Retrying with remote package fetching...\n`));
-                code = await runTectonic(["-c", "--synctex", resolvedTexPath]);
+                code = await runTectonic(["--synctex", resolvedTexPath]);
               }
 
               if (code === 0) {
@@ -374,12 +374,12 @@ const server = Bun.serve({
             });
           };
 
-          const flags = ["-C", "-c", "--synctex", resolvedTexPath];
+          const flags = ["-C", "--synctex", resolvedTexPath];
 
           let code = await runTectonicUpload(flags);
           if (code !== 0) {
             logs += `\n[INFO] Cached compilation failed or package missing. Retrying with remote package fetching...\n`;
-            code = await runTectonicUpload(["-c", "--synctex", resolvedTexPath]);
+            code = await runTectonicUpload(["--synctex", resolvedTexPath]);
           }
 
           if (code === 0) {
