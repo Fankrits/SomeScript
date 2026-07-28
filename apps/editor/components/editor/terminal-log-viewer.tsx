@@ -177,7 +177,7 @@ export function TerminalLogViewer({
                         className="h-7 text-xs gap-1.5 bg-violet-600/20 text-violet-300 hover:bg-violet-600/30 border border-violet-500/30 hover:text-violet-100"
                       >
                         <SparklesIcon className="size-3.5 text-violet-400" />
-                        <span>Ask Eve</span>
+                        <span>Ask AI</span>
                       </Button>
                     )}
                   </div>
