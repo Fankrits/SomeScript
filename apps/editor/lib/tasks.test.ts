@@ -12,7 +12,7 @@ test("unparseable or non-array file contents read back as no tasks", async () =>
 });
 
 test("sanitizeTasks keeps a well-formed task intact", () => {
-  const task = { id: "1", name: "Fix citation", description: "needs a page number", done: false, createdAt: 123, source: { path: "a.tex", line: 4 } };
+  const task = { id: "1", name: "Fix citation", description: "needs a page number", done: false, status: "todo" as const, createdAt: 123, source: { path: "a.tex", line: 4 } };
   expect(sanitizeTasks([task])).toEqual([task]);
 });
 
