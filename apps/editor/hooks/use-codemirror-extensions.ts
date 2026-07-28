@@ -7,7 +7,23 @@ import { vim } from "@replit/codemirror-vim";
 import { foldGutter, foldKeymap, bracketMatching } from "@codemirror/language";
 import { keymap } from "@codemirror/view";
 import { autocompletion } from "@codemirror/autocomplete";
+import { lintGutter } from "@codemirror/lint";
 import { wrapInsert } from "@/lib/latex-insert";
+
+// @codemirror/lint's default gutter marker is a colored SVG circle set via
+// `content: url(...)`, which behaves like a replaced image — it keeps its own
+// aspect ratio inside the box instead of stretching, so resizing the box alone
+// still renders a (smaller) circle. Clearing `content` back to an empty string
+// drops the SVG and lets the marker's own background-color paint the box
+// instead, so a thin full-height box reads as a solid line. Still no new gutter
+// or state — same setDiagnostics() dispatch, EditorView.theme() just overrides
+// @codemirror/lint's baseTheme() regardless of extension order.
+const compactLintGutterTheme = EditorView.theme({
+  ".cm-gutter-lint": { width: "5px", padding: "0" },
+  ".cm-gutter-lint .cm-gutterElement": { padding: "0" },
+  ".cm-lint-marker": { width: "3px", height: "100%" },
+  ".cm-lint-marker-error": { content: '""', backgroundColor: "#ef4444" },
+});
 
 export interface EditorSettings {
   mainFilePath: string;
@@ -24,7 +40,7 @@ export function useCodeMirrorExtensions(
   currentLanguage: string
 ): Extension[] {
   return useMemo(() => {
-    const extensions: Extension[] = [EditorView.lineWrapping, searchExtension()];
+    const extensions: Extension[] = [EditorView.lineWrapping, searchExtension(), lintGutter(), compactLintGutterTheme];
 
     if (currentLanguage === "latex") {
       extensions.push(latex({ enableTooltips: settings.tooltipsEnabled }));
