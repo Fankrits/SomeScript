@@ -1,0 +1,21 @@
+# Dependencies & Build artifacts
+node_modules
+.next
+.turbo
+.git
+.eve
+.output
+dist
+build
+
+# App workspaces ignored when deploying web landing/dashboard
+apps/editor
+apps/compiler
+apps/docs
+workspaces
+projects
+bin
+
+# Environment & local files
+.env*.local
+*.log

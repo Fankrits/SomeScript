@@ -61,10 +61,15 @@ services:
       - "3001:3001"
     environment:
       - PORT=3001
+      - REDIS_URL=redis://redis:6379
 
   redis:
     image: redis:7-alpine
     container_name: latex_editor_redis
+    # Every key this app writes carries a TTL (rate limits, file hashes, compile
+    # cache), so bound memory and evict the least-recently-used TTL'd key first
+    # instead of the default noeviction, which would start rejecting writes.
+    command: redis-server --maxmemory 256mb --maxmemory-policy volatile-lru
     ports:
       - "6379:6379"
     healthcheck:

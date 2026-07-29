@@ -160,6 +160,8 @@ To scale the SomeScript editor and compiler across multiple Railway instances:
    - Increase Railway replica count for `apps/compiler` (e.g., 2-4 replicas).
    - Shared Redis guarantees synchronized rate limits, file diff hashes, and PDF compile caches across all nodes.
 
+4. **Memory:** every key this app writes carries a TTL, but the compile cache stores full base64 PDFs, so an unbounded Redis (the default) can fill up before TTLs expire — once it's full, `noeviction` (Redis's default policy) starts rejecting writes for every feature sharing the instance, not just the cache. Set a memory limit and `volatile-lru` eviction on the Railway Redis service (equivalent to the `docker-compose.yml` local setup) rather than relying on TTLs alone.
+
 ## Source references
 
 - `apps/editor/app/api/compile/route.ts`

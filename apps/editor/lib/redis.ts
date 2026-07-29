@@ -13,12 +13,12 @@ export function getRedisClient(): Redis | null {
     try {
       redisInstance = new Redis(redisUrl, {
         maxRetriesPerRequest: 1,
+        // Keep retrying forever (capped backoff) rather than giving up after a
+        // few tries — returning null here would stop ioredis's reconnection
+        // loop permanently, stranding the app in in-memory fallback mode until
+        // the process restarts even after Redis comes back.
         retryStrategy(times) {
-          if (times > 3) {
-            console.warn("[REDIS] Max connection retries reached. Falling back to in-memory mode.");
-            return null;
-          }
-          return Math.min(times * 100, 1000);
+          return Math.min(times * 100, 2000);
         },
         lazyConnect: true,
       });
@@ -81,9 +81,10 @@ export async function redisHSet(key: string, field: string, value: string, ttlSe
   const client = getRedisClient();
   if (!client) return false;
   try {
-    await client.hset(key, field, value);
     if (ttlSeconds) {
-      await client.expire(key, ttlSeconds);
+      await client.pipeline().hset(key, field, value).expire(key, ttlSeconds).exec();
+    } else {
+      await client.hset(key, field, value);
     }
     return true;
   } catch {
@@ -105,9 +106,10 @@ export async function redisHMSet(key: string, record: Record<string, string>, tt
   const client = getRedisClient();
   if (!client || Object.keys(record).length === 0) return false;
   try {
-    await client.hset(key, record);
     if (ttlSeconds) {
-      await client.expire(key, ttlSeconds);
+      await client.pipeline().hset(key, record).expire(key, ttlSeconds).exec();
+    } else {
+      await client.hset(key, record);
     }
     return true;
   } catch {

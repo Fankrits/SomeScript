@@ -5,8 +5,12 @@ import { createHash } from "crypto";
 import { checkRate } from "@/lib/rate-limit";
 import { redisHGetAll, redisHSet, redisHMSet, redisHDel } from "@/lib/redis";
 
-// In-memory fallback if Redis is unavailable
+// In-memory fallback if Redis is unavailable. Only populated when a Redis
+// write actually fails — not mirrored on every call — and capped like the
+// other in-memory caches in this codebase (see MAX_BUCKETS in rate-limit.ts)
+// so a prolonged outage can't grow it unboundedly.
 const fallbackUploadedFilesCache = new Map<string, string>();
+const MAX_FALLBACK_ENTRIES = 10_000;
 
 async function getProjectFileHashes(projectId: string): Promise<Record<string, string>> {
   const redisHashes = await redisHGetAll(`project:${projectId}:hashes`);
@@ -23,12 +27,15 @@ async function getProjectFileHashes(projectId: string): Promise<Record<string, s
 
 async function updateProjectFileHashesBatch(projectId: string, updates: { path: string; hash: string }[]): Promise<void> {
   if (updates.length === 0) return;
-  const record: Record<string, string> = {};
-  for (const u of updates) {
-    fallbackUploadedFilesCache.set(`${projectId}:${u.path}`, u.hash);
-    record[u.path] = u.hash;
+  const record = Object.fromEntries(updates.map((u) => [u.path, u.hash]));
+
+  const redisOk = await redisHMSet(`project:${projectId}:hashes`, record, 7 * 86400); // 7 day TTL
+  if (!redisOk) {
+    if (fallbackUploadedFilesCache.size > MAX_FALLBACK_ENTRIES) fallbackUploadedFilesCache.clear();
+    for (const u of updates) {
+      fallbackUploadedFilesCache.set(`${projectId}:${u.path}`, u.hash);
+    }
   }
-  await redisHMSet(`project:${projectId}:hashes`, record, 7 * 86400); // 7 day TTL
 }
 
 async function deleteProjectFileHashes(projectId: string, filePaths: string[]): Promise<void> {
@@ -130,9 +137,17 @@ export async function POST(req: NextRequest) {
       const projectTree = await storage.listProjectFiles(projectId);
       const allFiles = await getAllStorageFiles(projectId, projectTree);
 
-      const sortedFiles = [...allFiles].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+      // Hash each file's content once and reuse it for both the diff check
+      // below and projectHash, instead of re-hashing full file content a
+      // second (and, on a 409 retry, third) time just to fingerprint the
+      // project state.
+      const fileHashes = new Map(
+        allFiles.map((f) => [f.path, createHash("sha256").update(f.content).digest("hex")] as const)
+      );
+
+      const sortedPaths = [...fileHashes.keys()].sort();
       const projectHash = createHash("sha256")
-        .update(JSON.stringify(sortedFiles.map((f) => ({ path: f.path, content: f.content }))))
+        .update(JSON.stringify(sortedPaths.map((path) => ({ path, hash: fileHashes.get(path) }))))
         .update(fileRelativePath)
         .digest("hex");
 
@@ -144,7 +159,7 @@ export async function POST(req: NextRequest) {
 
       for (const file of allFiles) {
         currentPaths.add(file.path);
-        const contentHash = createHash("sha256").update(file.content).digest("hex");
+        const contentHash = fileHashes.get(file.path)!;
         const cachedHash = cachedHashes[file.path];
 
         if (cachedHash !== contentHash) {
@@ -188,8 +203,7 @@ export async function POST(req: NextRequest) {
         if (errData.requireFullSync) {
           pendingUpdates.length = 0;
           for (const file of allFiles) {
-            const contentHash = createHash("sha256").update(file.content).digest("hex");
-            pendingUpdates.push({ path: file.path, hash: contentHash });
+            pendingUpdates.push({ path: file.path, hash: fileHashes.get(file.path)! });
           }
 
           response = await fetch(`${compilerUrl}/compile`, {

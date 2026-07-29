@@ -51,7 +51,13 @@ function evictOldestCacheIfNeeded() {
 
 async function getCachedCompile(hash: string): Promise<CachedCompileResult | null> {
   if (outputCache.has(hash)) {
-    return outputCache.get(hash)!;
+    // Map iteration order is insertion order, so bump this key to the end on
+    // every hit — otherwise eviction is oldest-inserted (FIFO), not actually
+    // least-recently-used.
+    const value = outputCache.get(hash)!;
+    outputCache.delete(hash);
+    outputCache.set(hash, value);
+    return value;
   }
   if (redisClient && redisClient.status === "ready") {
     try {
