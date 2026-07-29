@@ -535,6 +535,7 @@ const Example = () => {
   // Sidebar states
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<"files" | "search" | "chat" | "tasks" | "settings">("files");
+  const [paletteOpen, setPaletteOpen] = useState<boolean>(false);
 
   // Gates the skeleton: false until mounted + layout restored from localStorage (SSR-safe).
   const [mounted, setMounted] = useState<boolean>(false);
@@ -882,7 +883,6 @@ const Example = () => {
   // Comma-joined formats the caret sits inside (e.g. "bold,math"); a stable string
   // so React skips re-rendering the toolbar when the format context is unchanged.
   const [activeFormatKey, setActiveFormatKey] = useState<string>("");
-  const [paletteOpen, setPaletteOpen] = useState<boolean>(false);
 
   const handleUpdate = useCallback((update: ViewUpdate) => {
     if (update.docChanged || update.selectionSet) {

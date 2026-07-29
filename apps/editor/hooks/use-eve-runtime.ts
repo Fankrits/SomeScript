@@ -129,7 +129,9 @@ export function useEveRuntime(
   // Read inside onNew, which assistant-ui may hold across renders — a ref keeps
   // the marker in sync with the live selection without rebuilding the runtime.
   const modeRef = useRef(mode);
-  modeRef.current = mode;
+  useEffect(() => {
+    modeRef.current = mode;
+  }, [mode]);
   // Separate from modeRef: the composer is disabled while a turn streams, but the
   // mode picker isn't, so modeRef can change mid-turn. Credit deduction needs the
   // mode that was actually sent for the in-flight turn, captured at send time.

@@ -41,8 +41,8 @@ export function getRedisClient(): Redis | null {
         isRedisConnected = false;
         console.warn("[REDIS] Initial connection failed:", err.message);
       });
-    } catch (err: any) {
-      console.warn("[REDIS] Initialization error:", err.message);
+    } catch (err) {
+      console.warn("[REDIS] Initialization error:", err instanceof Error ? err.message : err);
       redisInstance = null;
     }
   }

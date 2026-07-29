@@ -15,7 +15,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
+import {
+  DragDropContext,
+  Droppable,
+  Draggable,
+  DropResult,
+  DraggableProvidedDragHandleProps,
+} from "@hello-pangea/dnd";
 
 interface TasksPanelProps {
   projectId: string;
@@ -52,7 +58,7 @@ function TaskItem({
   deleteTask: (id: string) => void;
   updateTask: (id: string, name: string, description: string) => void;
   goToSource: (source: Task["source"]) => void;
-  dragHandleProps?: any;
+  dragHandleProps?: DraggableProvidedDragHandleProps | null;
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(task.name);
@@ -198,6 +204,7 @@ export const TasksPanel = forwardRef<TasksPanelHandle, TasksPanelProps>(
     const [sourceDraft, setSourceDraft] = useState<Task["source"]>(undefined);
 
     useEffect(() => {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- SSR-safe: DragDropContext reads the DOM and mismatches during hydration, so it only renders after mount
       setIsMounted(true);
       let cancelled = false;
       fetch(`/api/tasks?projectId=${encodeURIComponent(projectId)}`)
