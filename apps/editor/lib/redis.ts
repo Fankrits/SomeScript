@@ -101,6 +101,21 @@ export async function redisHGetAll(key: string): Promise<Record<string, string> 
   }
 }
 
+export async function redisHMSet(key: string, record: Record<string, string>, ttlSeconds?: number): Promise<boolean> {
+  const client = getRedisClient();
+  if (!client || Object.keys(record).length === 0) return false;
+  try {
+    await client.hset(key, record);
+    if (ttlSeconds) {
+      await client.expire(key, ttlSeconds);
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+
 export async function redisHDel(key: string, fields: string[]): Promise<boolean> {
   const client = getRedisClient();
   if (!client || fields.length === 0) return false;

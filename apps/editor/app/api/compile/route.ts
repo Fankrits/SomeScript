@@ -3,7 +3,7 @@ import { storage, FileNode } from "@/lib/storage";
 import { NextRequest } from "next/server";
 import { createHash } from "crypto";
 import { checkRate } from "@/lib/rate-limit";
-import { redisHGetAll, redisHSet, redisHDel } from "@/lib/redis";
+import { redisHGetAll, redisHSet, redisHMSet, redisHDel } from "@/lib/redis";
 
 // In-memory fallback if Redis is unavailable
 const fallbackUploadedFilesCache = new Map<string, string>();
@@ -21,9 +21,14 @@ async function getProjectFileHashes(projectId: string): Promise<Record<string, s
   return result;
 }
 
-async function updateProjectFileHash(projectId: string, filePath: string, hash: string): Promise<void> {
-  fallbackUploadedFilesCache.set(`${projectId}:${filePath}`, hash);
-  await redisHSet(`project:${projectId}:hashes`, filePath, hash, 7 * 86400); // 7 day TTL
+async function updateProjectFileHashesBatch(projectId: string, updates: { path: string; hash: string }[]): Promise<void> {
+  if (updates.length === 0) return;
+  const record: Record<string, string> = {};
+  for (const u of updates) {
+    fallbackUploadedFilesCache.set(`${projectId}:${u.path}`, u.hash);
+    record[u.path] = u.hash;
+  }
+  await redisHMSet(`project:${projectId}:hashes`, record, 7 * 86400); // 7 day TTL
 }
 
 async function deleteProjectFileHashes(projectId: string, filePaths: string[]): Promise<void> {
@@ -34,6 +39,7 @@ async function deleteProjectFileHashes(projectId: string, filePaths: string[]): 
     await redisHDel(`project:${projectId}:hashes`, filePaths);
   }
 }
+
 
 interface DifferentialFile {
   path: string;
@@ -208,13 +214,12 @@ export async function POST(req: NextRequest) {
       }
 
       if (response.ok) {
-        for (const item of pendingUpdates) {
-          await updateProjectFileHash(projectId, item.path, item.hash);
-        }
+        await updateProjectFileHashesBatch(projectId, pendingUpdates);
         if (deletedFiles.length > 0) {
           await deleteProjectFileHashes(projectId, deletedFiles);
         }
       }
+
 
       const result = await response.json();
 
