@@ -23,6 +23,7 @@ import {
   type OutgoingPart,
 } from "@/lib/attachment-blocks";
 import type { EveMode } from "@/lib/eve-modes";
+import { filterOrphanedMessages } from "@/lib/eve-messages";
 import type { HandleMessageStreamEvent, SessionState } from "eve/client";
 import {
   loadThreadHistory,
@@ -450,9 +451,18 @@ export function useEveRuntime(
   // second message can't be submitted into the same in-flight onNew.
   const isPending = isBusy || isSending;
 
+  // See filterOrphanedMessages for why the raw list can't go straight to the
+  // runtime: it can contain orphaned artifacts of an aborted-and-resent turn
+  // that would otherwise render as a duplicated question with a stray
+  // assistant reply sandwiched above the resend.
+  const visibleMessages = useMemo(
+    () => filterOrphanedMessages(agent.data.messages as EveMessage[]),
+    [agent.data.messages],
+  );
+
   const runtime = useExternalStoreRuntime<EveMessage>({
     isRunning: isPending,
-    messages: agent.data.messages as EveMessage[],
+    messages: visibleMessages,
     convertMessage: convertEveMessage,
     onNew,
     isDisabled: isPending,
