@@ -13,5 +13,8 @@
   },
   "devDependencies": {
     "turbo": "^2.10.7"
+  },
+  "overrides": {
+    "@codemirror/view": "6.43.7"
   }
 }

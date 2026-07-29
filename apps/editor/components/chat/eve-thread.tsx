@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { AssistantRuntimeProvider, useComposerRuntime } from "@assistant-ui/react";
+import { AssistantRuntimeProvider, useAui } from "@assistant-ui/react";
 import { Thread } from "@/components/assistant-ui/thread";
 import { useEveRuntime } from "@/hooks/use-eve-runtime";
 import { EveAgentContext } from "@/components/chat/eve-agent-context";
@@ -44,17 +44,17 @@ import {
  * composer as a file, so it shows up as a chip instead of filling the input.
  */
 function ComposerInbox() {
-  const composer = useComposerRuntime();
+  const aui = useAui();
 
   React.useEffect(() => {
     const onInsert = (e: Event) => {
       const { name, text } = (e as CustomEvent<{ name: string; text: string }>).detail;
       if (!text) return;
-      composer.addAttachment(new File([text], name, { type: "text/plain" }));
+      aui.composer.addAttachment(new File([text], name, { type: "text/plain" }));
     };
     window.addEventListener("somescript:attach-to-chat", onInsert);
     return () => window.removeEventListener("somescript:attach-to-chat", onInsert);
-  }, [composer]);
+  }, [aui]);
 
   return null;
 }
