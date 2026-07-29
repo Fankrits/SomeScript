@@ -5,9 +5,10 @@ import type { EveMessage } from "eve/react";
  * subtle enough to be worth pinning down with its own test.
  *
  * eve's message store only ever appends, never reorders or deletes. When a
- * turn is aborted (the stall watchdog in use-eve-runtime.ts, or any other
- * send failure) and then resent, the resend's optimistic user message is
- * appended *after* the abandoned turn's leftovers: the failed send's
+ * turn is abandoned (the stall watchdog in use-eve-runtime.ts, the Stop button,
+ * or any other send failure) and the user then recovers with Continue, the new
+ * turn's optimistic user message is appended *after* the abandoned turn's
+ * leftovers: the failed send's
  * optimistic echo of the same question (renders identically to a normal
  * message — nothing marks it as failed) and its assistant reply frozen
  * mid-"streaming" forever (eve has no way to cancel/remove a part once

@@ -24,6 +24,7 @@ import {
 } from "@/lib/attachment-blocks";
 import type { EveMode } from "@/lib/eve-modes";
 import { filterOrphanedMessages } from "@/lib/eve-messages";
+import { cancelEveTurn } from "@/lib/eve-cancel";
 import type { HandleMessageStreamEvent, SessionState } from "eve/client";
 import {
   loadThreadHistory,
@@ -41,19 +42,29 @@ const MARKER_PREFIX = /^(?:\[(?:projectId|mode): [^\]]*\]\n?)+/;
 
 // eve's NDJSON turn stream can go silent forever without erroring — no error,
 // no close, so agent.status never leaves "submitted"/"streaming" and the
-// composer spins forever. Confirmed both on Vercel deployments (the CDN
-// brotli-compresses the low-throughput stream — our vercel.json + next.
-// config.ts's withEve match that report's setup exactly — and the final
-// bytes carrying the turn's terminal event sit in the compression buffer and
-// never flush) and locally against eve's own dev host, so this isn't only a
-// Vercel-CDN trigger. Short replies (a one-word prompt's answer) are the
-// highest-risk case either way, since there's little data to force a flush
-// or keep the connection visibly alive. Open upstream, unfixed as of eve
-// 0.27.6 (latest): https://github.com/vercel/eve/issues/1159 — real fix in
-// flight at https://github.com/vercel/eve/pull/1186 (adds a native
-// streamIdleTimeoutMs idle-reconnect). Matches the 15s idle threshold that
-// issue's reporter validated in production.
-const STALL_TIMEOUT_MS = 15_000;
+// composer spins forever. The cause is client-side and environment-independent:
+// readNdjsonStream (eve/dist/src/client/ndjson.js) awaits reader.read() with no
+// timeout, and followStreamIterable only reconnects when the body *throws*, so
+// an open-but-silent connection blocks the `for await` indefinitely. Open
+// upstream: https://github.com/vercel/eve/issues/1159.
+//
+// That issue blames Vercel brotli-buffering the stream, but that doesn't apply
+// here — eve sends `application/x-ndjson`, which is not on Vercel's compression
+// allowlist — and the stall reproduces on a plain local `bun dev` run with no CDN
+// in the path. So this backstop is needed in every environment.
+//
+// ponytail: app-level idle timer, delete once eve ships the real fix.
+// https://github.com/vercel/eve/pull/1186 adds a native `streamIdleTimeoutMs`
+// that reconnects from the last durable cursor mid-turn. It merged 2026-07-29 but
+// is NOT in 0.27.12 (the newest release, published hours earlier). When a release
+// containing it lands, bump eve, delete this watchdog, and delete
+// filterOrphanedMessages with it — a resumed turn is never abandoned, so it
+// leaves no orphans to filter.
+//
+// 60s, not the 15s that issue's reporter used: their case was short
+// conversational replies, ours runs tectonic compiles and web searches through
+// tools. See isAwaitingTool below for why a flat timer isn't enough on its own.
+const STALL_TIMEOUT_MS = 60_000;
 
 // How long a thread's events must stay quiet before the cloud backup fires
 // (see syncThreadToCloud in lib/thread-history.ts) — coalesces a whole burst
@@ -111,13 +122,6 @@ export function useEveRuntime(
 ) {
   const completedToolCalls = useRef<Set<string>>(new Set());
   const processedSteps = useRef<Set<string>>(new Set());
-  // Stall-watchdog bookkeeping (see STALL_TIMEOUT_MS below): the exact args of
-  // the in-flight send, so a stall can be retried verbatim; whether that retry
-  // has already been used for the current message; and whether a retry is
-  // waiting for the aborted turn to actually reach "ready" before firing.
-  const lastSendArgsRef = useRef<Parameters<typeof agent.send>[0] | null>(null);
-  const retriedRef = useRef(false);
-  const pendingRetryRef = useRef(false);
   // Debounce for the cloud backup below: the autosave effect re-runs on every
   // stream event (token deltas included), but a network call per event would
   // hammer the API for no benefit — only the settled result needs to land.
@@ -419,8 +423,6 @@ export function useEveRuntime(
               : {
                   message: parts as unknown as Parameters<typeof agent.send>[0]["message"],
                 };
-          lastSendArgsRef.current = sendArgs;
-          retriedRef.current = false;
           try {
             setSendError(null);
             setCanContinue(false);
@@ -460,72 +462,94 @@ export function useEveRuntime(
     [agent.data.messages],
   );
 
+  // Giving up on the current turn, from anywhere: stop reading the stream *and*
+  // tell the server to stop producing it. agent.stop() alone only aborts the
+  // local fetch — eve turns are durable, so without the cancel the abandoned
+  // turn keeps running tools server-side and can still write project files
+  // underneath whatever happens next. See lib/eve-cancel.ts.
+  const abandonTurn = useCallback(async () => {
+    agent.stop();
+    const sessionId = agent.session?.sessionId;
+    if (sessionId) await cancelEveTurn(sessionId);
+  }, [agent]);
+
   const runtime = useExternalStoreRuntime<EveMessage>({
     isRunning: isPending,
     messages: visibleMessages,
     convertMessage: convertEveMessage,
     onNew,
+    // Without this the composer's Stop button (rendered by thread.tsx whenever
+    // isRunning) is a silent no-op: assistant-ui calls the handler optionally,
+    // so a missing onCancel means clicking it does nothing at all. That left a
+    // stalled turn with no escape short of waiting out the watchdog below.
+    onCancel: abandonTurn,
     isDisabled: isPending,
     adapters: { attachments: attachmentAdapter },
   });
 
-  // Backstop for the stalled-stream bug above: if a turn produces no new
-  // event for STALL_TIMEOUT_MS, abort it through eve's own public agent.stop()
-  // (an AbortError eve's client already treats as a clean terminal state)
-  // instead of leaving the spinner stuck forever. Re-armed on every event via
-  // the `agent` dependency, since useEveAgent hands back a new snapshot object
-  // on each one. First stall of a given message queues one silent retry; a
-  // second stall gives up silent recovery and asks the user to continue —
-  // per feedback, a magic invisible retry that can also fail is worse than
-  // telling the user plainly and letting them decide.
-  // ponytail: the retry (silent or user-triggered) resends the message rather
-  // than transparently resuming mid-stream like eve#1186 will — eve/react's
-  // public surface (send/stop/reset) has no lower-level "resume this stream"
-  // hook to do better from here. Drop once eve ships streamIdleTimeoutMs and
-  // the dependency is bumped past it.
+  // Is the turn quiet because something is legitimately working (or waiting on
+  // the user), rather than because the stream died? eve's event protocol has no
+  // heartbeat — between `actions.requested` and `action.result` nothing is
+  // emitted for the entire tool execution — so a plain idle timer cannot tell a
+  // tectonic compile, a web search, or an open HITL/OAuth prompt apart from a
+  // dead connection, and would abort all of them.
+  //
+  // Only the very last message counts, and only if it's the assistant's. eve
+  // can't retract a tool part once started, so an abandoned turn leaves one
+  // frozen mid-flight forever; keying off "last *assistant* message" would let
+  // that debris disarm the watchdog for good. After a Continue, optimistic
+  // projection appends the new user message first, so a trailing user message
+  // means the current turn has produced nothing yet and anything above it is
+  // stale by definition.
+  //
+  // Tradeoff: a tool that genuinely hangs forever now spins forever too, since
+  // the watchdog stays disarmed. That is why onCancel above had to be fixed
+  // first — Stop is the escape hatch for that case.
+  const isAwaitingTool = useMemo(() => {
+    const messages = agent.data.messages as EveMessage[] | undefined;
+    const last = messages?.at(-1);
+    if (last?.role !== "assistant") return false;
+    return last.parts.some((part) =>
+      part.type === "dynamic-tool"
+        ? part.state !== "output-available" &&
+          part.state !== "output-error" &&
+          part.state !== "output-denied"
+        : part.type === "authorization" && part.state === "required",
+    );
+  }, [agent.data.messages]);
+
+  // Backstop for the stalled-stream bug described at STALL_TIMEOUT_MS: if a turn
+  // goes quiet for that long with no tool or prompt to explain it, abandon it and
+  // say so, rather than leaving the spinner stuck forever. Re-armed on every
+  // event via the `agent` dependency, since useEveAgent hands back a new snapshot
+  // object on each one — so this measures silence, not total turn length.
+  //
+  // No silent auto-retry. It used to resend the whole message once before
+  // surfacing anything, which was wrong twice over: agent.stop() doesn't stop the
+  // server-side turn, so the resend raced a live turn that was still writing
+  // files, and an invisible recovery that can itself fail just delays the same
+  // dead end. A visible banner with a working Continue is the honest version.
   useEffect(() => {
-    if (!isBusy) return;
+    if (!isBusy || isAwaitingTool) return;
     const timer = setTimeout(() => {
-      if (retriedRef.current) {
-        setSendError(
-          "The assistant stopped responding. Continue to try picking up where it left off.",
-        );
-        setCanContinue(true);
-      } else {
-        retriedRef.current = true;
-        pendingRetryRef.current = true;
-      }
-      agent.stop();
+      void abandonTurn();
+      setSendError(
+        "The assistant stopped responding. Continue to try picking up where it left off.",
+      );
+      setCanContinue(true);
     }, STALL_TIMEOUT_MS);
     return () => clearTimeout(timer);
-  }, [agent, isBusy]);
-
-  // Fires the queued retry once the aborted turn has actually settled back to
-  // "ready" — agent.send() throws immediately if called while still
-  // "streaming"/"submitted", so this can't happen in the same tick as stop().
-  useEffect(() => {
-    if (isBusy || !pendingRetryRef.current) return;
-    pendingRetryRef.current = false;
-    const args = lastSendArgsRef.current;
-    if (!args) return;
-    agent.send(args).catch((e) => {
-      setSendError(e instanceof Error ? e.message : String(e));
-    });
-  }, [agent, isBusy]);
+  }, [abandonTurn, isAwaitingTool, isBusy]);
 
   // User-triggered recovery from the "stopped responding" banner: sends a
   // plain "continue" turn rather than replaying the original message
   // verbatim, since eve/the model may have already produced partial output
-  // worth building on. Goes through the same retry watchdog as any other
-  // send (isBusy re-arms it), so a stalled continue gets its own one silent
-  // retry before asking again.
+  // worth building on. Goes through the same watchdog as any other send
+  // (isBusy re-arms it), so a stalled continue surfaces the banner again.
   const continueTurn = useCallback(() => {
     setSendError(null);
     setCanContinue(false);
-    retriedRef.current = false;
-    const args: Parameters<typeof agent.send>[0] = { message: "continue" };
-    lastSendArgsRef.current = args;
-    agent.send(args).catch((e) => {
+    agent.send({ message: "continue" }).catch((e) => {
       setSendError(e instanceof Error ? e.message : String(e));
     });
   }, [agent]);
