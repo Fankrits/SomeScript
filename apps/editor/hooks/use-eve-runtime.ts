@@ -83,6 +83,13 @@ const STALL_TIMEOUT_MS = 60_000;
 // of per-token stream events into one write instead of one per event.
 const CLOUD_SYNC_DEBOUNCE_MS = 4_000;
 
+// Same coalescing for the localStorage save, much shorter: unlike the cloud
+// backup, localStorage is the primary read path (loadThreadHistory on the
+// next mount) — without this, every token delta re-stringifies and writes
+// the whole event log, and a long session with a big tool result (a Tectonic
+// log, a large read_file) turns that into a main-thread stall on every token.
+const LOCAL_SAVE_DEBOUNCE_MS = 300;
+
 // assistant-ui only ships Simple adapters for images and text. PDFs get the
 // same treatment: read as a data URL, forward as a generic `file` content
 // part — attachmentsToParts (lib/attachment-blocks.ts) already knows how to
@@ -164,6 +171,11 @@ export function useEveRuntime(
   // stream event (token deltas included), but a network call per event would
   // hammer the API for no benefit — only the settled result needs to land.
   const cloudSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Debounce + in-flight payload for the localStorage save below, mirroring
+  // the cloud-sync timer's pattern but flushed on unmount (see the effect
+  // near the bottom) since this one can't afford to lose a pending write.
+  const localSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingLocalSaveRef = useRef<{ events: unknown[]; session: unknown } | null>(null);
   // Read inside onNew, which assistant-ui may hold across renders — a ref keeps
   // the marker in sync with the live selection without rebuilding the runtime.
   const modeRef = useRef(mode);
@@ -607,11 +619,18 @@ export function useEveRuntime(
 
   useEffect(() => {
     if (agent.session?.sessionId) {
-      // Never throws: losing saved history is survivable, but an error out of
-      // this effect unmounts the thread mid-conversation.
-      if (!saveThreadHistory(threadId, projectId, stripEventFileData(agent.events), agent.session)) {
-        console.error("Failed to persist chat history: localStorage is full");
-      }
+      // Coalesce the burst of per-token stream events into one write instead
+      // of one per token. Never throws: losing saved history is survivable,
+      // but an error out of this effect unmounts the thread mid-conversation.
+      const strippedEvents = stripEventFileData(agent.events);
+      pendingLocalSaveRef.current = { events: strippedEvents, session: agent.session };
+      if (localSaveTimerRef.current) clearTimeout(localSaveTimerRef.current);
+      localSaveTimerRef.current = setTimeout(() => {
+        pendingLocalSaveRef.current = null;
+        if (!saveThreadHistory(threadId, projectId, strippedEvents, agent.session)) {
+          console.error("Failed to persist chat history: localStorage is full");
+        }
+      }, LOCAL_SAVE_DEBOUNCE_MS);
 
       // Auto-update the title of the conversation in the threads list based on the first user message
       const threadListRaw = localStorage.getItem(threadsListKey(projectId));
@@ -670,6 +689,19 @@ export function useEveRuntime(
   useEffect(() => () => {
     if (cloudSyncTimerRef.current) clearTimeout(cloudSyncTimerRef.current);
   }, []);
+
+  // Unlike the cloud backup above, localStorage is the primary read path
+  // (loadThreadHistory replays it on the next mount) — a mode switch right
+  // after Eve's reply finishes but before this timer fires would otherwise
+  // drop that reply from history. Flush synchronously instead of just
+  // clearing the timer.
+  useEffect(() => () => {
+    if (localSaveTimerRef.current) {
+      clearTimeout(localSaveTimerRef.current);
+      const pending = pendingLocalSaveRef.current;
+      if (pending) saveThreadHistory(threadId, projectId, pending.events, pending.session);
+    }
+  }, [threadId, projectId]);
 
   // Watch agent messages/events for completed tool calls
   useEffect(() => {

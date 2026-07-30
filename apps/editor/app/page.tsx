@@ -467,7 +467,7 @@ const Example = () => {
   // Single source of truth for the active project — from the URL, set by the dashboard link.
   const [projectId] = useState<string>(() => {
     if (typeof window === "undefined") return "default";
-    return new URLSearchParams(window.location.search).get("projectId") ?? "default";
+    return new URLSearchParams(window.location.search).get("projectId") || "default";
   });
 
   const withProject = useCallback(
@@ -508,6 +508,15 @@ const Example = () => {
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  // Latches true the first time a PDF is available and never goes back — see
+  // the pdfPreviewPane render below for why: unmounting PdfPreview tears down
+  // and respawns its pdfium engine (a WebWorker + a ~3.5MB wasm reload), and
+  // pdfUrl goes back to null on nearly every non-PDF file selection, so
+  // gating the mount on pdfUrl itself thrashes the engine on normal browsing.
+  const [hasShownPdf, setHasShownPdf] = useState(false);
+  useEffect(() => {
+    if (pdfUrl) setHasShownPdf(true);
+  }, [pdfUrl]);
   // Project-relative path of the last successfully compiled root .tex — SyncTeX
   // queries resolve the PDF/.synctex.gz from it. null until the first compile.
   const [compiledPath, setCompiledPath] = useState<string | null>(null);
@@ -1644,6 +1653,11 @@ const Example = () => {
       const decoder = new TextDecoder();
       let logBuffer = "";
       let pdfPath: string | null = null;
+      // ponytail: fixed 100ms cadence instead of per-chunk. A cold-cache
+      // compile that fetches packages streams megabytes of progress lines —
+      // re-rendering (and re-parsing errors from, see TerminalLogViewer) the
+      // whole growing buffer on every chunk pegs the main thread.
+      let lastFlush = 0;
 
       while (true) {
         const { value, done } = await reader.read();
@@ -1651,7 +1665,11 @@ const Example = () => {
 
         const text = decoder.decode(value, { stream: true });
         logBuffer += text;
-        setTerminalOutput(logBuffer);
+        const now = Date.now();
+        if (now - lastFlush >= 100) {
+          setTerminalOutput(logBuffer);
+          lastFlush = now;
+        }
 
         // Check if stream finished with success
         if (logBuffer.includes("[SUCCESS]") || logBuffer.includes("[CACHE HIT]")) {
@@ -1667,6 +1685,7 @@ const Example = () => {
           }
         }
       }
+      setTerminalOutput(logBuffer); // final flush — the throttle above may have skipped the last chunk(s)
 
       return pdfPath ? { pdfPath, compilePath } : { pdfPath: null, compilePath, log: logBuffer };
     } catch (err) {
@@ -2041,9 +2060,10 @@ const Example = () => {
   const pdfPreviewPane = (
     <div className="h-full flex flex-col bg-muted/5 min-w-0 pdf-viewer-workspace">
       <div className="flex-1 relative overflow-hidden">
-        {pdfUrl ? (
+        {hasShownPdf ? (
           <PdfPreview
             pdfUrl={pdfUrl}
+            isCompiling={isCompiling}
             synctexQuery={synctexQuery}
             selectedPath={toProjectRelative(selectedPath)}
             pdfSyncRequest={pdfSyncRequest}

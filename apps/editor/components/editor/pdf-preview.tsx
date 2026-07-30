@@ -56,6 +56,7 @@ type SynctexQuery = (
 
 interface HeadlessPdfViewerProps {
   pdfUrl: string | null;
+  isCompiling?: boolean;
   synctexQuery: SynctexQuery;
   selectedPath: string;
   pdfSyncRequest: { line?: number; frac?: number; page?: number; nonce: number } | null;
@@ -66,6 +67,7 @@ interface HeadlessPdfViewerProps {
 
 const HeadlessPdfViewer = ({
   pdfUrl,
+  isCompiling,
   synctexQuery,
   selectedPath,
   pdfSyncRequest,
@@ -83,8 +85,9 @@ const HeadlessPdfViewer = ({
   useEffect(() => {
     if (pdfUrl && docManagerCap && docManagerCap.provides && lastLoadedUrlRef.current !== pdfUrl) {
       lastLoadedUrlRef.current = pdfUrl;
+      const previousDocId = currentDocIdRef.current;
       const newDocId = `doc-${Date.now()}`;
-      
+
       currentDocIdRef.current = newDocId;
       setCurrentDocId(newDocId);
       docManagerCap.provides.openDocumentUrl({
@@ -92,13 +95,18 @@ const HeadlessPdfViewer = ({
         autoActivate: true,
         documentId: newDocId,
       });
+      // Each compile opens a new document with a fresh id — without this the
+      // previous one stays resident in the pdfium WASM heap for the session.
+      if (previousDocId) {
+        docManagerCap.provides.closeDocument(previousDocId);
+      }
     }
   }, [pdfUrl, docManagerCap]);
 
   if (!pdfUrl) {
     return (
       <div className="flex-1 flex items-center justify-center text-xs font-mono text-muted-foreground p-4 text-center">
-        Click Compile to generate PDF
+        {isCompiling ? "Compiling document..." : "Click Compile to generate PDF"}
       </div>
     );
   }
