@@ -1,6 +1,6 @@
 import { defineTool } from "eve/tools";
 import { z } from "zod";
-import { resolveToolProject } from "../../lib/authz";
+import { resolveToolProject, touchProject } from "../../lib/authz";
 import { storage } from "../../lib/storage";
 
 export default defineTool({
@@ -14,6 +14,7 @@ export default defineTool({
     try {
       const pid = await resolveToolProject(projectId);
       await storage.move(pid, oldPath, newPath);
+      await touchProject(pid);
       return { ok: true as const, oldPath, newPath };
     } catch (e) {
       return { ok: false as const, oldPath, newPath, error: e instanceof Error ? e.message : String(e) };

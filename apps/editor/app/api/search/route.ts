@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { storage, type FileNode } from "@/lib/storage";
-import { requireProject, apiError } from "@/lib/authz";
+import { requireProject, touchProject, apiError } from "@/lib/authz";
 import { buildSearchPattern } from "@/lib/search-pattern";
 import path from "path";
 
@@ -165,6 +165,7 @@ export async function POST(req: NextRequest) {
     };
 
     await traverse(files);
+    if (modifiedFiles.length > 0) await touchProject(projectId);
     return Response.json({ success: true, count, modifiedFiles });
   } catch (error) {
     return apiError(error);

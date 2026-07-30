@@ -93,6 +93,22 @@ export async function requireWorkspace(): Promise<string> {
   return orgId || userId;
 }
 
+/**
+ * Bumps the dashboard's "Last Modified" timestamp for a project. Call this from
+ * every path that changes user-visible project content (file save/create/move/
+ * copy/delete, uploads, search-replace, Eve file edits) — but not from internal
+ * writes like the compiled PDF cache or the task list, which shouldn't count as
+ * a content change. No-ops for "default" (the local sandbox has no DB row).
+ */
+export async function touchProject(projectId: string): Promise<void> {
+  if (projectId === "default") return;
+  try {
+    await getPool().query("UPDATE projects SET updated_at = now() WHERE id = $1", [projectId]);
+  } catch (error) {
+    console.error("[touchProject]", error);
+  }
+}
+
 /** Uniform error responder: known ApiErrors pass through, everything else is a logged generic 500. */
 export function apiError(err: unknown): Response {
   if (err instanceof ApiError) {

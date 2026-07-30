@@ -1,5 +1,5 @@
 import { storage, isBinaryContent } from "@/lib/storage";
-import { requireProject, apiError, ApiError } from "@/lib/authz";
+import { requireProject, touchProject, apiError, ApiError } from "@/lib/authz";
 import { NextRequest } from "next/server";
 
 const IMAGE_MIME: Record<string, string> = {
@@ -86,36 +86,26 @@ export async function POST(req: NextRequest) {
       } else {
         await storage.writeFile(projectId, body.path, "");
       }
-      return Response.json({ success: true });
-    }
-
-    if (body.action === "save") {
+    } else if (body.action === "save") {
       if (typeof body.path !== "string" || typeof body.content !== "string") {
         throw new ApiError(400, "Missing path or content");
       }
       await storage.writeFile(projectId, body.path, body.content);
-      return Response.json({ success: true });
-    }
-
-    if (body.action === "move") {
+    } else if (body.action === "move") {
       await storage.move(projectId, body.oldPath, body.newPath);
-      return Response.json({ success: true });
-    }
-
-    if (body.action === "copy") {
+    } else if (body.action === "copy") {
       if (typeof body.path !== "string" || typeof body.newPath !== "string") {
         throw new ApiError(400, "Missing path or newPath");
       }
       await storage.copy(projectId, body.path, body.newPath);
-      return Response.json({ success: true });
-    }
-
-    if (body.action === "delete") {
+    } else if (body.action === "delete") {
       await storage.delete(projectId, body.path);
-      return Response.json({ success: true });
+    } else {
+      throw new ApiError(400, "Invalid action");
     }
 
-    throw new ApiError(400, "Invalid action");
+    await touchProject(projectId);
+    return Response.json({ success: true });
   } catch (error) {
     return apiError(error);
   }

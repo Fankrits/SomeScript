@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { storage } from "@/lib/storage";
-import { requireProject, apiError, ApiError } from "@/lib/authz";
+import { requireProject, touchProject, apiError, ApiError } from "@/lib/authz";
 import { MAX_UPLOAD_BYTES, flattenFilePaths, dedupeUploadName } from "@/lib/zip";
 import { checkRate } from "@/lib/rate-limit";
 
@@ -29,6 +29,7 @@ export async function POST(req: NextRequest) {
       saved.push(destPath);
     }
 
+    await touchProject(projectId);
     return Response.json({ success: true, saved });
   } catch (error) {
     return apiError(error);

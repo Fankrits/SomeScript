@@ -1,6 +1,6 @@
 import { defineTool } from "eve/tools";
 import { z } from "zod";
-import { resolveToolProject } from "../../lib/authz";
+import { resolveToolProject, touchProject } from "../../lib/authz";
 import { storage } from "../../lib/storage";
 
 // Above this size we skip the before-snapshot: the review card then shows a
@@ -42,6 +42,7 @@ export default defineTool({
       }
 
       await storage.writeFile(pid, filePath, content);
+      await touchProject(pid);
       return { ok: true as const, path: filePath, before, created };
     } catch (e) {
       return { ok: false as const, path: filePath, error: e instanceof Error ? e.message : String(e) };
