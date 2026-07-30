@@ -7,7 +7,7 @@
     "preview": "nuxt preview --extends docus"
   },
   "dependencies": {
-    "@takumi-rs/core": "^2.5.3",
+    "@takumi-rs/core": "^2.5.4",
     "@vercel/analytics": "^2.0.1",
     "@vercel/speed-insights": "^2.0.0",
     "docus": "5.12.3",

@@ -113,7 +113,7 @@ export default defineNuxtConfig({
   },
   docus: {
     assistant: {
-      model: 'inclusionai/ling-3.0-flash-free,meta/llama-3.1-8b',
+      model: 'alibaba/qwen3.7-flash',
       mcpServer: '/mcp',
       apiPath: '/__docus__/assistant',
     },
