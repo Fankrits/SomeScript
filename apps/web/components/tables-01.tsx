@@ -141,13 +141,15 @@ export default function ProjectsTable({ projects, editorUrl }: ProjectsTableProp
     }
   };
 
-  const handleDownload = async (projectId: string, type: "pdf" | "zip") => {
+  const handleDownload = async (projectId: string, projectName: string, type: "pdf" | "zip") => {
     setPendingAction({ id: projectId, type });
     try {
       const url = `/api/project/export?projectId=${projectId}&type=${type}`;
+      const safeName = projectName.replace(/[^A-Za-z0-9 _.-]+/g, "-").trim() || "project";
+      const stamp = new Date().toISOString().replace(/[:.]/g, "-").replace("T", "_").slice(0, 19);
       const link = document.createElement("a");
       link.href = url;
-      link.setAttribute("download", `project-${projectId}.${type}`);
+      link.setAttribute("download", `${safeName}_${stamp}.${type}`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -248,11 +250,11 @@ export default function ProjectsTable({ projects, editorUrl }: ProjectsTableProp
                         <span>Rename Project</span>
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={() => handleDownload(project.id, "pdf")} disabled={isBusy}>
+                      <DropdownMenuItem onClick={() => handleDownload(project.id, project.name, "pdf")} disabled={isBusy}>
                         {isPdfPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileDown className="mr-2 h-4 w-4 text-primary" />}
                         <span>Download PDF</span>
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleDownload(project.id, "zip")} disabled={isBusy}>
+                      <DropdownMenuItem onClick={() => handleDownload(project.id, project.name, "zip")} disabled={isBusy}>
                         {isZipPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4 text-emerald-500" />}
                         <span>Download Source</span>
                       </DropdownMenuItem>
@@ -384,7 +386,7 @@ export default function ProjectsTable({ projects, editorUrl }: ProjectsTableProp
                                 variant="outline"
                                 size="icon"
                                 className="h-8 w-8"
-                                onClick={() => handleDownload(project.id, "pdf")}
+                                onClick={() => handleDownload(project.id, project.name, "pdf")}
                                 disabled={isBusy}
                               >
                                 {isPdfPending ? (
@@ -403,7 +405,7 @@ export default function ProjectsTable({ projects, editorUrl }: ProjectsTableProp
                                 variant="outline"
                                 size="icon"
                                 className="h-8 w-8"
-                                onClick={() => handleDownload(project.id, "zip")}
+                                onClick={() => handleDownload(project.id, project.name, "zip")}
                                 disabled={isBusy}
                               >
                                 {isZipPending ? (

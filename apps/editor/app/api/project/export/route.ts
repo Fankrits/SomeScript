@@ -1,7 +1,14 @@
 import { NextRequest } from "next/server";
 import { storage, type FileNode } from "@/lib/storage";
-import { requireProject, apiError, ApiError } from "@/lib/authz";
+import { requireProject, getProjectName, apiError, ApiError } from "@/lib/authz";
 import JSZip from "jszip";
+
+/** Safe, timestamped download filename — strips chars that break HTTP headers or filesystems. */
+function exportFilename(projectName: string, ext: "pdf" | "zip"): string {
+  const safeName = projectName.replace(/[^A-Za-z0-9 _.-]+/g, "-").trim() || "project";
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-").replace("T", "_").slice(0, 19);
+  return `${safeName}_${stamp}.${ext}`;
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -28,10 +35,11 @@ export async function GET(req: NextRequest) {
 
       try {
         const buffer = await storage.readBinaryFile(projectId, ".preview-cache/main.pdf");
+        const projectName = await getProjectName(projectId);
         return new Response(new Uint8Array(buffer), {
           headers: {
             "Content-Type": "application/pdf",
-            "Content-Disposition": `attachment; filename="project-${projectId}.pdf"`,
+            "Content-Disposition": `attachment; filename="${exportFilename(projectName, "pdf")}"`,
             "Content-Length": buffer.length.toString(),
           },
         });
@@ -61,11 +69,12 @@ export async function GET(req: NextRequest) {
 
       await addFilesToZip(zip, tree);
       const content = await zip.generateAsync({ type: "nodebuffer" });
+      const projectName = await getProjectName(projectId);
 
       return new Response(new Uint8Array(content), {
         headers: {
           "Content-Type": "application/zip",
-          "Content-Disposition": `attachment; filename="project-${projectId}.zip"`,
+          "Content-Disposition": `attachment; filename="${exportFilename(projectName, "zip")}"`,
           "Content-Length": content.length.toString(),
         },
       });

@@ -118,6 +118,13 @@ export function apiError(err: unknown): Response {
   return Response.json({ error: "Internal server error" }, { status: 500 });
 }
 
+/** Human-readable project name for display and download filenames. */
+export async function getProjectName(projectId: string): Promise<string> {
+  if (projectId === "default") return "Local Sandbox";
+  const res = await getPool().query("SELECT name FROM projects WHERE id = $1", [projectId]);
+  return res.rows[0]?.name ?? projectId;
+}
+
 /** Local filesystem directory for a project (local/dev compile mode). */
 export function projectDirFor(projectId: string): string {
   return projectId === "default"
