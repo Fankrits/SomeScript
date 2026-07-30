@@ -24,6 +24,8 @@ import {
   WebFetchToolUI,
   DeleteFileToolUI,
   MoveFileToolUI,
+  CompileProjectToolUI,
+  ReadCompileLogToolUI,
 } from "@/components/assistant-ui/eve-tool-calls";
 
 /**
@@ -121,15 +123,18 @@ function EveThreadInner({
   threadId,
   projectId,
   mode,
+  openFile,
 }: {
   threadId: string;
   projectId: string;
   mode: EveMode;
+  openFile?: string | null;
 }) {
   const { runtime, agent, error, canContinue, continueTurn, dismissError } = useEveRuntime(
     threadId,
     projectId,
     mode,
+    openFile,
   );
 
   return (
@@ -152,6 +157,8 @@ function EveThreadInner({
         <WebFetchToolUI />
         <DeleteFileToolUI />
         <MoveFileToolUI />
+        <CompileProjectToolUI />
+        <ReadCompileLogToolUI />
         <ComposerInbox />
 
         <div className="h-full flex flex-col bg-background">
@@ -174,7 +181,16 @@ function EveThreadInner({
   );
 }
 
-export function EveThread({ threadId, projectId }: { threadId: string; projectId: string }) {
+export function EveThread({
+  threadId,
+  projectId,
+  openFile,
+}: {
+  threadId: string;
+  projectId: string;
+  /** Project-relative path of the open editor tab, so Eve can act on "this file". */
+  openFile?: string | null;
+}) {
   // Last-picked mode is remembered globally (one key), defaulting to Lite.
   const [mode, setMode] = React.useState<EveMode>(() => {
     if (typeof window === "undefined") return DEFAULT_MODE;
@@ -187,7 +203,13 @@ export function EveThread({ threadId, projectId }: { threadId: string; projectId
 
   return (
     <ModelModeContext.Provider value={{ mode, setMode }}>
-      <EveThreadInner key={mode} threadId={threadId} projectId={projectId} mode={mode} />
+      <EveThreadInner
+        key={mode}
+        threadId={threadId}
+        projectId={projectId}
+        mode={mode}
+        openFile={openFile}
+      />
     </ModelModeContext.Provider>
   );
 }

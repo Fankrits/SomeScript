@@ -1801,16 +1801,59 @@ const Example = () => {
       if (path) handleFileSelect(path);
     };
 
+    // Eve started a compile — same terminal reset the Compile button does
+    // (see runCompile), so the panel doesn't sit on the previous run's log.
+    const handleCompiling = () => {
+      setTerminalOutput("");
+      setIsTerminalStreaming(true);
+      setCompileErrors([]);
+      setHasCompileError(false);
+    };
+
+    // Eve finished a compile. Mirrors the tail of handleCompileLatex so the PDF
+    // pane, terminal and gutter marks end up exactly where a manual compile leaves
+    // them — the log is the same string the compiler returned either way.
+    // Deliberately does NOT call surfaceCompileFailure: its toast would fire
+    // underneath Eve's own explanation of the error it's about to fix.
+    const handleCompiled = (e: Event) => {
+      const { ok, path, pdfPath, log } = (e as CustomEvent<{
+        ok: boolean;
+        path: string;
+        pdfPath: string | null;
+        log: string | null;
+      }>).detail;
+
+      setIsTerminalStreaming(false);
+      if (log === null) return; // compile never ran; leave the terminal alone
+
+      setTerminalOutput(log);
+      if (ok && pdfPath) {
+        setPdfUrl(
+          withProject(
+            `${window.location.origin}/api/files?path=${encodeURIComponent(pdfPath)}&t=${Date.now()}`
+          )
+        );
+        setCompiledPath(path);
+      } else {
+        setCompileErrors(parseCompileErrors(log, path));
+        setHasCompileError(true);
+      }
+    };
+
     window.addEventListener("somescript:force-save", handleForceSave);
     window.addEventListener("somescript:refresh-workspace", handleRefreshWorkspace);
     window.addEventListener("somescript:open-file", handleOpenFile);
+    window.addEventListener("somescript:compiling", handleCompiling);
+    window.addEventListener("somescript:compiled", handleCompiled);
 
     return () => {
       window.removeEventListener("somescript:force-save", handleForceSave);
       window.removeEventListener("somescript:refresh-workspace", handleRefreshWorkspace);
       window.removeEventListener("somescript:open-file", handleOpenFile);
+      window.removeEventListener("somescript:compiling", handleCompiling);
+      window.removeEventListener("somescript:compiled", handleCompiled);
     };
-  }, [refreshWorkspace, refreshCurrentFile, handleFileSelect, projectId]);
+  }, [refreshWorkspace, refreshCurrentFile, handleFileSelect, projectId, withProject]);
 
   // Static boot banner. This used to be typed out a line at a time over 800ms, which
   // re-rendered the whole editor eight times during the slowest part of startup — for
@@ -2421,7 +2464,12 @@ const Example = () => {
             {/* Chat thread itself */}
             {activeThreadId && (
               <div className="flex-1 flex flex-col overflow-hidden">
-                <EveThread key={activeThreadId} threadId={activeThreadId} projectId={projectId} />
+                <EveThread
+                  key={activeThreadId}
+                  threadId={activeThreadId}
+                  projectId={projectId}
+                  openFile={selectedPath ? toProjectRelative(selectedPath) : null}
+                />
               </div>
             )}
           </div>

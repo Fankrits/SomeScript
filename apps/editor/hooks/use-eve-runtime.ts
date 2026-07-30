@@ -35,10 +35,22 @@ import {
 } from "@/lib/thread-history";
 import { notifyCreditsUpdated } from "@/hooks/use-credit-status";
 
-// Leading "[mode: …]" / "[projectId: …]" context markers we inject in onNew: the
-// model (and the dynamic model resolver) still receive them, but users shouldn't
-// see them in rendered text or thread titles.
-const MARKER_PREFIX = /^(?:\[(?:projectId|mode): [^\]]*\]\n?)+/;
+// Context markers prefixed to the outgoing user message in onNew. The model (and
+// the dynamic model resolver in agent/agent.ts) read them; the UI must strip them
+// back off before rendering text or thread titles. The strip regex is derived from
+// the same key list buildContextMarker writes, so a marker can't be added to one
+// half and leak into the chat bubble because the other half didn't know about it.
+const MARKER_KEYS = ["mode", "projectId", "openFile"] as const;
+
+const MARKER_PREFIX = new RegExp(`^(?:\\[(?:${MARKER_KEYS.join("|")}): [^\\]]*\\]\\n?)+`);
+
+function buildContextMarker(
+  values: Partial<Record<(typeof MARKER_KEYS)[number], string | null | undefined>>,
+): string {
+  return MARKER_KEYS.filter((key) => values[key])
+    .map((key) => `[${key}: ${values[key]}]`)
+    .join("\n");
+}
 
 // eve's NDJSON turn stream can go silent forever without erroring — no error,
 // no close, so agent.status never leaves "submitted"/"streaming" and the
@@ -115,12 +127,38 @@ class SimplePdfAttachmentAdapter implements AttachmentAdapter {
   }
 }
 
+/** Filename of agent/tools/compile-project.ts, which is its model-facing name. */
+const COMPILE_TOOL_NAME = "compile-project";
+
+/** Structured output of the compile-project tool as it reaches the client. */
+type CompileToolOutput = {
+  ok?: boolean;
+  path?: string;
+  pdfPath?: string | null;
+  log?: string;
+  error?: string;
+};
+
+/** Detail of the `somescript:compiled` event; see the listener in app/page.tsx. */
+export type CompiledEventDetail = {
+  ok: boolean;
+  path: string;
+  pdfPath: string | null;
+  /** null when the compile never ran — the listener only stops the spinner. */
+  log: string | null;
+};
+
 export function useEveRuntime(
   threadId: string,
   projectId: string,
   mode: EveMode,
+  openFile?: string | null,
 ) {
   const completedToolCalls = useRef<Set<string>>(new Set());
+  // Separate from completedToolCalls: compile-project is mirrored into the editor
+  // on both edges, so each edge needs its own once-only guard.
+  const compileStartedCalls = useRef<Set<string>>(new Set());
+  const compileSettledCalls = useRef<Set<string>>(new Set());
   const processedSteps = useRef<Set<string>>(new Set());
   // Debounce for the cloud backup below: the autosave effect re-runs on every
   // stream event (token deltas included), but a network call per event would
@@ -132,6 +170,13 @@ export function useEveRuntime(
   useEffect(() => {
     modeRef.current = mode;
   }, [mode]);
+  // Same reason as modeRef: the user can switch files between renders, and the
+  // marker has to name whichever one is open at send time. This is how "compile
+  // this file" resolves to a path.
+  const openFileRef = useRef(openFile);
+  useEffect(() => {
+    openFileRef.current = openFile;
+  }, [openFile]);
   // Separate from modeRef: the composer is disabled while a turn streams, but the
   // mode picker isn't, so modeRef can change mid-turn. Credit deduction needs the
   // mode that was actually sent for the in-flight turn, captured at send time.
@@ -408,7 +453,11 @@ export function useEveRuntime(
         parts.push(...attachmentParts);
 
         if (parts.length > 0) {
-          const marker = `[mode: ${modeRef.current}]\n[projectId: ${projectId}]`;
+          const marker = buildContextMarker({
+            mode: modeRef.current,
+            projectId,
+            openFile: openFileRef.current,
+          });
           const textPart = parts.find(
             (p): p is Extract<OutgoingPart, { type: "text" }> => p.type === "text"
           );
@@ -630,6 +679,13 @@ export function useEveRuntime(
     // Last file Eve successfully wrote this pass — the editor jumps to it, so a
     // multi-file turn lands on the file it finished with.
     let wrotePath: string | null = null;
+    // compile-project drives the editor's real terminal panel and PDF pane, not
+    // just its chat card, so both ends of its lifecycle are mirrored as events:
+    // one when it starts (clear the terminal, spin) and one when it settles (log,
+    // gutter marks, PDF refresh). See the listeners in app/page.tsx.
+    let compileStarted = false;
+    let compiled: CompiledEventDetail | null = null;
+
     for (const msg of agent.data.messages) {
       if (msg.role === "assistant" && msg.parts) {
         for (const part of msg.parts) {
@@ -661,12 +717,65 @@ export function useEveRuntime(
       }
     }
 
+    // Compile lifecycle, kept separate because it's the only tool with a *start*
+    // side effect and so needs both edges. Routed on the terminal state (not
+    // "anything that isn't output-available"), otherwise an errored or denied call
+    // would leave the terminal spinner running forever.
+    for (const msg of agent.data.messages) {
+      if (msg.role !== "assistant" || !msg.parts) continue;
+      for (const part of msg.parts) {
+        if (part.type !== "dynamic-tool" || part.toolName !== COMPILE_TOOL_NAME) continue;
+
+        const isSettled =
+          part.state === "output-available" ||
+          part.state === "output-error" ||
+          part.state === "output-denied";
+
+        if (!isSettled) {
+          if (!compileStartedCalls.current.has(part.toolCallId)) {
+            compileStartedCalls.current.add(part.toolCallId);
+            compileStarted = true;
+          }
+          continue;
+        }
+
+        if (compileSettledCalls.current.has(part.toolCallId)) continue;
+        compileSettledCalls.current.add(part.toolCallId);
+
+        const output =
+          part.state === "output-available"
+            ? (part.output as CompileToolOutput | undefined)
+            : undefined;
+
+        // A set `error` (or no output at all) means the compile never ran — wrong
+        // compiler mode, throttled, tool threw. There's no log to show, so the
+        // listener only stops the spinner and leaves the terminal as it was.
+        compiled =
+          output && !output.error
+            ? {
+                ok: Boolean(output.ok),
+                path: output.path ?? "",
+                pdfPath: output.pdfPath ?? null,
+                log: output.log ?? "",
+              }
+            : { ok: false, path: "", pdfPath: null, log: null };
+      }
+    }
+
     if (shouldRefresh) {
       window.dispatchEvent(new CustomEvent("somescript:refresh-workspace"));
     }
     if (wrotePath) {
       window.dispatchEvent(
         new CustomEvent("somescript:open-file", { detail: wrotePath })
+      );
+    }
+    if (compileStarted) {
+      window.dispatchEvent(new CustomEvent("somescript:compiling"));
+    }
+    if (compiled) {
+      window.dispatchEvent(
+        new CustomEvent<CompiledEventDetail>("somescript:compiled", { detail: compiled })
       );
     }
   }, [agent.data?.messages]);

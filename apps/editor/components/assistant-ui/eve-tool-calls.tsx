@@ -17,6 +17,7 @@ import {
   Globe,
 } from "lucide-react";
 import { structuredPatch } from "diff";
+import Ansi from "ansi-to-react";
 import { Button } from "@/components/ui/button";
 import { useEveAgentCtx } from "@/components/chat/eve-agent-context";
 import { makeAssistantToolUI, type ToolCallMessagePartStatus } from "@assistant-ui/react";
@@ -320,6 +321,70 @@ function BashCard({ args, result, status }: EveCardProps) {
           </pre>
         )}
       </div>
+    </EveToolRow>
+  );
+}
+
+// compile-project and read-compile-log return the same shape, so one card covers
+// both. Deliberately a compact receipt: the user's own terminal panel already has
+// the full log with clickable "Jump to line" cards, because the page mirrors these
+// results into it (see the somescript:compiled listener in app/page.tsx).
+type CompileOutput = {
+  ok?: boolean;
+  path?: string;
+  pdfPath?: string | null;
+  errors?: Array<{ file: string; line: number; message: string }>;
+  log?: string;
+  error?: string;
+  ageSeconds?: number;
+};
+
+function CompileCard({
+  args,
+  result,
+  status,
+  kind,
+}: EveCardProps & { kind: "compile" | "log" }) {
+  const out = (result ?? undefined) as CompileOutput | undefined;
+  const path = (args?.input as { path?: string } | undefined)?.path || out?.path || "";
+  const errorCount = out?.errors?.length ?? 0;
+
+  let label: React.ReactNode;
+  if (!out) {
+    label = kind === "compile" ? <>Compiling {path || "project"}…</> : <>Reading compile log…</>;
+  } else if (out.error) {
+    label = kind === "compile" ? <>Compile not run</> : <>No compile log</>;
+  } else {
+    const age = typeof out.ageSeconds === "number" && out.ageSeconds > 0 ? ` (${out.ageSeconds}s ago)` : "";
+    const verb = kind === "compile" ? (out.ok ? "Compiled" : "Compile failed:") : "Compile log:";
+    label = (
+      <>
+        {verb} {out.path || path}
+        {age}
+        {errorCount > 0 && ` — ${errorCount} error${errorCount === 1 ? "" : "s"}`}
+      </>
+    );
+  }
+
+  return (
+    <EveToolRow
+      icon={Terminal}
+      iconClassName={out && !out.error ? (out.ok ? "text-emerald-500" : "text-red-500") : undefined}
+      label={label}
+      status={status}
+    >
+      {out?.error ? (
+        <ToolOutput>{out.error}</ToolOutput>
+      ) : out?.log ? (
+        // Same chrome and same ANSI rendering as the editor's terminal panel
+        // (components/ai-elements/terminal.tsx), so the log reads identically
+        // whether the user compiled or Eve did.
+        <div className="overflow-hidden rounded-md bg-zinc-950 p-2.5 font-mono text-xs text-zinc-100">
+          <pre className="max-h-60 overflow-x-auto whitespace-pre-wrap">
+            <Ansi>{out.log}</Ansi>
+          </pre>
+        </div>
+      ) : null}
     </EveToolRow>
   );
 }
@@ -889,6 +954,22 @@ export const DeleteFileToolUI = makeAssistantToolUI({
 export const MoveFileToolUI = makeAssistantToolUI({
   toolName: "move-file",
   render: ({ args, result }) => <MoveFileCard args={args} result={result} />,
+});
+
+// toolName must equal the filename under agent/tools/ — that's where eve derives
+// the model-facing name from.
+export const CompileProjectToolUI = makeAssistantToolUI({
+  toolName: "compile-project",
+  render: ({ args, result, status }) => (
+    <CompileCard args={args} result={result} status={status} kind="compile" />
+  ),
+});
+
+export const ReadCompileLogToolUI = makeAssistantToolUI({
+  toolName: "read-compile-log",
+  render: ({ args, result, status }) => (
+    <CompileCard args={args} result={result} status={status} kind="log" />
+  ),
 });
 
 
