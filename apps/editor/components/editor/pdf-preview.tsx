@@ -697,7 +697,12 @@ const HeadlessPdfViewerInner = ({
 // Default export so page.tsx can pull the whole PDF stack (embedpdf + the ~3.5MB
 // pdfium.wasm the engine fetches) in a lazy chunk instead of the initial bundle.
 export default function PdfPreview(props: HeadlessPdfViewerProps) {
-  const { engine, isLoading, error } = usePdfiumEngine();
+  const { engine, isLoading, error } = usePdfiumEngine({
+    // Absolute: the engine fetches this from inside its Worker, where a
+    // root-relative path has no base to resolve against and fails silently.
+    wasmUrl: `${window.location.origin}/pdfium.wasm`,
+    fontFallback: null,
+  });
 
   if (!engine) {
     return (
