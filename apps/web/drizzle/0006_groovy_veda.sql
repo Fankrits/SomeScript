@@ -1,0 +1,1 @@
+ALTER TABLE "templates" ADD COLUMN "author_avatar_url" text;

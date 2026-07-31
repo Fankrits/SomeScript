@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, uuid, index, integer, pgEnum, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, uuid, index, integer, pgEnum, jsonb, boolean } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
   id: text("id").primaryKey(), // Clerk User ID
@@ -126,3 +126,22 @@ export const chatThreads = pgTable(
   },
   (table) => [index("chat_threads_project_id_idx").on(table.projectId)]
 );
+
+export const templates = pgTable(
+  "templates",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    description: text("description").notNull().default(""),
+    category: text("category").notNull().default("General"),
+    authorId: text("author_id").references(() => users.id, { onDelete: "set null" }),
+    authorName: text("author_name"),
+    authorAvatarUrl: text("author_avatar_url"),
+    usageCount: integer("usage_count").notNull().default(0),
+    isPublic: boolean("is_public").notNull().default(true),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [index("templates_is_public_idx").on(table.isPublic)]
+);
+
