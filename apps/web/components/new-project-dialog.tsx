@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { createProject } from "@/app/dashboard/actions";
 import { UpgradeDialog } from "@/components/upgrade-dialog";
 import { Plus, Loader2 } from "lucide-react";
+import { trackEvent } from "@/components/analytics/clarity";
 
 export function NewProjectDialog() {
   const [open, setOpen] = useState(false);
@@ -23,7 +24,9 @@ export function NewProjectDialog() {
       const result = await createProject(formData);
       if (result?.error) {
         setError(result.error);
+        if (result.error.includes("Upgrade")) trackEvent("project_creation_blocked_upgrade");
       } else {
+        trackEvent("project_created");
         setOpen(false);
       }
     } catch (err) {

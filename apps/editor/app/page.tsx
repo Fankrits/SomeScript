@@ -38,6 +38,7 @@ import type { Task } from "@/lib/tasks";
 import { search as searchExtension, SearchQuery, setSearchQuery } from "@codemirror/search";
 import { setDiagnostics, type Diagnostic } from "@codemirror/lint";
 import { parseCompileErrors, type CompileError } from "@/lib/compile-errors";
+import { trackEvent, upgradeSession } from "@/components/analytics/clarity";
 import nextDynamic from "next/dynamic";
 
 // The PDF stack (embedpdf + the ~3.5MB pdfium.wasm it fetches from the CDN) is only
@@ -1687,6 +1688,12 @@ const Example = () => {
       }
       setTerminalOutput(logBuffer); // final flush — the throttle above may have skipped the last chunk(s)
 
+      if (pdfPath) {
+        trackEvent("compile_success");
+      } else {
+        trackEvent("compile_failed");
+        upgradeSession("compile_failed");
+      }
       return pdfPath ? { pdfPath, compilePath } : { pdfPath: null, compilePath, log: logBuffer };
     } catch (err) {
       console.error("Compilation error", err);
@@ -1694,6 +1701,8 @@ const Example = () => {
       // Put compilation error into the terminal output
       const errLog = `\u001B[31mError compiling LaTeX:\u001B[0m ${errMessage}\n`;
       setTerminalOutput((prev) => `${prev}\n${errLog}`);
+      trackEvent("compile_failed");
+      upgradeSession("compile_failed");
       return { pdfPath: null, compilePath, log: errLog };
     } finally {
       setIsTerminalStreaming(false);

@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { ClerkProvider } from "@clerk/nextjs";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
+import { ClarityAnalytics } from "@/components/analytics/clarity";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans", display: "swap" });
 
@@ -167,6 +168,7 @@ export default function RootLayout({
           {children}
           <Analytics />
           <SpeedInsights />
+          <ClarityAnalytics />
         </body>
       </html>
     </ClerkProvider>

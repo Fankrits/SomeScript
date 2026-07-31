@@ -27,6 +27,7 @@ export const metadata: Metadata = {
 
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
+import { ClarityAnalytics } from "@/components/analytics/clarity";
 
 export default function RootLayout({
   children,
@@ -45,6 +46,7 @@ export default function RootLayout({
         <ClerkProvider>
           <TooltipProvider>{children}</TooltipProvider>
           <Toaster />
+          <ClarityAnalytics />
         </ClerkProvider>
       </body>
     </html>

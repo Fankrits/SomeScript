@@ -5,6 +5,7 @@ import { CheckoutElementsProvider, PaymentElement, useCheckoutElements } from "@
 import { getStripe } from "@/lib/stripe-client";
 import { Button } from "@/components/ui/button";
 import { CheckCircle2, Loader2 } from "lucide-react";
+import { trackEvent, upgradeSession } from "@/components/analytics/clarity";
 
 // Stripe's webhook fires asynchronously after confirm() resolves, not before — this
 // just gives it a moment to land before the parent refreshes server-fetched plan/credit
@@ -41,9 +42,12 @@ function ConfirmForm({ onSuccess }: { onSuccess: () => void }) {
     if (result.type === "error") {
       setError(result.error.message);
       setSubmitting(false);
+      trackEvent("checkout_failed");
+      upgradeSession("checkout_failed");
       return;
     }
 
+    trackEvent("checkout_completed");
     setSucceeded(true);
     setTimeout(onSuccess, WEBHOOK_SETTLE_DELAY_MS);
   };
