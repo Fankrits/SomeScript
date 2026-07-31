@@ -69,28 +69,6 @@ async function ensureWorkspaceExists(orgId: string | null, userId: string) {
 
 import { editorFetch } from "@/lib/editor-api";
 
-const DEFAULT_MAIN_TEX = `\\documentclass[11pt, a4paper]{article}
-
-\\usepackage[utf8]{inputenc}
-\\usepackage[margin=1in]{geometry}
-\\usepackage{amsmath, amssymb}
-\\usepackage{graphicx}
-\\usepackage{hyperref}
-
-\\title{\\textbf{New LaTeX Project}}
-\\author{Author}
-\\date{\\today}
-
-\\begin{document}
-
-\\maketitle
-
-\\section{Introduction}
-Welcome to your new LaTeX project! Describe what you want the AI assistant to write or edit, and click compile to generate a preview.
-
-\\end{document}
-`;
-
 // Next.js redacts thrown Error messages from Server Functions in production
 // builds (see node_modules/next/dist/docs/01-app/01-getting-started/10-error-handling.md
 // "Handling expected errors" — model expected errors as return values, not throws).
@@ -123,15 +101,10 @@ export async function createProject(formData: FormData): Promise<{ error: string
 
   if (!project) return { error: "Failed to create project" };
 
-  const res = await editorFetch("/api/files", {
+  const res = await editorFetch("/api/project/seed", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      projectId: project.id,
-      action: "save",
-      path: "main.tex",
-      content: DEFAULT_MAIN_TEX,
-    }),
+    body: JSON.stringify({ projectId: project.id }),
   });
 
   if (!res.ok) {

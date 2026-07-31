@@ -1,0 +1,69 @@
+% =============================================================================
+% Main.tex — SomeScript Template
+%   English by default · Thai supported anywhere (no \textthai needed!)
+%   Compile with XeLaTeX or LuaLaTeX
+% =============================================================================
+\documentclass[12pt, a4paper]{article}
+
+% --- Language: English main, Thai secondary ---
+\usepackage{fontspec}
+\usepackage{polyglossia}
+\setdefaultlanguage{english}
+\setotherlanguage{thai}
+
+% --- Auto-switch fonts by Unicode script (so Thai "just works") ---
+\usepackage{ucharclasses}
+
+% --- General packages ---
+\usepackage[a4paper, margin=1in]{geometry}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage[hidelinks]{hyperref}
+
+% --- Fonts: CMU Serif (English) + THSarabunNew (Thai) ---
+\setmainfont[Path=./Fonts/,Scale=1.2,
+  ItalicFont=CMU Serif Italic.ttf,
+  BoldFont=CMU Serif Bold Extended Roman.ttf]{CMU Serif Roman.ttf}
+
+\newfontfamily\thaifont[Path=./Fonts/,Script=Thai,Scale=1.5,
+  ItalicFont=THSarabunNewItalic.ttf,
+  BoldFont=THSarabunNewBold.ttf,
+  BoldItalicFont=THSarabunNewBoldItalic.ttf]{THSarabunNew.ttf}
+
+% --- Transition rules: auto-switch to Thai font when Thai chars are typed ---
+\setTransitionTo{Thai}{\thaifont}
+\setTransitionFrom{Thai}{\normalfont}
+
+\renewcommand{\baselinestretch}{1.2}
+
+% --- Title & Author ---
+\title{SomeScript}
+\author{Fankrits}
+\date{\today}
+
+% =============================================================================
+\begin{document}
+
+\maketitle
+
+\section*{Introduction}
+
+Welcome to SomeScript — a modern LaTeX editor. It compiles your documents in the cloud, offers seamless out-of-the-box Thai language support.
+
+\subsection*{คำนำ}
+ยินดีต้อนรับสู่ SomeScript — เครื่องมือ LaTeX ยุคใหม่ ระบบช่วยคอมไพล์เอกสารผ่านคลาวด์ รองรับภาษาไทยได้ทันทีโดยไม่ต้องตั้งค่า
+\subsection*{Mathematics}
+Inline math: $E = mc^2$ and display math:
+
+\[
+\int_{0}^{\infty} e^{-x^{2}}\,dx = \frac{\sqrt{\pi}}{2}
+\]
+
+\vspace{1cm}
+
+% --- Final section ---
+\begin{center}
+made with love by \textbf{Fankrits}
+\end{center}
+
+\end{document}
