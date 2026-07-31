@@ -8,7 +8,7 @@ import { eq, and } from "drizzle-orm";
 import { assertProjectLimit, assertWorkspaceActive, seedWorkspaceDefaults } from "@/lib/limits";
 
 // Helper to ensure the active workspace exists in our database
-async function ensureWorkspaceExists(orgId: string | null, userId: string) {
+export async function ensureWorkspaceExists(orgId: string | null, userId: string) {
   const targetId = orgId || userId;
 
   // 1. Always ensure the user row exists in the database first (essential for local dev webhooks bypass)
