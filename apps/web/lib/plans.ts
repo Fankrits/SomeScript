@@ -8,7 +8,7 @@ export const PLAN_LIMITS: Record<
   Plan,
   { maxProjects: number; maxMembers: number; maxOwnedWorkspaces: number; monthlyAiCredits: number }
 > = {
-  free: { maxProjects: 3, maxMembers: 3, maxOwnedWorkspaces: 1, monthlyAiCredits: 200 },
+  free: { maxProjects: 10, maxMembers: 3, maxOwnedWorkspaces: 1, monthlyAiCredits: 200 },
   pro: { maxProjects: Infinity, maxMembers: 3, maxOwnedWorkspaces: 1, monthlyAiCredits: 2000 },
   team: { maxProjects: Infinity, maxMembers: Infinity, maxOwnedWorkspaces: 1, monthlyAiCredits: 5000 }, // members capped by `seats` on the subscription row, not here
 };
