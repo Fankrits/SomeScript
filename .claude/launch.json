@@ -10,7 +10,7 @@
     {
       "name": "editor",
       "runtimeExecutable": "env",
-      "runtimeArgs": ["PATH=/usr/local/bin:/Users/fankrits/.bun/bin:/opt/homebrew/bin:/usr/bin:/bin", "bun", "--cwd=apps/editor", "run", "dev"],
+      "runtimeArgs": ["PATH=/Users/fankrits/.vite-plus/bin:/usr/local/bin:/Users/fankrits/.bun/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin", "bun", "--cwd=apps/editor", "run", "dev"],
       "port": 3002
     },
     {
@@ -27,8 +27,8 @@
     },
     {
       "name": "dev-no-compiler",
-      "runtimeExecutable": "node_modules/.bin/turbo",
-      "runtimeArgs": ["run", "dev", "--filter=!compiler"],
+      "runtimeExecutable": "env",
+      "runtimeArgs": ["PATH=/Users/fankrits/.vite-plus/bin:/usr/local/bin:/Users/fankrits/.bun/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin", "node_modules/.bin/turbo", "run", "dev", "--filter=!compiler"],
       "port": 3000
     },
     {
