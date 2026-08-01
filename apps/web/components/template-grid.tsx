@@ -124,74 +124,94 @@ export function TemplateGrid({ templates, currentUserId }: TemplateGridProps) {
           {filteredTemplates.map((tpl) => (
             <div
               key={tpl.id}
-              className="group relative flex flex-col justify-between rounded-xl border border-border bg-card p-5 hover:border-primary/40 hover:shadow-md transition-all duration-200"
+              className="group relative flex flex-col rounded-xl border border-border bg-card overflow-hidden hover:border-primary/40 hover:shadow-md transition-all duration-200"
             >
-              <div className="space-y-3">
-                <div className="flex items-start justify-between gap-2">
-                  <Badge variant="secondary" className="text-[10px] uppercase font-semibold px-2 py-0.5 tracking-wider bg-secondary/80">
-                    {tpl.category}
-                  </Badge>
-                  <span className="text-[11px] text-muted-foreground font-mono bg-muted/40 px-2 py-0.5 rounded-full border border-border/50">
-                    Used {tpl.usageCount.toLocaleString()} {tpl.usageCount === 1 ? "time" : "times"}
-                  </span>
+              <Link
+                href={`/dashboard/templates/${tpl.id}`}
+                className="relative block aspect-[16/10] w-full shrink-0 overflow-hidden border-b border-border bg-muted/40"
+              >
+                <div className="absolute inset-0 flex items-center justify-center text-muted-foreground/30">
+                  <FileText className="h-10 w-10" />
                 </div>
+                <img
+                  src={`/api/template/thumbnail/${tpl.id}`}
+                  alt=""
+                  loading="lazy"
+                  className="absolute inset-0 h-full w-full object-cover object-top"
+                  onError={(e) => {
+                    e.currentTarget.style.display = "none";
+                  }}
+                />
+              </Link>
 
-                <div>
-                  <Link
-                    href={`/dashboard/templates/${tpl.id}`}
-                    className="font-semibold text-base text-foreground group-hover:text-primary transition-colors line-clamp-1 hover:underline"
-                  >
-                    {tpl.name}
-                  </Link>
-                  <p className="text-xs text-muted-foreground mt-1 line-clamp-2 leading-relaxed">
-                    {tpl.description || "No description provided."}
-                  </p>
-                </div>
-              </div>
+              <div className="flex flex-1 flex-col justify-between p-5">
+                <div className="space-y-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <Badge variant="secondary" className="text-[10px] uppercase font-semibold px-2 py-0.5 tracking-wider bg-secondary/80">
+                      {tpl.category}
+                    </Badge>
+                    <span className="text-[11px] text-muted-foreground font-mono bg-muted/40 px-2 py-0.5 rounded-full border border-border/50">
+                      Used {tpl.usageCount.toLocaleString()} {tpl.usageCount === 1 ? "time" : "times"}
+                    </span>
+                  </div>
 
-              <div className="mt-5 pt-4 border-t border-border flex items-center justify-between">
-                <div className="flex items-center gap-2 text-xs text-muted-foreground truncate max-w-[170px]">
-                  {tpl.authorAvatarUrl ? (
-                    <img
-                      src={tpl.authorAvatarUrl}
-                      alt={tpl.authorName || "Author"}
-                      className="h-5 w-5 rounded-full object-cover shrink-0 border border-border"
-                    />
-                  ) : (
-                    <User className="h-4 w-4 shrink-0 text-muted-foreground" />
-                  )}
-                  <span className="truncate font-medium text-foreground/80">{tpl.authorName || "Community"}</span>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <Link
-                    href={`/dashboard/templates/${tpl.id}`}
-                    className="inline-flex items-center justify-center rounded-md text-xs font-medium h-8 px-2.5 bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors"
-                  >
-                    Preview
-                  </Link>
-                  {tpl.authorId === currentUserId && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                      onClick={(e) => handleDelete(tpl.id, e)}
-                      disabled={deletingId === tpl.id}
+                  <div>
+                    <Link
+                      href={`/dashboard/templates/${tpl.id}`}
+                      className="font-semibold text-base text-foreground group-hover:text-primary transition-colors line-clamp-1 hover:underline"
                     >
-                      <Trash2 className="h-4 w-4" />
+                      {tpl.name}
+                    </Link>
+                    <p className="text-xs text-muted-foreground mt-1 line-clamp-2 leading-relaxed">
+                      {tpl.description || "No description provided."}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-5 pt-4 border-t border-border flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground truncate max-w-[170px]">
+                    {tpl.authorAvatarUrl ? (
+                      <img
+                        src={tpl.authorAvatarUrl}
+                        alt={tpl.authorName || "Author"}
+                        className="h-5 w-5 rounded-full object-cover shrink-0 border border-border"
+                      />
+                    ) : (
+                      <User className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    )}
+                    <span className="truncate font-medium text-foreground/80">{tpl.authorName || "Community"}</span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Link
+                      href={`/dashboard/templates/${tpl.id}`}
+                      className="inline-flex items-center justify-center rounded-md text-xs font-medium h-8 px-2.5 bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors"
+                    >
+                      Preview
+                    </Link>
+                    {tpl.authorId === currentUserId && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                        onClick={(e) => handleDelete(tpl.id, e)}
+                        disabled={deletingId === tpl.id}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      className="gap-1 shadow-2xs"
+                      onClick={() => {
+                        setSelectedTemplate(tpl);
+                        setUseDialogOpen(true);
+                      }}
+                    >
+                      Use
+                      <ArrowUpRight className="h-3.5 w-3.5" />
                     </Button>
-                  )}
-                  <Button
-                    size="sm"
-                    className="gap-1 shadow-2xs"
-                    onClick={() => {
-                      setSelectedTemplate(tpl);
-                      setUseDialogOpen(true);
-                    }}
-                  >
-                    Use
-                    <ArrowUpRight className="h-3.5 w-3.5" />
-                  </Button>
+                  </div>
                 </div>
               </div>
             </div>
