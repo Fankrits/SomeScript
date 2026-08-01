@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { storage } from "@/lib/storage";
 import { requireProject, apiError, ApiError } from "@/lib/authz";
-import { safeZipPath, MAX_ZIP_ENTRIES, MAX_ZIP_FILE_BYTES, MAX_ZIP_TOTAL_BYTES, MAX_UPLOAD_BYTES } from "@/lib/zip";
+import { safeZipPath, stripCommonZipRoot, MAX_ZIP_ENTRIES, MAX_ZIP_FILE_BYTES, MAX_ZIP_TOTAL_BYTES, MAX_UPLOAD_BYTES } from "@/lib/zip";
 import JSZip from "jszip";
 
 import { checkRate } from "@/lib/rate-limit";
@@ -21,11 +21,23 @@ export async function POST(req: NextRequest) {
     const entries = Object.entries(loadedZip.files);
     if (entries.length > MAX_ZIP_ENTRIES) throw new ApiError(413, "Archive has too many entries");
 
+    const rootPrefix = stripCommonZipRoot(
+      entries
+        .filter(([name]) => !name.startsWith("__MACOSX") && !name.includes(".DS_Store"))
+        .map(([name]) => safeZipPath(name))
+        .filter((p): p is string => p !== null)
+    );
+
     let totalBytes = 0;
     for (const [relativePath, zipEntry] of entries) {
       if (relativePath.startsWith("__MACOSX") || relativePath.includes(".DS_Store")) continue;
-      const safePath = safeZipPath(relativePath);
+      let safePath = safeZipPath(relativePath);
       if (!safePath) continue;
+      if (rootPrefix) {
+        if (safePath === rootPrefix) continue;
+        if (safePath.startsWith(`${rootPrefix}/`)) safePath = safePath.slice(rootPrefix.length + 1);
+        if (!safePath) continue; // the wrapper folder's own entry (trailing-slash form)
+      }
 
       if (zipEntry.dir) {
         await storage.createDirectory(projectId, safePath);

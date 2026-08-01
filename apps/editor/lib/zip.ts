@@ -14,6 +14,21 @@ export function safeZipPath(name: string): string | null {
   return norm;
 }
 
+/**
+ * Detects a single top-level wrapper folder shared by every entry (e.g. a zip
+ * exported as "My Project/main.tex", "My Project/fig.png", ...) and returns its
+ * name so the caller can strip it — otherwise files land one level deeper than
+ * what the uploader actually sees when they open the zip. Returns "" when the
+ * zip has no common wrapper (already flat, or multiple top-level entries).
+ */
+export function stripCommonZipRoot(paths: string[]): string {
+  const nested = paths.find((p) => p.includes("/"));
+  if (!nested) return "";
+  const first = nested.split("/")[0];
+  if (!first) return "";
+  return paths.every((p) => p.split("/")[0] === first) ? first : "";
+}
+
 /** Collects every node's `path` in a file tree into a flat set, for O(1) collision checks. */
 export function flattenFilePaths(nodes: FileNode[], out: Set<string> = new Set()): Set<string> {
   for (const node of nodes) {

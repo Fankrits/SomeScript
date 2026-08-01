@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { safeZipPath, flattenFilePaths, dedupeUploadName } from "./zip";
+import { safeZipPath, stripCommonZipRoot, flattenFilePaths, dedupeUploadName } from "./zip";
 
 test("normalizes and accepts plain relative paths", () => {
   expect(safeZipPath("sections/intro.tex")).toBe("sections/intro.tex");
@@ -43,4 +43,24 @@ test("dedupeUploadName appends -1, -2, ... before the extension on collision", (
 test("dedupeUploadName handles extensionless names", () => {
   const existing = new Set(["Makefile"]);
   expect(dedupeUploadName(existing, "", "Makefile")).toBe("Makefile-1");
+});
+
+test("stripCommonZipRoot detects a single wrapper folder", () => {
+  expect(stripCommonZipRoot(["My Project/main.tex", "My Project/Fonts/a.ttf"])).toBe("My Project");
+});
+
+test("stripCommonZipRoot returns empty when the zip is already flat", () => {
+  expect(stripCommonZipRoot(["main.tex", "fig.png"])).toBe("");
+});
+
+test("stripCommonZipRoot returns empty for multiple top-level folders", () => {
+  expect(stripCommonZipRoot(["chapter1/a.tex", "chapter2/b.tex"])).toBe("");
+});
+
+test("stripCommonZipRoot returns empty when a root file sits beside the folder", () => {
+  expect(stripCommonZipRoot(["main.tex", "My Project/fig.png"])).toBe("");
+});
+
+test("stripCommonZipRoot handles an empty list", () => {
+  expect(stripCommonZipRoot([])).toBe("");
 });
