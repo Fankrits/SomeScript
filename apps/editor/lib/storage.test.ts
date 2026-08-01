@@ -66,3 +66,45 @@ test("copy recursively duplicates a directory", async () => {
     await fs.rm(baseDir, { recursive: true, force: true });
   }
 });
+
+test("copyProject copies every file into a separate project's namespace", async () => {
+  const srcProjectId = `test-copyproject-src-${Date.now()}`;
+  const destProjectId = `test-copyproject-dest-${Date.now()}`;
+  const srcBaseDir = path.join(process.cwd(), "projects", srcProjectId);
+  const destBaseDir = path.join(process.cwd(), "projects", destProjectId);
+  try {
+    await p.writeFile(srcProjectId, "main.tex", "\\documentclass{article}");
+    await p.writeFile(srcProjectId, "sections/intro.tex", "intro content");
+
+    await p.copyProject(srcProjectId, destProjectId);
+
+    expect(await p.readFile(destProjectId, "main.tex")).toBe("\\documentclass{article}");
+    expect(await p.readFile(destProjectId, "sections/intro.tex")).toBe("intro content");
+    // Source must be untouched
+    expect(await p.readFile(srcProjectId, "main.tex")).toBe("\\documentclass{article}");
+  } finally {
+    await fs.rm(srcBaseDir, { recursive: true, force: true });
+    await fs.rm(destBaseDir, { recursive: true, force: true });
+  }
+});
+
+test("copyProject skips the cached main.pdf and .preview-cache", async () => {
+  const srcProjectId = `test-copyproject-artifacts-src-${Date.now()}`;
+  const destProjectId = `test-copyproject-artifacts-dest-${Date.now()}`;
+  const srcBaseDir = path.join(process.cwd(), "projects", srcProjectId);
+  const destBaseDir = path.join(process.cwd(), "projects", destProjectId);
+  try {
+    await p.writeFile(srcProjectId, "main.tex", "\\documentclass{article}");
+    await p.writeFile(srcProjectId, "main.pdf", "%PDF-fake");
+    await p.writeFile(srcProjectId, ".preview-cache/main.pdf", "%PDF-fake-cache");
+
+    await p.copyProject(srcProjectId, destProjectId);
+
+    expect(await p.readFile(destProjectId, "main.tex")).toBe("\\documentclass{article}");
+    await expect(p.readFile(destProjectId, "main.pdf")).rejects.toThrow();
+    await expect(p.readFile(destProjectId, ".preview-cache/main.pdf")).rejects.toThrow();
+  } finally {
+    await fs.rm(srcBaseDir, { recursive: true, force: true });
+    await fs.rm(destBaseDir, { recursive: true, force: true });
+  }
+});

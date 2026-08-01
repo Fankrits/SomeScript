@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
 
     const srcStorageId = `templates/${templateId}`;
 
-    await storage.copy(srcStorageId, "", projectId);
+    await storage.copyProject(srcStorageId, projectId);
 
     return Response.json({ success: true });
   } catch (error) {

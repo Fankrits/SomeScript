@@ -18,6 +18,8 @@ export interface StorageProvider {
   listProjectFiles(projectId: string): Promise<FileNode[]>;
   move(projectId: string, oldPath: string, newPath: string): Promise<void>;
   copy(projectId: string, srcPath: string, destPath: string): Promise<void>;
+  /** Recursively copies every file from one project's namespace into another's (e.g. instantiating a project from a template). */
+  copyProject(srcProjectId: string, destProjectId: string): Promise<void>;
   delete(projectId: string, fileRelativePath: string): Promise<void>;
 }
 
@@ -38,11 +40,15 @@ export function isBinaryContent(buffer: Buffer): boolean {
 // 1. Local File System Storage Provider
 // -------------------------------------------------------------
 export class LocalStorageProvider implements StorageProvider {
-  private getLocalPath(projectId: string, fileRelativePath: string): string {
-    // Standard workspace path resolution (e.g. apps/editor/projects/UUID)
-    const baseDir = projectId === "default" || !projectId
+  // Standard workspace path resolution (e.g. apps/editor/projects/UUID)
+  private getProjectBaseDir(projectId: string): string {
+    return projectId === "default" || !projectId
       ? path.join(process.cwd(), "my-new-project")
       : path.join(process.cwd(), "projects", projectId);
+  }
+
+  private getLocalPath(projectId: string, fileRelativePath: string): string {
+    const baseDir = this.getProjectBaseDir(projectId);
     const resolved = path.resolve(baseDir, fileRelativePath);
     if (resolved !== baseDir && !resolved.startsWith(baseDir + path.sep)) {
       throw new Error("Directory traversal attempt detected");
@@ -94,10 +100,24 @@ export class LocalStorageProvider implements StorageProvider {
     await fs.rm(fullPath, { recursive: true, force: true });
   }
 
+  async copyProject(srcProjectId: string, destProjectId: string): Promise<void> {
+    const srcBaseDir = this.getProjectBaseDir(srcProjectId);
+    const destBaseDir = this.getProjectBaseDir(destProjectId);
+    await fs.mkdir(path.dirname(destBaseDir), { recursive: true });
+    await fs.cp(srcBaseDir, destBaseDir, {
+      recursive: true,
+      // Skip derived artifacts (the template gallery's cached compile output,
+      // preview caches, etc.) — a new project should start from source only.
+      filter: (source) => {
+        const rel = path.relative(srcBaseDir, source);
+        if (rel === "main.pdf") return false;
+        return !rel.split(path.sep).some((s) => EXCLUDED.has(s));
+      },
+    });
+  }
+
   async listProjectFiles(projectId: string): Promise<FileNode[]> {
-    const baseDir = projectId === "default" || !projectId
-      ? path.join(process.cwd(), "my-new-project")
-      : path.join(process.cwd(), "projects", projectId);
+    const baseDir = this.getProjectBaseDir(projectId);
 
     try {
       await fs.mkdir(baseDir, { recursive: true });
@@ -315,6 +335,37 @@ class S3StorageProvider implements StorageProvider {
           Bucket: this.bucket,
           CopySource: encodeURIComponent(`${this.bucket}/${object.Key}`),
           Key: destKey,
+        })
+      );
+    }
+  }
+
+  async copyProject(srcProjectId: string, destProjectId: string): Promise<void> {
+    const srcPrefix = `projects/${srcProjectId || "default"}/`;
+    const destPrefix = `projects/${destProjectId || "default"}/`;
+
+    const listResponse = await this.client.send(
+      new ListObjectsV2Command({
+        Bucket: this.bucket,
+        Prefix: srcPrefix,
+      })
+    );
+
+    if (!listResponse.Contents || listResponse.Contents.length === 0) {
+      throw new Error(`No files found for project ${srcProjectId}`);
+    }
+
+    for (const object of listResponse.Contents) {
+      if (!object.Key) continue;
+      const relativePart = object.Key.substring(srcPrefix.length);
+      if (!relativePart || relativePart === "main.pdf") continue;
+      if (relativePart.split("/").some((s) => EXCLUDED.has(s))) continue;
+
+      await this.client.send(
+        new CopyObjectCommand({
+          Bucket: this.bucket,
+          CopySource: encodeURIComponent(`${this.bucket}/${object.Key}`),
+          Key: destPrefix + relativePart,
         })
       );
     }
