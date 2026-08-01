@@ -17,9 +17,15 @@ export default clerkMiddleware(async (auth, req) => {
   await auth.protect();
 
   const res = NextResponse.next();
+  // Mirrors next.config.ts's CSP (both set this header — a browser enforces
+  // multiple Content-Security-Policy headers as their intersection, so they
+  // must stay consistent or the stricter one silently wins). ws://localhost:*
+  // is dev-only, for apps/collaboration's plaintext WebSocket; production
+  // connects over wss:, already covered by the unconditional `wss:` below.
+  const isProd = process.env.NODE_ENV === "production";
   res.headers.set(
     "Content-Security-Policy",
-    "default-src 'self' 'unsafe-eval' 'unsafe-inline' blob: data: https:; script-src 'self' 'unsafe-eval' 'unsafe-inline' blob: https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' blob: data: https:; font-src 'self' data: https:; connect-src 'self' blob: data: https: wss:; worker-src 'self' blob: data:;"
+    `default-src 'self' 'unsafe-eval' 'unsafe-inline' blob: data: https:; script-src 'self' 'unsafe-eval' 'unsafe-inline' blob: https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' blob: data: https:; font-src 'self' data: https:; connect-src 'self' blob: data: https: wss:${isProd ? "" : " ws://localhost:*"}; worker-src 'self' blob: data:;`
   );
   return res;
 });

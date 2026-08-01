@@ -11,7 +11,7 @@ const cspHeader = `
   style-src 'self' 'unsafe-inline' https:;
   img-src 'self' blob: data: https:;
   font-src 'self' data: https:;
-  connect-src 'self' blob: data: https: wss:;
+  connect-src 'self' blob: data: https: wss:${isProd ? "" : " ws://localhost:*"};
   worker-src 'self' blob: data:;
   object-src 'none';
 `;
