@@ -161,7 +161,9 @@ function runSynctex(args: string[], cwd: string): Promise<string> {
   });
 }
 
-const server = Bun.serve({
+let server;
+try {
+  server = Bun.serve({
   port: PORT,
   async fetch(req) {
     const url = new URL(req.url);
@@ -480,5 +482,12 @@ const server = Bun.serve({
     return new Response("Not Found", { status: 404 });
   },
 });
-
 console.log(`Compiler service running on http://localhost:${PORT}`);
+} catch (err: any) {
+  if (err?.code === "EADDRINUSE" || err?.syscall === "listen" || String(err?.message || "").includes("in use")) {
+    console.log(`[COMPILER] Port ${PORT} is already in use (e.g. running in Docker). Skipping local compiler startup.`);
+    setInterval(() => {}, 100000);
+  } else {
+    throw err;
+  }
+}
