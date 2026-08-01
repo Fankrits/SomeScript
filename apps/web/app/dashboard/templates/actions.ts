@@ -198,7 +198,7 @@ export async function useTemplate(templateId: string, customProjectName?: string
   revalidatePath("/dashboard/templates");
 
   const editorBaseUrl = process.env.NEXT_PUBLIC_EDITOR_URL || "http://localhost:3002";
-  return { redirectUrl: `${editorBaseUrl}/?project=${project.id}` };
+  return { redirectUrl: `${editorBaseUrl}/?projectId=${project.id}` };
 }
 
 export async function deleteTemplate(templateId: string): Promise<{ error?: string; success?: boolean }> {
