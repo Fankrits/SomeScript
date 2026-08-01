@@ -1,6 +1,6 @@
-import { auth } from "@clerk/nextjs/server";
+import { auth, currentUser } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
-import { templates } from "@/db/schema";
+import { templates, users } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import Link from "next/link";
@@ -15,11 +15,50 @@ export default async function TemplatesPage() {
     redirect("/");
   }
 
-  // Fetch public templates ordered by popular usage count and creation date
-  const publicTemplates = await db.query.templates.findMany({
-    where: eq(templates.isPublic, true),
-    orderBy: [desc(templates.usageCount), desc(templates.createdAt)],
-    limit: 200,
+  const user = await currentUser();
+  const currentUsername = user?.username || user?.firstName || user?.emailAddresses[0]?.emailAddress?.split("@")[0];
+
+  // Fetch public templates joined with users table to get live Clerk username
+  const rawTemplates = await db
+    .select({
+      id: templates.id,
+      name: templates.name,
+      description: templates.description,
+      category: templates.category,
+      authorId: templates.authorId,
+      authorName: templates.authorName,
+      authorAvatarUrl: templates.authorAvatarUrl,
+      usageCount: templates.usageCount,
+      createdAt: templates.createdAt,
+      userAuthorName: users.name,
+      userAvatarUrl: users.imageUrl,
+    })
+    .from(templates)
+    .leftJoin(users, eq(templates.authorId, users.id))
+    .where(eq(templates.isPublic, true))
+    .orderBy(desc(templates.usageCount), desc(templates.createdAt))
+    .limit(200);
+
+  const publicTemplates = rawTemplates.map((t) => {
+    let resolvedAuthorName = t.userAuthorName || t.authorName;
+
+    if (t.authorId === userId && currentUsername) {
+      resolvedAuthorName = currentUsername;
+    } else if (!resolvedAuthorName || resolvedAuthorName === "User") {
+      resolvedAuthorName = t.userAuthorName && t.userAuthorName !== "User" ? t.userAuthorName : "Community";
+    }
+
+    return {
+      id: t.id,
+      name: t.name,
+      description: t.description,
+      category: t.category,
+      authorId: t.authorId,
+      authorName: resolvedAuthorName,
+      authorAvatarUrl: (t.authorId === userId && user?.imageUrl) || t.userAvatarUrl || t.authorAvatarUrl,
+      usageCount: t.usageCount,
+      createdAt: t.createdAt,
+    };
   });
 
   return (

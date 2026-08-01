@@ -92,7 +92,7 @@ export async function POST(req: Request) {
         }
       }
 
-      const fullName = [first_name, last_name].filter(Boolean).join(" ") || "User";
+      const fullName = currentUsername || [first_name, last_name].filter(Boolean).join(" ") || email.split("@")[0];
 
       await db
         .insert(users)

@@ -179,16 +179,16 @@ export function TemplateGrid({ templates, currentUserId }: TemplateGridProps) {
                     ) : (
                       <User className="h-4 w-4 shrink-0 text-muted-foreground" />
                     )}
-                    <span className="truncate font-medium text-foreground/80">{tpl.authorName || "Community"}</span>
+                    <span className="truncate font-medium text-foreground/80">
+                      {tpl.authorName
+                        ? tpl.authorName.includes("@")
+                          ? tpl.authorName.split("@")[0]
+                          : tpl.authorName
+                        : "Community"}
+                    </span>
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <Link
-                      href={`/dashboard/templates/${tpl.id}`}
-                      className="inline-flex items-center justify-center rounded-md text-xs font-medium h-8 px-2.5 bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors"
-                    >
-                      Preview
-                    </Link>
                     {tpl.authorId === currentUserId && (
                       <Button
                         variant="ghost"

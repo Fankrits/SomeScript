@@ -143,7 +143,11 @@ export function TemplateDetailsView({ template, currentUserId }: TemplateDetails
               <div className="flex flex-col min-w-0">
                 <span className="text-xs text-muted-foreground font-light">Created by</span>
                 <span className="text-sm font-semibold text-foreground truncate">
-                  {template.authorName || "Community Member"}
+                  {template.authorName
+                    ? template.authorName.includes("@")
+                      ? template.authorName.split("@")[0]
+                      : template.authorName
+                    : "Community Member"}
                 </span>
               </div>
             </div>

@@ -28,7 +28,9 @@ export async function publishTemplate(formData: FormData): Promise<{ error?: str
   }
 
   const user = await currentUser();
-  const authorName = user ? `${user.firstName || ""} ${user.lastName || ""}`.trim() || user.emailAddresses[0]?.emailAddress || "Anonymous" : "Anonymous";
+  const authorName = user
+    ? user.username || `${user.firstName || ""} ${user.lastName || ""}`.trim() || user.emailAddresses[0]?.emailAddress?.split("@")[0] || "Anonymous"
+    : "Anonymous";
   const authorAvatarUrl = user?.imageUrl || null;
 
   // 1. Insert DB record
