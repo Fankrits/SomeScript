@@ -1,0 +1,25 @@
+{
+  "name": "collaboration",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "bun run server.ts",
+    "start": "bun run server.ts",
+    "build": "bun build server.ts --outdir dist --target bun"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1098.0",
+    "@clerk/backend": "^1.24.0",
+    "@hocuspocus/extension-logger": "^2.15.0",
+    "@hocuspocus/extension-redis": "^2.15.0",
+    "@hocuspocus/server": "^2.15.0",
+    "ioredis": "^5.4.1",
+    "pg": "^8.22.0",
+    "yjs": "^13.6.27"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/pg": "^8.20.0",
+    "typescript": "^5.9.3"
+  }
+}
