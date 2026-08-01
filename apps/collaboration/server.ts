@@ -78,9 +78,17 @@ const server = new Hocuspocus({
   extensions,
 
   // Reject any socket that isn't a signed-in user who owns the room's project.
-  // (No CLERK_SECRET_KEY => local dev: allow guests so single-user testing works.)
+  // Fails closed: a missing CLERK_SECRET_KEY rejects every connection unless
+  // ALLOW_COLLAB_GUEST=true is set explicitly (bare-metal local dev only) —
+  // it must never be the silent default, or a deploy that forgot to set the
+  // key would serve every project to anyone with zero auth.
   async onAuthenticate(data: { token?: string; documentName: string }) {
     if (!clerkSecretKey) {
+      if (process.env.ALLOW_COLLAB_GUEST !== "true") {
+        throw new Error(
+          "Unauthorized: no CLERK_SECRET_KEY configured (set ALLOW_COLLAB_GUEST=true to allow anonymous local dev)"
+        );
+      }
       return { user: { id: `guest-${Math.random().toString(36).substring(2, 9)}`, name: "Anonymous Editor" } };
     }
 

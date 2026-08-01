@@ -71,10 +71,12 @@ services:
     ports:
       - "1234:1234"
     # Picks up CLERK_SECRET_KEY (and CLERK_AUTHORIZED_PARTIES, if set) from the
-    # same root .env.local used elsewhere; unset CLERK_SECRET_KEY falls back to
-    # guest-mode auth (see server.ts onAuthenticate) rather than failing to boot.
+    # editor's env file — the root .env.local only holds VERCEL_OIDC_TOKEN, so
+    # pointing here is what actually gives this service a Clerk key locally.
+    # Auth now fails closed without one (server.ts requires ALLOW_COLLAB_GUEST=true
+    # to run without CLERK_SECRET_KEY) instead of silently accepting everyone.
     env_file:
-      - .env.local
+      - apps/editor/.env.local
     environment:
       - PORT=1234
       - REDIS_URL=redis://redis:6379
