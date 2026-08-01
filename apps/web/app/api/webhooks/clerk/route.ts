@@ -52,11 +52,44 @@ export async function POST(req: Request) {
 
   try {
     if (eventType === "user.created" || eventType === "user.updated") {
-      const { email_addresses, first_name, last_name, image_url } = evt.data;
+      const { email_addresses, first_name, last_name, image_url, username: rawUsername } = evt.data;
       const email = email_addresses?.[0]?.email_address;
 
       if (!id || !email) {
         return new Response("Error: Missing user ID or email", { status: 400 });
+      }
+
+      let currentUsername = rawUsername;
+
+      // Automatically set a default username from email if not provided on user.created
+      if (eventType === "user.created" && !currentUsername && email) {
+        try {
+          const secretKey = process.env.CLERK_SECRET_KEY;
+          if (secretKey) {
+            const { createClerkClient } = await import("@clerk/nextjs/server");
+            const clerkClient = createClerkClient({ secretKey });
+
+            let basePrefix = email.split("@")[0].replace(/[^a-zA-Z0-9_]/g, "_");
+            if (basePrefix.length < 4) {
+              basePrefix = basePrefix.padEnd(4, "0");
+            }
+            if (basePrefix.length > 50) {
+              basePrefix = basePrefix.slice(0, 50);
+            }
+
+            try {
+              const updatedUser = await clerkClient.users.updateUser(id, { username: basePrefix });
+              currentUsername = updatedUser.username;
+            } catch {
+              // If username is taken, append random numbers as fallback
+              const fallbackUsername = `${basePrefix}_${Math.floor(1000 + Math.random() * 9000)}`;
+              const updatedUser = await clerkClient.users.updateUser(id, { username: fallbackUsername });
+              currentUsername = updatedUser.username;
+            }
+          }
+        } catch (usernameErr) {
+          console.error("Failed to auto-assign default username:", usernameErr);
+        }
       }
 
       const fullName = [first_name, last_name].filter(Boolean).join(" ") || "User";
