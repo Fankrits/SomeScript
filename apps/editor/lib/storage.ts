@@ -40,11 +40,15 @@ export function isBinaryContent(buffer: Buffer): boolean {
 // 1. Local File System Storage Provider
 // -------------------------------------------------------------
 export class LocalStorageProvider implements StorageProvider {
-  // Standard workspace path resolution (e.g. apps/editor/projects/UUID)
+  // Standard workspace path resolution (e.g. apps/editor/projects/UUID).
+  // PROJECTS_BASE_DIR lets an out-of-tree process (the collaboration server,
+  // which runs from apps/collaboration) point at the editor's project root in
+  // local non-S3 dev. Defaults to cwd, so the editor itself is unaffected.
   private getProjectBaseDir(projectId: string): string {
+    const root = process.env.PROJECTS_BASE_DIR || process.cwd();
     return projectId === "default" || !projectId
-      ? path.join(process.cwd(), "my-new-project")
-      : path.join(process.cwd(), "projects", projectId);
+      ? path.join(root, "my-new-project")
+      : path.join(root, "projects", projectId);
   }
 
   private getLocalPath(projectId: string, fileRelativePath: string): string {

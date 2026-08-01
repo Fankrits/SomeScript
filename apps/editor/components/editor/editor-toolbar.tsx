@@ -25,6 +25,12 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import {
+  Avatar,
+  AvatarImage,
+  AvatarFallback,
+  AvatarGroup,
+} from "@/components/ui/avatar"
 import { GROUPS, type ToolGroup, type ToolItem } from "./toolbar-config"
 
 const ToolbarContext = createContext({ tooltipsEnabled: true })
@@ -42,6 +48,15 @@ interface EditorToolbarProps {
   active?: string
   /** Opens the ⌘K command palette. */
   onOpenPalette?: () => void
+  collaborators?: Array<{
+    clientId: number
+    user: {
+      name: string
+      color?: string
+      avatar?: string
+    }
+    activeFile?: string
+  }>
 }
 
 const ToolDivider = () => <div className="w-px h-4 bg-border/60 mx-1 shrink-0" />
@@ -207,6 +222,7 @@ export const EditorToolbar = memo(
     tooltipsEnabled = true,
     active = "",
     onOpenPalette,
+    collaborators = [],
   }: EditorToolbarProps) => {
     const barRef = useRef<HTMLDivElement>(null)
     const [compact, setCompact] = useState(false)

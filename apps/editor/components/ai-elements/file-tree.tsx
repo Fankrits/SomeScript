@@ -35,6 +35,7 @@ export interface FileNode {
 export type FileTreeProps = {
   data: FileNode[];
   selectedPath?: string;
+  activeCollaborators?: Array<{ clientId: number; user: { name: string; color?: string }; activeFile?: string }>;
   onSelect?: (path: string) => void;
   onMove?: (oldPath: string, newPath: string) => void;
   onDelete?: (path: string) => void;
@@ -88,6 +89,7 @@ const getFileIcon = (name: string) => {
 export const FileTree = ({
   data,
   selectedPath,
+  activeCollaborators = [],
   onSelect,
   onMove,
   onDelete,
@@ -219,7 +221,19 @@ export const FileTree = ({
                   className="flex-1 rounded border px-1 text-xs bg-background focus:outline-none focus:ring-1 focus:ring-primary h-5 min-w-0"
                 />
               ) : (
-                <span className="truncate flex-1">{node.data.name}</span>
+                <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                  <span className="truncate flex-1">{node.data.name}</span>
+                  {activeCollaborators
+                    .filter((c) => c.activeFile === node.id)
+                    .map((c) => (
+                      <span
+                        key={c.clientId}
+                        title={`${c.user.name} is editing`}
+                        className="size-2 rounded-full ring-1 ring-background shrink-0 animate-pulse"
+                        style={{ backgroundColor: c.user.color || "#3b82f6" }}
+                      />
+                    ))}
+                </div>
               )}
             </div>
           </div>

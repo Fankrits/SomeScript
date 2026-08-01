@@ -28,10 +28,15 @@ import { Scissors, Copy, ClipboardPaste, TextCursor, Undo2, Redo2, FileText } fr
 import { ListTodoIcon, FilePlus, FolderPlus, PanelLeft, PanelRight, Sparkles, Loader2, Check, Home, ChevronRight, ArrowLeft, Clock, Trash2, Plus, Settings, Search, Download, Upload, Play } from "lucide-react";
 import { nanoid } from "nanoid";
 import { toast } from "sonner";
-import { useCallback, useEffect, useInsertionEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useInsertionEffect, useMemo, useRef, useState } from "react";
 import type { PanelImperativeHandle } from "react-resizable-panels";
 import { useDefaultLayout } from "react-resizable-panels";
 import { useEveAgent } from "eve/react";
+import { useUser, useAuth, UserButton, SignInButton } from "@clerk/nextjs";
+import { useCollaboration, type Collaborator } from "@/hooks/use-collaboration";
+import type { Text as YText } from "yjs";
+import { Avatar, AvatarImage, AvatarFallback, AvatarGroup } from "@/components/ui/avatar";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { SearchPanel, SearchPanelHandle } from "@/components/editor/search-panel";
 import { TasksPanel, TasksPanelHandle } from "@/components/editor/tasks-panel";
 import type { Task } from "@/lib/tasks";
@@ -593,7 +598,92 @@ const Example = () => {
     bracketMatchingEnabled: true,
   });
 
-  const extensions = useCodeMirrorExtensions(settings, currentLanguage);
+  const { user: clerkUser } = useUser();
+  // isLoaded matters: getToken() resolves null until Clerk finishes booting, and
+  // connecting with no token makes the server close the socket as Unauthorized —
+  // at which point @hocuspocus/provider sets shouldConnect=false and never retries,
+  // silently killing collaboration for the whole page load. So wait for Clerk.
+  const { getToken, isLoaded: clerkAuthLoaded } = useAuth();
+  const collabEnabled = process.env.NEXT_PUBLIC_COLLAB_ENABLED === "true" && clerkAuthLoaded;
+  const collabUser = useMemo(
+    () =>
+      clerkUser
+        ? {
+            name: `${clerkUser.firstName || ""} ${clerkUser.lastName || ""}`.trim() || clerkUser.username || "Collaborator",
+            avatar: clerkUser.imageUrl,
+          }
+        : { name: "Local Editor" },
+    [clerkUser]
+  );
+  const collab = useCollaboration({
+    roomName: `project:${projectId}`,
+    enabled: collabEnabled,
+    getToken,
+    user: collabUser,
+  });
+
+  // Bind CodeMirror to the file's shared Y.Text — but ONLY once the editor's
+  // content and the shared text are already identical.
+  //
+  // y-codemirror.next's sync plugin does not reconcile the two at bind time: it
+  // just starts observing. Binding while they differ leaves them silently
+  // divergent, and the first delta then applies at positions that don't match
+  // the other side — which is how an open file got blanked. Requiring equality
+  // up front makes that impossible; until it holds we simply stay in ordinary
+  // single-user mode (autosave still running), so the user's work is never at risk.
+  const [bound, setBound] = useState<{ path: string; ytext: YText } | null>(null);
+  useEffect(() => {
+    if (
+      !collabEnabled ||
+      collab.status !== "connected" ||
+      !collab.synced ||
+      !selectedPath ||
+      viewMode !== "code" ||
+      loadedPathRef.current !== selectedPath
+    ) {
+      setBound(null);
+      return;
+    }
+    // Already bound to this file — yCollab owns editor<->doc sync from here.
+    // (Re-checking equality mid-session would flap, since React state trails
+    // CodeMirror by a render.)
+    if (bound?.path === selectedPath) return;
+
+    const ytext = collab.getYTextForFile(selectedPath);
+    // Covers a file created after the room loaded (upload / new file / Eve write),
+    // which the server's onLoadDocument never saw.
+    collab.seedFile(selectedPath, currentCode);
+
+    const roomText = ytext.toString();
+    if (roomText === editedCode) {
+      setBound({ path: selectedPath, ytext });
+      return;
+    }
+    // The room holds different content — a peer's newer edits, or the server's
+    // copy from storage. Adopt it into the editor first (only when there are no
+    // unsaved local edits to lose); the next pass sees them equal and binds.
+    if (roomText.length > 0 && editedCode === currentCode) {
+      setEditedCode(roomText);
+    }
+    setBound(null);
+  }, [
+    collabEnabled, collab.status, collab.synced, selectedPath, viewMode,
+    currentCode, editedCode, bound, collab.seedFile, collab.getYTextForFile,
+  ]);
+
+  const contentBound = !!bound && bound.path === selectedPath;
+  const boundYText = contentBound ? bound.ytext : undefined;
+
+  // Broadcast which file we're viewing for peer presence (file-tree dots,
+  // header avatars, jump target) — independent of whether it's a bound text file.
+  useEffect(() => {
+    if (collabEnabled && selectedPath) collab.setActiveFile(selectedPath);
+  }, [collabEnabled, selectedPath, collab.status, collab.setActiveFile]);
+
+  const extensions = useCodeMirrorExtensions(settings, currentLanguage, {
+    ytext: boundYText,
+    awareness: contentBound ? collab.provider?.awareness : undefined,
+  });
 
   useEffect(() => {
     if (pendingLineJump && selectedPath === pendingLineJump.path && editorViewRef.current) {
@@ -901,6 +991,11 @@ const Example = () => {
         setCanUndo(undoDepth(view.state) > 0);
         setCanRedo(redoDepth(view.state) > 0);
         setActiveFormatKey(activeFormats(view.state));
+        // Publish our live caret into awareness so peers can jump to it.
+        if (contentBound) {
+          const { anchor, head } = view.state.selection.main;
+          collab.setCursor({ selection: { anchor, head }, cursorLine: view.state.doc.lineAt(head).number });
+        }
       }
     }
 
@@ -923,7 +1018,7 @@ const Example = () => {
         return remaining;
       });
     }
-  }, [selectedPath, toProjectRelative]);
+  }, [selectedPath, toProjectRelative, contentBound, collab.setCursor]);
 
   // Pushes the current compileErrors into the CodeMirror gutter (via
   // @codemirror/lint's lintGutter, added in useCodeMirrorExtensions) whenever
@@ -1179,6 +1274,16 @@ const Example = () => {
     if (loadedPathRef.current !== selectedPath) return false;
     if (editedCode === currentCode) return false;
 
+    // Last line of defense against the collaboration wipe: never let an empty
+    // buffer overwrite a file that has content on disk while collab is on. A
+    // desynced CRDT bind can blank the editor, and persisting that blanking is
+    // what actually destroys the file. Only applies with collab enabled, so
+    // clearing a file normally still works.
+    if (collabEnabled && editedCode.length === 0 && currentCode.length > 0) {
+      console.warn(`[collab] refused to overwrite ${selectedPath} with an empty buffer`);
+      return false;
+    }
+
     setSaveStatus("saving");
     try {
       const res = await fetch("/api/files", {
@@ -1199,7 +1304,7 @@ const Example = () => {
       setSaveStatus("unsaved");
       return false;
     }
-  }, [projectId]);
+  }, [projectId, collabEnabled]);
 
   // Handle file selection
   const handleFileSelect = useCallback(async (path: string) => {
@@ -1282,6 +1387,44 @@ const Example = () => {
       console.error("Failed to read file", err);
     }
   }, [selectedPath, projectId, fileTree, withProject, toProjectRelative, saveCurrentFile]);
+
+  const handleJumpToCollaborator = useCallback(
+    (collaborator: Collaborator) => {
+      if (!collaborator.activeFile) return;
+
+      if (collaborator.activeFile !== selectedPath) {
+        handleFileSelect(collaborator.activeFile);
+      }
+
+      toast.info(`Jumping to ${collaborator.user.name}'s location in ${collaborator.activeFile}`);
+
+      setTimeout(() => {
+        const view = editorViewRef.current;
+        if (!view) return;
+
+        try {
+          if (collaborator.selection?.head !== undefined && collaborator.selection.head !== null) {
+            const pos = Math.min(collaborator.selection.head, view.state.doc.length);
+            view.dispatch({
+              selection: { anchor: pos, head: pos },
+              effects: EditorView.scrollIntoView(pos, { y: "center" }),
+            });
+            view.focus();
+          } else if (collaborator.cursorLine !== undefined) {
+            const lineObj = view.state.doc.line(Math.min(collaborator.cursorLine, view.state.doc.lines));
+            view.dispatch({
+              selection: { anchor: lineObj.from, head: lineObj.to },
+              effects: EditorView.scrollIntoView(lineObj.from, { y: "center" }),
+            });
+            view.focus();
+          }
+        } catch (e) {
+          console.error("Error jumping to collaborator location:", e);
+        }
+      }, 150);
+    },
+    [selectedPath, handleFileSelect]
+  );
 
   // Load file tree
   const refreshWorkspace = useCallback(async () => {
@@ -1542,6 +1685,11 @@ const Example = () => {
 
   // Autosave useEffect with debounce
   useEffect(() => {
+    // When a file is bound to the collab CRDT, the Hocuspocus server persists it
+    // (debounced onStoreDocument) — a client-side autosave would be a redundant
+    // second writer. Explicit saves (before compile, on file switch / unload)
+    // still run, guaranteeing the compiler reads the latest bytes.
+    if (contentBound) return;
     if (!selectedPath || loadedPathRef.current !== selectedPath || editedCode === currentCode) {
       return;
     }
@@ -1551,7 +1699,7 @@ const Example = () => {
     const timer = setTimeout(saveCurrentFile, 1000);
 
     return () => clearTimeout(timer);
-  }, [selectedPath, editedCode, currentCode, saveCurrentFile]);
+  }, [contentBound, selectedPath, editedCode, currentCode, saveCurrentFile]);
 
   /**
    * Resolve the project's configured root document, in the same order
@@ -1949,6 +2097,7 @@ const Example = () => {
           tooltipsEnabled={true}
           active={activeFormatKey}
           onOpenPalette={() => setPaletteOpen(true)}
+          collaborators={collab.collaborators}
         />
       )}
       <div className="flex-1 relative overflow-auto">
@@ -1977,7 +2126,15 @@ const Example = () => {
             <ContextMenuTrigger asChild className="select-text">
               <div className="absolute inset-0" onDoubleClick={handleSyncToPdf}>
                 <CodeMirror
-                  value={editedCode}
+                  // NEVER pass undefined here: @uiw/react-codemirror defaults a
+                  // missing `value` to '' (index.js), and its sync effect then
+                  // sees '' !== doc and replaces the whole document with empty —
+                  // which blanked open files the moment collaboration bound.
+                  // While bound, the Y.Text is the source of truth and yCollab
+                  // keeps doc === ytext synchronously on every edit (local and
+                  // remote), so feeding it back as `value` always matches the
+                  // document and the effect never force-resets anything.
+                  value={contentBound && boundYText ? boundYText.toString() : editedCode}
                   height="100%"
                   theme="dark"
                   extensions={extensions}
@@ -2174,6 +2331,43 @@ const Example = () => {
 
         {/* Top Header Right Controls */}
         <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+          {/* Active Collaborators Avatars in Top Header next to Compile */}
+          {collab.collaborators.length > 0 && (
+            <div className="flex items-center gap-1.5 pl-1 pr-2 border-r border-border/50">
+              <AvatarGroup data-size="sm">
+                {collab.collaborators.map((c) => {
+                  const initials = c.user.name
+                    ? c.user.name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
+                    : "U";
+                  return (
+                    <Tooltip key={c.clientId}>
+                      <TooltipTrigger asChild>
+                        <Avatar
+                          data-size="sm"
+                          onClick={() => handleJumpToCollaborator(c)}
+                          className="ring-2 ring-background cursor-pointer hover:scale-110 hover:z-20 transition-all shadow-sm"
+                        >
+                          {c.user.avatar && <AvatarImage src={c.user.avatar} alt={c.user.name} />}
+                          <AvatarFallback
+                            className="text-[10px] font-semibold text-white"
+                            style={{ backgroundColor: c.user.color || "#3b82f6" }}
+                          >
+                            {initials}
+                          </AvatarFallback>
+                        </Avatar>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" className="text-xs font-mono">
+                        <p className="font-semibold">{c.user.name}</p>
+                        {c.activeFile && <p className="text-[10px] text-muted-foreground">Editing: {c.activeFile}</p>}
+                      </TooltipContent>
+                    </Tooltip>
+                  );
+                })}
+              </AvatarGroup>
+              <span className="flex size-2 rounded-full bg-emerald-500 animate-pulse" title="Live Sync Connected" />
+            </div>
+          )}
+
           {/* Compile Button — current file first, falls back to the project's main file */}
           {getTexFiles(fileTree).length > 0 && (
             <button
@@ -2273,6 +2467,25 @@ const Example = () => {
             >
               <LayoutIconRight active={isMobile ? mobileView === "pdf" : !isPdfCollapsed} />
             </button>
+          </div>
+
+          {/* Clerk Profile User Avatar */}
+          <div className="flex items-center pl-1 border-l border-border/50">
+            {clerkUser ? (
+              <UserButton
+                appearance={{
+                  elements: {
+                    avatarBox: "size-7 border border-border/60 shadow-sm",
+                  },
+                }}
+              />
+            ) : (
+              <SignInButton mode="modal">
+                <button className="rounded-md border border-border/60 bg-muted/20 hover:bg-muted text-xs font-semibold px-2.5 py-1.5 cursor-pointer transition-colors">
+                  Sign In
+                </button>
+              </SignInButton>
+            )}
           </div>
         </div>
       </header>
@@ -2394,6 +2607,7 @@ const Example = () => {
               data={fileTree}
               onSelect={handleFileSelect}
               selectedPath={selectedPath}
+              activeCollaborators={collab.collaborators}
               onMove={handleFileMove}
               onDelete={setDeletePath}
               onDuplicate={handleFileDuplicate}

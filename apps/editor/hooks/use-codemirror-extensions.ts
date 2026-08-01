@@ -17,13 +17,62 @@ import { wrapInsert } from "@/lib/latex-insert";
 // drops the SVG and lets the marker's own background-color paint the box
 // instead, so a thin full-height box reads as a solid line. Still no new gutter
 // or state — same setDiagnostics() dispatch, EditorView.theme() just overrides
-// @codemirror/lint's baseTheme() regardless of extension order.
 const compactLintGutterTheme = EditorView.theme({
   ".cm-gutter-lint": { width: "5px", padding: "0" },
   ".cm-gutter-lint .cm-gutterElement": { padding: "0" },
   ".cm-lint-marker": { width: "3px", height: "100%" },
   ".cm-lint-marker-error": { content: '""', backgroundColor: "#ef4444" },
 });
+
+const collabCursorTheme = EditorView.theme({
+  ".cm-ySelection": {
+    backgroundColor: "rgba(59, 130, 246, 0.25)",
+  },
+  ".cm-ySelectionCaret": {
+    position: "relative",
+    borderLeft: "2px solid #3b82f6",
+    borderRight: "0 none",
+    marginLeft: "-1px",
+    marginRight: "-1px",
+    boxSizing: "border-box",
+  },
+  ".cm-ySelectionCaretDot": {
+    position: "absolute",
+    top: "-3px",
+    left: "-3px",
+    width: "6px",
+    height: "6px",
+    borderRadius: "50%",
+    backgroundColor: "inherit",
+  },
+  ".cm-ySelectionInfo": {
+    position: "absolute",
+    top: "-1.55em",
+    left: "-2px",
+    fontSize: "10px",
+    fontFamily: "var(--font-sans, system-ui)",
+    fontWeight: "600",
+    color: "#ffffff",
+    padding: "1px 6px",
+    borderRadius: "4px 4px 4px 0",
+    whiteSpace: "nowrap",
+    userSelect: "none",
+    pointerEvents: "none",
+    zIndex: "10",
+    boxShadow: "0 2px 4px rgba(0,0,0,0.2)",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "4px",
+  },
+});
+
+import { yCollab } from "y-codemirror.next";
+import type * as Y from "yjs";
+
+export interface CollaborationConfig {
+  ytext?: Y.Text;
+  awareness?: any;
+}
 
 export interface EditorSettings {
   mainFilePath: string;
@@ -37,10 +86,16 @@ export interface EditorSettings {
 
 export function useCodeMirrorExtensions(
   settings: EditorSettings,
-  currentLanguage: string
+  currentLanguage: string,
+  collaboration?: CollaborationConfig
 ): Extension[] {
   return useMemo(() => {
     const extensions: Extension[] = [EditorView.lineWrapping, searchExtension(), lintGutter(), compactLintGutterTheme];
+
+    if (collaboration?.ytext && collaboration?.awareness) {
+      extensions.push(yCollab(collaboration.ytext, collaboration.awareness));
+      extensions.push(collabCursorTheme);
+    }
 
     if (currentLanguage === "latex") {
       extensions.push(latex({ enableTooltips: settings.tooltipsEnabled }));
@@ -63,11 +118,6 @@ export function useCodeMirrorExtensions(
       extensions.push(autocompletion());
     }
 
-    // Format shortcuts the toolbar tooltips advertise. Pushed last so it carries
-    // the lowest precedence — vim's own Ctrl-* bindings win when vim mode is on;
-    // on macOS these are ⌘-combos vim doesn't touch anyway.
-    // ponytail: kept in sync with the toolbar snippets by hand — 5 stable commands
-    // aren't worth a shared table.
     if (currentLanguage === "latex") {
       extensions.push(
         keymap.of([
@@ -88,5 +138,8 @@ export function useCodeMirrorExtensions(
     settings.bracketMatchingEnabled,
     settings.autocompleteEnabled,
     currentLanguage,
+    collaboration?.ytext,
+    collaboration?.awareness,
   ]);
 }
+

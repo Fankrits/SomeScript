@@ -90,6 +90,9 @@
     "tw-shimmer": "^0.4.12",
     "use-stick-to-bottom": "^1.1.6",
     "vaul": "^1.1.2",
+    "@hocuspocus/provider": "^2.15.0",
+    "y-codemirror.next": "^0.3.5",
+    "yjs": "^13.6.27",
     "zod": "^4.4.3",
     "zustand": "^5.0.14"
   },
