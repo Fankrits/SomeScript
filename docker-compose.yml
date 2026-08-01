@@ -63,12 +63,42 @@ services:
       - PORT=3001
       - REDIS_URL=redis://redis:6379
 
+  collaboration:
+    build:
+      context: .
+      dockerfile: apps/collaboration/Dockerfile
+    container_name: latex_editor_collaboration
+    ports:
+      - "1234:1234"
+    # Picks up CLERK_SECRET_KEY (and CLERK_AUTHORIZED_PARTIES, if set) from the
+    # same root .env.local used elsewhere; unset CLERK_SECRET_KEY falls back to
+    # guest-mode auth (see server.ts onAuthenticate) rather than failing to boot.
+    env_file:
+      - .env.local
+    environment:
+      - PORT=1234
+      - REDIS_URL=redis://redis:6379
+      # Service-name DNS (not localhost) — this runs inside the compose network,
+      # unlike the editor process which hits these same backends from the host.
+      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:password@postgres:5432/latex_editor}
+      - STORAGE_PROVIDER=s3
+      - AWS_ENDPOINT=http://rustfs:9000
+      - AWS_ACCESS_KEY_ID=minioadmin
+      - AWS_SECRET_ACCESS_KEY=minioadmin
+      - AWS_BUCKET_NAME=latex-editor
+      - AWS_REGION=us-east-1
+      - S3_FORCE_PATH_STYLE=true
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_started
+      createbuckets:
+        condition: service_completed_successfully
+
   redis:
     image: redis:7-alpine
     container_name: latex_editor_redis
-    # Every key this app writes carries a TTL (rate limits, file hashes, compile
-    # cache), so bound memory and evict the least-recently-used TTL'd key first
-    # instead of the default noeviction, which would start rejecting writes.
     command: redis-server --maxmemory 256mb --maxmemory-policy volatile-lru
     ports:
       - "6379:6379"
