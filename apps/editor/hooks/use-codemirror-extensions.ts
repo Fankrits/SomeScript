@@ -45,24 +45,11 @@ const collabCursorTheme = EditorView.theme({
     borderRadius: "50%",
     backgroundColor: "inherit",
   },
+  // y-codemirror.next's own name tag is text-only and hover-gated by its
+  // base theme (opacity: 0 until :hover) — superseded by the always-visible
+  // avatar in <RemoteCursorAvatars>, which renders at the same spot.
   ".cm-ySelectionInfo": {
-    position: "absolute",
-    top: "-1.55em",
-    left: "-2px",
-    fontSize: "10px",
-    fontFamily: "var(--font-sans, system-ui)",
-    fontWeight: "600",
-    color: "#ffffff",
-    padding: "1px 6px",
-    borderRadius: "4px 4px 4px 0",
-    whiteSpace: "nowrap",
-    userSelect: "none",
-    pointerEvents: "none",
-    zIndex: "10",
-    boxShadow: "0 2px 4px rgba(0,0,0,0.2)",
-    display: "inline-flex",
-    alignItems: "center",
-    gap: "4px",
+    display: "none",
   },
 });
 

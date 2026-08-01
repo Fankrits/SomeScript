@@ -3,6 +3,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as Y from "yjs";
 import { HocuspocusProvider } from "@hocuspocus/provider";
+import { createFileTreeVersion, FILE_TREE_VERSION_FIELD } from "@/lib/file-tree-sync";
+
+export interface CollaboratorCursor {
+  anchor: unknown;
+  head: unknown;
+}
 
 export interface Collaborator {
   clientId: number;
@@ -14,10 +20,79 @@ export interface Collaborator {
   };
   activeFile?: string;
   selection?: { anchor: number; head: number } | null;
+  cursor?: CollaboratorCursor | null;
   cursorLine?: number;
+  fileTreeVersion?: string;
 }
 
 export type CollabStatus = "disconnected" | "connecting" | "connected" | "unauthorized";
+
+type UnknownRecord = Record<string, unknown>;
+
+function isRecord(value: unknown): value is UnknownRecord {
+  return typeof value === "object" && value !== null;
+}
+
+function normalizeColor(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const color = value.trim();
+  return /^#[0-9a-f]{3,8}$/i.test(color) ? color : undefined;
+}
+
+function normalizeAvatar(value: unknown): string | undefined {
+  if (typeof value !== "string" || value.length > 2048) return undefined;
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:" ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function normalizeUser(value: unknown): Collaborator["user"] | null {
+  if (!isRecord(value)) return null;
+  const rawName = typeof value.name === "string" ? value.name.trim() : "";
+  const id = typeof value.id === "string" ? value.id.slice(0, 128) : undefined;
+  return {
+    ...(id ? { id } : {}),
+    name: rawName.slice(0, 120) || "Anonymous",
+    color: normalizeColor(value.color),
+    avatar: normalizeAvatar(value.avatar),
+  };
+}
+
+function normalizeSelection(value: unknown): Collaborator["selection"] {
+  if (!isRecord(value)) return null;
+  const { anchor, head } = value;
+  if (
+    typeof anchor !== "number" ||
+    typeof head !== "number" ||
+    !Number.isInteger(anchor) ||
+    !Number.isInteger(head) ||
+    anchor < 0 ||
+    head < 0
+  ) {
+    return null;
+  }
+  return { anchor, head };
+}
+
+function normalizeCursor(value: unknown): Collaborator["cursor"] {
+  if (!isRecord(value) || value.anchor == null || value.head == null) return null;
+  return { anchor: value.anchor, head: value.head };
+}
+
+function normalizeActiveFile(value: unknown): string | undefined {
+  return typeof value === "string" && value.length <= 4096 ? value : undefined;
+}
+
+function normalizeCursorLine(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : undefined;
+}
+
+function normalizeFileTreeVersion(value: unknown): string | undefined {
+  return typeof value === "string" && value.length <= 128 ? value : undefined;
+}
 
 interface UseCollaborationOptions {
   roomName: string;
@@ -105,14 +180,18 @@ export function useCollaboration({
       if (!awareness) return;
       const localClientId = awareness.clientID;
       const activePeers: Collaborator[] = [];
-      awareness.getStates().forEach((state: any, clientId: number) => {
-        if (state.user && clientId !== localClientId) {
+      awareness.getStates().forEach((state: unknown, clientId: number) => {
+        const record = isRecord(state) ? state : null;
+        const peerUser = normalizeUser(record?.user);
+        if (peerUser && clientId !== localClientId) {
           activePeers.push({
             clientId,
-            user: state.user,
-            activeFile: state.activeFile,
-            selection: state.selection || null,
-            cursorLine: state.cursorLine,
+            user: peerUser,
+            activeFile: normalizeActiveFile(record ? record.activeFile : undefined),
+            selection: normalizeSelection(record ? record.selection : undefined),
+            cursor: normalizeCursor(record ? record.cursor : undefined),
+            cursorLine: normalizeCursorLine(record ? record.cursorLine : undefined),
+            fileTreeVersion: normalizeFileTreeVersion(record ? record[FILE_TREE_VERSION_FIELD] : undefined),
           });
         }
       });
@@ -167,6 +246,13 @@ export function useCollaboration({
     []
   );
 
+  const notifyFileTreeChanged = useCallback(() => {
+    providerRef.current?.awareness?.setLocalStateField(
+      FILE_TREE_VERSION_FIELD,
+      createFileTreeVersion()
+    );
+  }, []);
+
   return useMemo(
     () => ({
       ydoc,
@@ -178,7 +264,19 @@ export function useCollaboration({
       seedFile,
       setActiveFile,
       setCursor,
+      notifyFileTreeChanged,
     }),
-    [ydoc, provider, status, synced, collaborators, getYTextForFile, seedFile, setActiveFile, setCursor]
+    [
+      ydoc,
+      provider,
+      status,
+      synced,
+      collaborators,
+      getYTextForFile,
+      seedFile,
+      setActiveFile,
+      setCursor,
+      notifyFileTreeChanged,
+    ]
   );
 }

@@ -25,14 +25,14 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { Scissors, Copy, ClipboardPaste, TextCursor, Undo2, Redo2, FileText } from "lucide-react";
-import { ListTodoIcon, FilePlus, FolderPlus, PanelLeft, PanelRight, Sparkles, Loader2, Check, Home, ChevronRight, ArrowLeft, Clock, Trash2, Plus, Settings, Search, Download, Upload, Play } from "lucide-react";
+import { ListTodoIcon, FilePlus, FolderPlus, PanelLeft, PanelRight, Sparkles, Loader2, Home, ChevronRight, ArrowLeft, Clock, Trash2, Plus, Settings, Search, Download, Upload, Play } from "lucide-react";
 import { nanoid } from "nanoid";
 import { toast } from "sonner";
 import { useCallback, useEffect, useInsertionEffect, useMemo, useRef, useState } from "react";
 import type { PanelImperativeHandle } from "react-resizable-panels";
 import { useDefaultLayout } from "react-resizable-panels";
 import { useEveAgent } from "eve/react";
-import { useUser, useAuth, UserButton, SignInButton } from "@clerk/nextjs";
+import { useUser, useAuth } from "@clerk/nextjs";
 import { useCollaboration, type Collaborator } from "@/hooks/use-collaboration";
 import type { Text as YText } from "yjs";
 import { Avatar, AvatarImage, AvatarFallback, AvatarGroup } from "@/components/ui/avatar";
@@ -94,6 +94,7 @@ import CodeMirror, { EditorView, type ViewUpdate } from "@uiw/react-codemirror";
 import { undo, redo, undoDepth, redoDepth, selectAll } from "@codemirror/commands";
 import { wrapInsert, activeFormats } from "@/lib/latex-insert";
 import { EditorToolbar } from "@/components/editor/editor-toolbar";
+import { RemoteCursorAvatars } from "@/components/editor/remote-cursor-avatars";
 import { CommandPalette } from "@/components/editor/command-palette";
 import { ImageViewer } from "@/components/editor/image-viewer";
 import { latex } from "codemirror-lang-latex";
@@ -117,6 +118,7 @@ import {
 } from "@/components/ui/select";
 import { pickDetectedMainFile } from "@/lib/main-file";
 import { threadsListKey, activeThreadIdKey } from "@/lib/thread-history";
+import { fileTreeVersionKey } from "@/lib/file-tree-sync";
 
 
 // Types
@@ -978,6 +980,7 @@ const Example = () => {
 
   // CodeMirror instance & History States
   const editorViewRef = useRef<EditorView | null>(null);
+  const [editorView, setEditorView] = useState<EditorView | null>(null);
   const [canUndo, setCanUndo] = useState<boolean>(false);
   const [canRedo, setCanRedo] = useState<boolean>(false);
   // Comma-joined formats the caret sits inside (e.g. "bold,math"); a stable string
@@ -1439,6 +1442,19 @@ const Example = () => {
     }
   }, [withProject]);
 
+  const remoteFileTreeVersionKey = useMemo(
+    () => fileTreeVersionKey(collab.collaborators),
+    [collab.collaborators]
+  );
+  const lastRemoteFileTreeVersionKey = useRef("");
+
+  useEffect(() => {
+    const previousKey = lastRemoteFileTreeVersionKey.current;
+    lastRemoteFileTreeVersionKey.current = remoteFileTreeVersionKey;
+    if (!remoteFileTreeVersionKey || previousKey === remoteFileTreeVersionKey) return;
+    void refreshWorkspace();
+  }, [refreshWorkspace, remoteFileTreeVersionKey]);
+
   // Reload current file content (defined before handleReplaceAll, which uses it)
   const refreshCurrentFile = useCallback(async () => {
     if (!selectedPath) return;
@@ -1547,12 +1563,13 @@ const Example = () => {
       const data = await res.json();
       if (data.success) {
         setNewItemName("");
+        collab.notifyFileTreeChanged();
         refreshWorkspace();
       }
     } catch (err) {
       console.error("Failed to create resource", err);
     }
-  }, [projectId, newItemName, fileTree, refreshWorkspace]);
+  }, [projectId, newItemName, fileTree, refreshWorkspace, collab.notifyFileTreeChanged]);
 
   const handleFileMove = useCallback(async (oldPath: string, newPath: string) => {
     try {
@@ -1566,12 +1583,13 @@ const Example = () => {
         if (selectedPath === oldPath) {
           setSelectedPath(newPath);
         }
+        collab.notifyFileTreeChanged();
         refreshWorkspace();
       }
     } catch (err) {
       console.error("Failed to move file", err);
     }
-  }, [projectId, selectedPath, refreshWorkspace]);
+  }, [projectId, selectedPath, refreshWorkspace, collab.notifyFileTreeChanged]);
 
   const [deletePath, setDeletePath] = useState<string | null>(null);
 
@@ -1590,12 +1608,13 @@ const Example = () => {
           setCurrentCode("// Select a file to view content");
           setEditedCode("");
         }
+        collab.notifyFileTreeChanged();
         refreshWorkspace();
       }
     } catch (err) {
       console.error("Failed to delete file", err);
     }
-  }, [projectId, selectedPath, refreshWorkspace]);
+  }, [projectId, selectedPath, refreshWorkspace, collab.notifyFileTreeChanged]);
 
   const handleFileDuplicate = useCallback(async (path: string) => {
     const exists = (candidate: string, nodes: FileNode[]): boolean => {
@@ -1641,12 +1660,13 @@ const Example = () => {
       });
       const data = await res.json();
       if (data.success) {
+        collab.notifyFileTreeChanged();
         refreshWorkspace();
       }
     } catch (err) {
       console.error("Failed to duplicate file", err);
     }
-  }, [projectId, fileTree, refreshWorkspace]);
+  }, [projectId, fileTree, refreshWorkspace, collab.notifyFileTreeChanged]);
 
   const handleFileDownload = useCallback((path: string) => {
     const url = withProject(`/api/files?path=${encodeURIComponent(path)}&download=1`);
@@ -1671,6 +1691,7 @@ const Example = () => {
       const res = await fetch("/api/files/upload", { method: "POST", body: formData });
       const data = await res.json();
       if (data.success) {
+        collab.notifyFileTreeChanged();
         refreshWorkspace();
       } else {
         toast.error(data.error || "Failed to upload files");
@@ -1681,7 +1702,7 @@ const Example = () => {
     } finally {
       setIsUploading(false);
     }
-  }, [projectId, refreshWorkspace, isUploading]);
+  }, [projectId, refreshWorkspace, isUploading, collab.notifyFileTreeChanged]);
 
   // Autosave useEffect with debounce
   useEffect(() => {
@@ -1968,6 +1989,7 @@ const Example = () => {
     const handleRefreshWorkspace = () => {
       refreshWorkspace();
       refreshCurrentFile();
+      collab.notifyFileTreeChanged();
     };
 
     // Eve wrote a file — show it. Already-open files no-op here and are picked
@@ -2029,7 +2051,7 @@ const Example = () => {
       window.removeEventListener("somescript:compiling", handleCompiling);
       window.removeEventListener("somescript:compiled", handleCompiled);
     };
-  }, [refreshWorkspace, refreshCurrentFile, handleFileSelect, projectId, withProject]);
+  }, [refreshWorkspace, refreshCurrentFile, handleFileSelect, projectId, withProject, collab.notifyFileTreeChanged]);
 
   // Static boot banner. This used to be typed out a line at a time over 800ms, which
   // re-rendered the whole editor eight times during the slowest part of startup — for
@@ -2147,10 +2169,18 @@ const Example = () => {
                   onCreateEditor={(view) => {
                     // eslint-disable-next-line react-hooks/immutability -- storing the imperative CodeMirror EditorView handle in a ref
                     editorViewRef.current = view;
+                    setEditorView(view);
                   }}
                   onUpdate={handleUpdate}
                   className="absolute inset-0 w-full h-full text-sm font-mono border-none focus:outline-none"
                 />
+                {contentBound && (
+                  <RemoteCursorAvatars
+                    view={editorView}
+                    ytext={boundYText ?? null}
+                    collaborators={collab.collaborators}
+                  />
+                )}
               </div>
             </ContextMenuTrigger>
             {/* Focus is handed back to CodeMirror by each action, so
@@ -2304,26 +2334,6 @@ const Example = () => {
                 <span className="font-mono text-xs text-foreground bg-muted/10 px-2 py-0.5 rounded font-medium truncate">
                   {selectedPath}
                 </span>
-                <span className="hidden lg:flex items-center gap-1.5 text-[10px] text-muted-foreground px-2 py-0.5 rounded bg-muted/40 font-medium shrink-0">
-                  {saveStatus === "saving" && (
-                    <>
-                      <Loader2 className="size-3 animate-spin text-amber-500" />
-                      <span className="text-amber-500">Saving...</span>
-                    </>
-                  )}
-                  {saveStatus === "unsaved" && (
-                    <>
-                      <span className="size-1.5 rounded-full bg-amber-500 animate-pulse" />
-                      <span>Unsaved</span>
-                    </>
-                  )}
-                  {(saveStatus === "saved" || saveStatus === "idle") && (
-                    <>
-                      <Check className="size-3 text-emerald-500" />
-                      <span className="text-emerald-500">Saved</span>
-                    </>
-                  )}
-                </span>
               </>
             )}
           </nav>
@@ -2343,13 +2353,14 @@ const Example = () => {
                     <Tooltip key={c.clientId}>
                       <TooltipTrigger asChild>
                         <Avatar
-                          data-size="sm"
+                          size="sm"
                           onClick={() => handleJumpToCollaborator(c)}
-                          className="ring-2 ring-background cursor-pointer hover:scale-110 hover:z-20 transition-all shadow-sm"
+                          className="size-5 border-2 ring-2 ring-background cursor-pointer hover:scale-110 hover:z-20 transition-all shadow-md"
+                          style={{ borderColor: c.user.color || "#3b82f6" }}
                         >
                           {c.user.avatar && <AvatarImage src={c.user.avatar} alt={c.user.name} />}
                           <AvatarFallback
-                            className="text-[10px] font-semibold text-white"
+                            className="text-[8px] font-semibold text-white"
                             style={{ backgroundColor: c.user.color || "#3b82f6" }}
                           >
                             {initials}
@@ -2364,7 +2375,6 @@ const Example = () => {
                   );
                 })}
               </AvatarGroup>
-              <span className="flex size-2 rounded-full bg-emerald-500 animate-pulse" title="Live Sync Connected" />
             </div>
           )}
 
@@ -2467,25 +2477,6 @@ const Example = () => {
             >
               <LayoutIconRight active={isMobile ? mobileView === "pdf" : !isPdfCollapsed} />
             </button>
-          </div>
-
-          {/* Clerk Profile User Avatar */}
-          <div className="flex items-center pl-1 border-l border-border/50">
-            {clerkUser ? (
-              <UserButton
-                appearance={{
-                  elements: {
-                    avatarBox: "size-7 border border-border/60 shadow-sm",
-                  },
-                }}
-              />
-            ) : (
-              <SignInButton mode="modal">
-                <button className="rounded-md border border-border/60 bg-muted/20 hover:bg-muted text-xs font-semibold px-2.5 py-1.5 cursor-pointer transition-colors">
-                  Sign In
-                </button>
-              </SignInButton>
-            )}
           </div>
         </div>
       </header>
