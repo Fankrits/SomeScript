@@ -2,7 +2,7 @@
 
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
-import { templates, projects } from "@/db/schema";
+import { templates, projects, templateBookmarks } from "@/db/schema";
 import { revalidatePath } from "next/cache";
 import { eq, and, sql } from "drizzle-orm";
 import { assertProjectLimit, assertWorkspaceActive } from "@/lib/limits";
@@ -216,4 +216,36 @@ export async function deleteTemplate(templateId: string): Promise<{ error?: stri
   await db.delete(templates).where(eq(templates.id, templateId));
   revalidatePath("/dashboard/templates");
   return { success: true };
+}
+
+export async function toggleBookmark(templateId: string): Promise<{ isBookmarked?: boolean; error?: string }> {
+  const { userId } = await auth();
+  if (!userId) return { error: "Unauthorized" };
+
+  const existing = await db.query.templateBookmarks.findFirst({
+    where: and(
+      eq(templateBookmarks.userId, userId),
+      eq(templateBookmarks.templateId, templateId)
+    ),
+  });
+
+  if (existing) {
+    await db
+      .delete(templateBookmarks)
+      .where(
+        and(
+          eq(templateBookmarks.userId, userId),
+          eq(templateBookmarks.templateId, templateId)
+        )
+      );
+    revalidatePath("/dashboard/templates");
+    return { isBookmarked: false };
+  } else {
+    await db.insert(templateBookmarks).values({
+      userId,
+      templateId,
+    });
+    revalidatePath("/dashboard/templates");
+    return { isBookmarked: true };
+  }
 }

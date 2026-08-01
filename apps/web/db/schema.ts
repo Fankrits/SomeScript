@@ -145,3 +145,17 @@ export const templates = pgTable(
   (table) => [index("templates_is_public_idx").on(table.isPublic)]
 );
 
+export const templateBookmarks = pgTable(
+  "template_bookmarks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: text("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    templateId: uuid("template_id").references(() => templates.id, { onDelete: "cascade" }).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("template_bookmarks_user_id_idx").on(table.userId),
+    index("template_bookmarks_user_template_idx").on(table.userId, table.templateId),
+  ]
+);
+

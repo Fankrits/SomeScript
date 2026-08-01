@@ -1,6 +1,6 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
-import { templates, users } from "@/db/schema";
+import { templates, users, templateBookmarks } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import Link from "next/link";
@@ -17,6 +17,12 @@ export default async function TemplatesPage() {
 
   const user = await currentUser();
   const currentUsername = user?.username || user?.firstName || user?.emailAddresses[0]?.emailAddress?.split("@")[0];
+
+  // Fetch user's saved template bookmarks from Postgres DB
+  const userBookmarks = await db.query.templateBookmarks.findMany({
+    where: eq(templateBookmarks.userId, userId),
+  });
+  const initialBookmarkedIds = userBookmarks.map((b) => b.templateId);
 
   // Fetch public templates joined with users table to get live Clerk username
   const rawTemplates = await db
@@ -86,7 +92,11 @@ export default async function TemplatesPage() {
 
       {/* Main Content Area */}
       <div className="flex-1 overflow-y-auto p-4 sm:p-8 z-10">
-        <TemplateGrid templates={publicTemplates} currentUserId={userId} />
+        <TemplateGrid
+          templates={publicTemplates}
+          currentUserId={userId}
+          initialBookmarkedIds={initialBookmarkedIds}
+        />
       </div>
     </main>
   );
