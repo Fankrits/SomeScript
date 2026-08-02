@@ -75,6 +75,9 @@ services:
     # pointing here is what actually gives this service a Clerk key locally.
     # Auth now fails closed without one (server.ts requires ALLOW_COLLAB_GUEST=true
     # to run without CLERK_SECRET_KEY) instead of silently accepting everyone.
+    # Same file also supplies COLLAB_INTERNAL_SECRET, the shared secret this
+    # service checks on POST /apply (the editor's out-of-band write notify —
+    # see apps/editor/lib/collab-notify.ts) — must match on both sides.
     env_file:
       - apps/editor/.env.local
     environment:

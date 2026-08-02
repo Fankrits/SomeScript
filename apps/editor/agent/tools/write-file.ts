@@ -2,6 +2,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveToolProject, touchProject } from "../../lib/authz";
 import { storage } from "../../lib/storage";
+import { notifyCollabPathsChanged } from "../../lib/collab-notify";
 
 // Above this size we skip the before-snapshot: the review card then shows a
 // "snapshot unavailable" note and disables revert instead of diffing a huge doc.
@@ -43,6 +44,7 @@ export default defineTool({
 
       await storage.writeFile(pid, filePath, content);
       await touchProject(pid);
+      await notifyCollabPathsChanged(pid, [filePath]);
       return { ok: true as const, path: filePath, before, created };
     } catch (e) {
       return { ok: false as const, path: filePath, error: e instanceof Error ? e.message : String(e) };

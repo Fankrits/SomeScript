@@ -2,6 +2,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveToolProject, touchProject } from "../../lib/authz";
 import { storage } from "../../lib/storage";
+import { notifyCollabPathsChanged } from "../../lib/collab-notify";
 
 export default defineTool({
   description: "Moves or renames a file within the workspace.",
@@ -15,6 +16,7 @@ export default defineTool({
       const pid = await resolveToolProject(projectId);
       await storage.move(pid, oldPath, newPath);
       await touchProject(pid);
+      await notifyCollabPathsChanged(pid, [oldPath, newPath]);
       return { ok: true as const, oldPath, newPath };
     } catch (e) {
       return { ok: false as const, oldPath, newPath, error: e instanceof Error ? e.message : String(e) };

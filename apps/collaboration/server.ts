@@ -1,3 +1,4 @@
+import type { IncomingMessage, ServerResponse } from "http";
 import { Hocuspocus } from "@hocuspocus/server";
 import { Logger } from "@hocuspocus/extension-logger";
 import { Redis } from "@hocuspocus/extension-redis";
@@ -7,10 +8,12 @@ import { Pool } from "pg";
 // land in the exact same store the compiler reads. The Dockerfile copies this
 // single file into the image; keep it dependency-light (npm-only imports).
 import { storage, isBinaryContent, type FileNode } from "../editor/lib/storage";
+import { spliceText } from "./splice";
 
 const port = Number(process.env.PORT) || 1234;
 const redisUrl = process.env.REDIS_URL;
 const clerkSecretKey = process.env.CLERK_SECRET_KEY;
+const collabInternalSecret = process.env.COLLAB_INTERNAL_SECRET;
 const authorizedParties = (process.env.CLERK_AUTHORIZED_PARTIES || "")
   .split(",")
   .map((s) => s.trim())
@@ -44,6 +47,17 @@ async function assertProjectAccess(projectId: string, workspace: string): Promis
     throw new Error("Forbidden: caller's workspace does not own this project");
   }
 }
+
+// Applying an out-of-band write (Eve, /api/files) re-reads the same storage
+// onStoreDocument is about to write back — so the very next debounce after a
+// splice would immediately persist byte-identical content. Harmless, but
+// tracking each room+path's last-written text lets onStoreDocument skip
+// truly untouched files, which is what stops it from re-persisting a STALE
+// room copy over a file it never saw change (see onStoreDocument below).
+// ponytail: process-memory map, fine for a single instance. If this service
+// ever runs >1 replica, either extension-redis's shared state or moving this
+// check onto the Document itself (a custom field) would need to replace it.
+const lastWrittenText = new Map<string, string>();
 
 let redisHost = process.env.REDIS_HOST || "127.0.0.1";
 let redisPort = Number(process.env.REDIS_PORT) || 6379;
@@ -182,12 +196,111 @@ const server = new Hocuspocus({
       // genuine "user cleared the file" still persists via the editor's explicit
       // save (before compile / on switch / unload).
       if (text.length === 0) continue;
+      // Skip untouched files: without this, every debounce rewrites EVERY
+      // materialized file in the room, including ones nobody edited. That
+      // stomps out-of-band writes (Eve, /api/files) applied via /apply below —
+      // editing any file in the room would persist every other file's stale
+      // room copy straight back over the change that just landed on disk.
+      const mapKey = `${data.documentName}:${key}`;
+      if (lastWrittenText.get(mapKey) === text) continue;
       try {
         await storage.writeFile(projectId, relPath, text);
+        lastWrittenText.set(mapKey, text);
       } catch (err) {
         console.error(`[collab] failed to persist ${projectId}/${relPath}:`, err);
       }
     }
+  },
+
+  // Releases this room's dirty-tracking entries — otherwise lastWrittenText
+  // grows for as long as the process lives, one entry per file ever touched
+  // in any room. Safe to drop: the next room load re-seeds correctness from
+  // storage regardless of what's in the map.
+  async afterUnloadDocument(data: { documentName: string }) {
+    const prefix = `${data.documentName}:`;
+    for (const key of lastWrittenText.keys()) {
+      if (key.startsWith(prefix)) lastWrittenText.delete(key);
+    }
+  },
+
+  // Internal HTTP endpoint for out-of-band writes (Eve's tools, /api/files) to
+  // push a change into the live CRDT. Those writers hit storage directly —
+  // correct, since Eve/API routes must keep working with collab disabled or
+  // down — but without this, nothing tells an already-loaded room that
+  // storage moved out from under it, and the next debounce would silently
+  // overwrite the fresh write with the stale in-memory text (this is exactly
+  // how a prior collaboration bug destroyed a real project file).
+  //
+  // Trusted service-to-service call, not a per-user request — auth is a
+  // shared secret, not a Clerk token, and there is deliberately no per-user
+  // ownership check here (the caller already did one before writing storage).
+  // Fails closed: COLLAB_INTERNAL_SECRET must be set, matching the
+  // onAuthenticate posture for CLERK_SECRET_KEY above.
+  async onRequest(data: { request: IncomingMessage; response: ServerResponse; instance: Hocuspocus }) {
+    const { request, response, instance } = data;
+    if (request.method !== "POST" || request.url !== "/apply") return; // let the default 200 OK fall through
+
+    const fail = (status: number, message: string) => {
+      response.writeHead(status, { "Content-Type": "application/json" });
+      response.end(JSON.stringify({ error: message }));
+      throw undefined; // Hocuspocus convention: message-less throw stops here without logging an error
+    };
+
+    if (!collabInternalSecret) return fail(503, "Collaboration server misconfigured: COLLAB_INTERNAL_SECRET is not set");
+    if (request.headers["x-collab-secret"] !== collabInternalSecret) return fail(401, "Unauthorized");
+
+    let body: unknown;
+    try {
+      const chunks: Buffer[] = [];
+      let size = 0;
+      for await (const chunk of request) {
+        size += chunk.length;
+        if (size > 262_144) throw new Error("Body too large");
+        chunks.push(chunk);
+      }
+      body = JSON.parse(Buffer.concat(chunks).toString("utf-8"));
+    } catch {
+      return fail(400, "Invalid JSON body");
+    }
+
+    const { projectId, paths } = (body ?? {}) as { projectId?: unknown; paths?: unknown };
+    if (typeof projectId !== "string" || !Array.isArray(paths) || !paths.every((p) => typeof p === "string")) {
+      return fail(400, "Expected { projectId: string, paths: string[] }");
+    }
+    if (projectId !== "default" && !UUID_RE.test(projectId)) return fail(400, "Invalid projectId");
+
+    // Read every path from storage FIRST. DirectConnection.transact() does not
+    // await its callback (it calls `transaction(this.document)` fire-and-forget,
+    // then immediately triggers the store hooks) — an async callback here would
+    // let onStoreDocument persist the doc before any splice actually landed.
+    // The callback below must therefore be synchronous.
+    const nextContents = await Promise.all(
+      paths.slice(0, 200).map(async (relPath) => {
+        try {
+          const buf = await storage.readBinaryFile(projectId, relPath);
+          return { relPath, text: isBinaryContent(buf) ? null : buf.toString("utf-8") };
+        } catch {
+          return { relPath, text: "" }; // not found on disk -> the write was a delete
+        }
+      })
+    );
+
+    const documentName = `project:${projectId}`;
+    const connection = await instance.openDirectConnection(documentName, {});
+    try {
+      await connection.transact((doc: any) => {
+        for (const { relPath, text } of nextContents) {
+          if (text === null) continue; // binary — never force-decode into a Y.Text
+          spliceText(doc.getText(`file:${relPath}`), text);
+        }
+      });
+    } finally {
+      await connection.disconnect();
+    }
+
+    response.writeHead(200, { "Content-Type": "application/json" });
+    response.end(JSON.stringify({ ok: true }));
+    throw undefined;
   },
 });
 

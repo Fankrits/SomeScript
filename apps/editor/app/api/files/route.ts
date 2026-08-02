@@ -1,5 +1,6 @@
 import { storage, isBinaryContent } from "@/lib/storage";
 import { requireProject, touchProject, apiError, ApiError } from "@/lib/authz";
+import { notifyCollabPathsChanged } from "@/lib/collab-notify";
 import { NextRequest } from "next/server";
 
 const IMAGE_MIME: Record<string, string> = {
@@ -80,31 +81,43 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const projectId = await requireProject(body.projectId);
 
+    // Paths that changed on disk this request — pushed to the collab server
+    // below so an already-loaded room's Y.Text stops being stale (the same
+    // gap that let collaboration silently revert an Eve write; see
+    // apps/collaboration/server.ts's onRequest /apply handler).
+    let changedPaths: string[] = [];
+
     if (body.action === "create") {
       if (body.isDir) {
         await storage.createDirectory(projectId, body.path);
       } else {
         await storage.writeFile(projectId, body.path, "");
+        changedPaths = [body.path];
       }
     } else if (body.action === "save") {
       if (typeof body.path !== "string" || typeof body.content !== "string") {
         throw new ApiError(400, "Missing path or content");
       }
       await storage.writeFile(projectId, body.path, body.content);
+      changedPaths = [body.path];
     } else if (body.action === "move") {
       await storage.move(projectId, body.oldPath, body.newPath);
+      changedPaths = [body.oldPath, body.newPath];
     } else if (body.action === "copy") {
       if (typeof body.path !== "string" || typeof body.newPath !== "string") {
         throw new ApiError(400, "Missing path or newPath");
       }
       await storage.copy(projectId, body.path, body.newPath);
+      changedPaths = [body.newPath];
     } else if (body.action === "delete") {
       await storage.delete(projectId, body.path);
+      changedPaths = [body.path];
     } else {
       throw new ApiError(400, "Invalid action");
     }
 
     await touchProject(projectId);
+    await notifyCollabPathsChanged(projectId, changedPaths);
     return Response.json({ success: true });
   } catch (error) {
     return apiError(error);
