@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { buildSearchPattern } from "./search-pattern";
+import { buildSearchPattern, replaceMatchAt } from "./search-pattern";
 import { ApiError } from "./authz";
 
 const opts = { matchCase: false, matchWholeWord: false, useRegex: false };
@@ -26,4 +26,19 @@ test("rejects over-long queries", () => {
 
 test("rejects invalid regex with a 400, not a crash", () => {
   expect(() => buildSearchPattern("([", { ...opts, useRegex: true })).toThrow(ApiError);
+});
+
+test("replaces only the occurrence at the reported match index", () => {
+  const re = buildSearchPattern("cat", opts);
+  expect(replaceMatchAt("cat cat cat", re, 4, "dog")).toBe("cat dog cat");
+});
+
+test("returns null when the reported match index is stale", () => {
+  const re = buildSearchPattern("cat", opts);
+  expect(replaceMatchAt("cat cat", re, 3, "dog")).toBeNull();
+});
+
+test("returns null when the reported line snapshot is stale", () => {
+  const re = buildSearchPattern("cat", opts);
+  expect(replaceMatchAt("dog cat cat", re, 4, "bird", "cat cat")).toBeNull();
 });

@@ -1,5 +1,6 @@
 import fs from "fs/promises";
 import path from "path";
+import { createHash } from "crypto";
 import { S3Client, GetObjectCommand, PutObjectCommand, ListObjectsV2Command, CopyObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 
 // Interface for File Nodes matching Editor's FileTree structures
@@ -10,10 +11,17 @@ export interface FileNode {
   children?: FileNode[];
 }
 
+export interface FileSnapshot {
+  content: string;
+  version: string;
+}
+
 export interface StorageProvider {
   readFile(projectId: string, fileRelativePath: string): Promise<string>;
+  readFileWithVersion(projectId: string, fileRelativePath: string): Promise<FileSnapshot>;
   readBinaryFile(projectId: string, fileRelativePath: string): Promise<Buffer>;
   writeFile(projectId: string, fileRelativePath: string, content: string | Buffer): Promise<void>;
+  writeFileIfVersion(projectId: string, fileRelativePath: string, expectedVersion: string, content: string): Promise<boolean>;
   createDirectory(projectId: string, dirRelativePath: string): Promise<void>;
   listProjectFiles(projectId: string): Promise<FileNode[]>;
   move(projectId: string, oldPath: string, newPath: string): Promise<void>;
@@ -28,6 +36,10 @@ export interface StorageProvider {
 // lister exclude the same things.
 const EXCLUDED = new Set(["node_modules", ".git", ".next", ".eve", ".workflow-data", ".somescript", ".preview-cache"]);
 
+function contentVersion(content: string): string {
+  return `sha256:${createHash("sha256").update(content, "utf8").digest("hex")}`;
+}
+
 // Sniffs binary content via a NUL byte in the first 8KB (the same heuristic
 // git/grep -I use) instead of assuming everything is UTF-8 text — force-decoding
 // arbitrary binary bytes as UTF-8 silently mangles them, and re-saving that
@@ -40,6 +52,8 @@ export function isBinaryContent(buffer: Buffer): boolean {
 // 1. Local File System Storage Provider
 // -------------------------------------------------------------
 export class LocalStorageProvider implements StorageProvider {
+  private readonly writeLocks = new Map<string, Promise<void>>();
+
   // Standard workspace path resolution (e.g. apps/editor/projects/UUID).
   // PROJECTS_BASE_DIR lets an out-of-tree process (the collaboration server,
   // which runs from apps/collaboration) point at the editor's project root in
@@ -60,9 +74,78 @@ export class LocalStorageProvider implements StorageProvider {
     return resolved;
   }
 
+  private async withFileLock<T>(projectId: string, fileRelativePath: string, operation: () => Promise<T>): Promise<T> {
+    const key = `${projectId}:${fileRelativePath}`;
+    const previous = this.writeLocks.get(key) ?? Promise.resolve();
+    let releaseQueue!: () => void;
+    const queueDone = new Promise<void>((resolve) => {
+      releaseQueue = resolve;
+    });
+    const queued = previous.then(() => queueDone);
+    this.writeLocks.set(key, queued);
+    await previous;
+
+    const baseDir = this.getProjectBaseDir(projectId);
+    const lockPath = path.join(
+      baseDir,
+      ".somescript",
+      "storage-locks",
+      `${encodeURIComponent(fileRelativePath)}.lock`
+    );
+    const lockParent = path.dirname(lockPath);
+    const deadline = Date.now() + 10_000;
+    let acquired = false;
+
+    try {
+      await fs.mkdir(lockParent, { recursive: true });
+      while (!acquired) {
+        try {
+          await fs.mkdir(lockPath);
+          acquired = true;
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+          try {
+            const stat = await fs.stat(lockPath);
+            if (Date.now() - stat.mtimeMs > 30_000) {
+              await fs.rm(lockPath, { recursive: true, force: true });
+              continue;
+            }
+          } catch {
+            // The competing lock was released between mkdir and stat.
+          }
+          if (Date.now() >= deadline) {
+            throw new Error(`Timed out waiting to write ${fileRelativePath}`);
+          }
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+      }
+
+      return await operation();
+    } finally {
+      if (acquired) await fs.rm(lockPath, { recursive: true, force: true });
+      releaseQueue();
+      if (this.writeLocks.get(key) === queued) this.writeLocks.delete(key);
+    }
+  }
+
+  private async writeFileUnlocked(projectId: string, fileRelativePath: string, content: string | Buffer): Promise<void> {
+    const fullPath = this.getLocalPath(projectId, fileRelativePath);
+    await fs.mkdir(path.dirname(fullPath), { recursive: true });
+    if (typeof content === "string") {
+      await fs.writeFile(fullPath, content, "utf-8");
+    } else {
+      await fs.writeFile(fullPath, content);
+    }
+  }
+
   async readFile(projectId: string, fileRelativePath: string): Promise<string> {
     const fullPath = this.getLocalPath(projectId, fileRelativePath);
     return await fs.readFile(fullPath, "utf-8");
+  }
+
+  async readFileWithVersion(projectId: string, fileRelativePath: string): Promise<FileSnapshot> {
+    const content = await this.readFile(projectId, fileRelativePath);
+    return { content, version: contentVersion(content) };
   }
 
   async readBinaryFile(projectId: string, fileRelativePath: string): Promise<Buffer> {
@@ -71,13 +154,30 @@ export class LocalStorageProvider implements StorageProvider {
   }
 
   async writeFile(projectId: string, fileRelativePath: string, content: string | Buffer): Promise<void> {
-    const fullPath = this.getLocalPath(projectId, fileRelativePath);
-    await fs.mkdir(path.dirname(fullPath), { recursive: true });
-    if (typeof content === "string") {
-      await fs.writeFile(fullPath, content, "utf-8");
-    } else {
-      await fs.writeFile(fullPath, content);
-    }
+    await this.withFileLock(projectId, fileRelativePath, () =>
+      this.writeFileUnlocked(projectId, fileRelativePath, content)
+    );
+  }
+
+  async writeFileIfVersion(
+    projectId: string,
+    fileRelativePath: string,
+    expectedVersion: string,
+    content: string
+  ): Promise<boolean> {
+    return await this.withFileLock(projectId, fileRelativePath, async () => {
+      const fullPath = this.getLocalPath(projectId, fileRelativePath);
+      let current: string;
+      try {
+        current = await fs.readFile(fullPath, "utf-8");
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+        throw error;
+      }
+      if (contentVersion(current) !== expectedVersion) return false;
+      await this.writeFileUnlocked(projectId, fileRelativePath, content);
+      return true;
+    });
   }
 
   async createDirectory(projectId: string, dirRelativePath: string): Promise<void> {
@@ -212,6 +312,18 @@ class S3StorageProvider implements StorageProvider {
     return (await response.Body?.transformToString()) || "";
   }
 
+  async readFileWithVersion(projectId: string, fileRelativePath: string): Promise<FileSnapshot> {
+    const key = this.getS3Key(projectId, fileRelativePath);
+    const response = await this.client.send(
+      new GetObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+      })
+    );
+    const content = (await response.Body?.transformToString()) || "";
+    return { content, version: response.ETag || contentVersion(content) };
+  }
+
   async readBinaryFile(projectId: string, fileRelativePath: string): Promise<Buffer> {
     const key = this.getS3Key(projectId, fileRelativePath);
     const response = await this.client.send(
@@ -238,6 +350,42 @@ class S3StorageProvider implements StorageProvider {
           : "application/octet-stream",
       })
     );
+  }
+
+  async writeFileIfVersion(
+    projectId: string,
+    fileRelativePath: string,
+    expectedVersion: string,
+    content: string
+  ): Promise<boolean> {
+    if (expectedVersion.startsWith("sha256:")) {
+      return false;
+    }
+
+    const key = this.getS3Key(projectId, fileRelativePath);
+    try {
+      await this.client.send(
+        new PutObjectCommand({
+          Bucket: this.bucket,
+          Key: key,
+          Body: Buffer.from(content, "utf-8"),
+          IfMatch: expectedVersion,
+          ContentType: fileRelativePath.endsWith(".tex") ? "text/plain" : "application/octet-stream",
+        })
+      );
+      return true;
+    } catch (error) {
+      const details = error as { name?: string; $metadata?: { httpStatusCode?: number } };
+      if (
+        details.$metadata?.httpStatusCode === 409 ||
+        details.$metadata?.httpStatusCode === 412 ||
+        details.name === "PreconditionFailed" ||
+        details.name === "ConditionalRequestConflict"
+      ) {
+        return false;
+      }
+      throw error;
+    }
   }
 
   async createDirectory(projectId: string, dirRelativePath: string): Promise<void> {

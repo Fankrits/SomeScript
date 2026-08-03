@@ -37,7 +37,7 @@ import { useCollaboration, type Collaborator } from "@/hooks/use-collaboration";
 import type { Text as YText } from "yjs";
 import { Avatar, AvatarImage, AvatarFallback, AvatarGroup } from "@/components/ui/avatar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { SearchPanel, SearchPanelHandle } from "@/components/editor/search-panel";
+import { SearchPanel, type SearchPanelHandle, type SearchResult, type SearchState } from "@/components/editor/search-panel";
 import { TasksPanel, TasksPanelHandle } from "@/components/editor/tasks-panel";
 import type { Task } from "@/lib/tasks";
 import { search as searchExtension, SearchQuery, setSearchQuery } from "@codemirror/search";
@@ -580,12 +580,16 @@ const Example = () => {
   const searchPanelRef = useRef<SearchPanelHandle>(null);
   const tasksPanelRef = useRef<TasksPanelHandle>(null);
   const [pendingLineJump, setPendingLineJump] = useState<{ path: string; line: number } | null>(null);
-  const [searchState, setSearchState] = useState<{
-    query: string;
-    options: { matchCase: boolean; matchWholeWord: boolean; useRegex: boolean };
-  }>({
+  const [searchState, setSearchState] = useState<SearchState>({
     query: "",
-    options: { matchCase: false, matchWholeWord: false, useRegex: false },
+    options: {
+      matchCase: false,
+      matchWholeWord: false,
+      useRegex: false,
+      scope: "all",
+      startLine: "",
+      endLine: "",
+    },
   });
 
   // Settings State
@@ -1355,6 +1359,7 @@ const Example = () => {
         return false;
       }
       setCurrentCode(editedCode);
+      stateRef.current = { ...stateRef.current, currentCode: editedCode };
       setSaveStatus("saved");
       return true;
     } catch (err) {
@@ -1552,6 +1557,10 @@ const Example = () => {
       // Selection moved while this was in flight (e.g. Eve opened the file it
       // just wrote) — dropping the stale body keeps content matching the tab.
       if (stateRef.current.selectedPath !== selectedPath) return;
+      // Never replace a buffer that became dirty while the reload was in flight.
+      // The caller saves before search replacement, but the user can still type
+      // during the network round trip.
+      if (stateRef.current.editedCode !== stateRef.current.currentCode) return;
       if (data.content !== undefined) {
         loadedPathRef.current = selectedPath;
         setCurrentCode(data.content);
@@ -1579,8 +1588,30 @@ const Example = () => {
     setPdfSyncRequest({ page, nonce: Date.now() });
   }, []);
 
-  const handleReplaceAll = useCallback(async (replaceText: string, searchState: { query: string; options: { matchCase: boolean; matchWholeWord: boolean; useRegex: boolean; scope: string } }) => {
+  const ensureCurrentFileSavedBeforeExternalWrite = useCallback(async (filePath: string): Promise<boolean> => {
+    const snapshot = stateRef.current;
+    if (
+      snapshot.selectedPath !== filePath ||
+      loadedPathRef.current !== filePath ||
+      snapshot.editedCode === snapshot.currentCode
+    ) {
+      return true;
+    }
+
+    const saved = await saveCurrentFile();
+    if (saved) return true;
+
+    const latest = stateRef.current;
+    if (latest.selectedPath === filePath && latest.editedCode !== latest.currentCode) {
+      toast.error("Save your edits before replacing a search result");
+      return false;
+    }
+    return true;
+  }, [saveCurrentFile]);
+
+  const handleReplace = useCallback(async (match: SearchResult, replaceText: string, searchState: SearchState) => {
     try {
+      if (!(await ensureCurrentFileSavedBeforeExternalWrite(match.fileId))) return;
       const res = await fetch("/api/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1592,26 +1623,75 @@ const Example = () => {
           matchWholeWord: searchState.options.matchWholeWord,
           useRegex: searchState.options.useRegex,
           scope: searchState.options.scope,
+          startLine: searchState.options.startLine,
+          endLine: searchState.options.endLine,
+          selectedPath: selectedPath || "",
+          target: {
+            fileId: match.fileId,
+            line: match.line,
+            matchIndex: match.matchIndex,
+            lineText: match.text,
+          },
+        }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        toast.error(data.error || "Could not replace this match");
+        return;
+      }
+
+      void refreshWorkspace();
+      if (selectedPath && Array.isArray(data.modifiedFiles) && data.modifiedFiles.includes(selectedPath)) {
+        void refreshCurrentFile();
+      }
+      searchPanelRef.current?.refresh();
+    } catch (err) {
+      console.error(err);
+      toast.error("Could not replace this match");
+    }
+  }, [projectId, selectedPath, refreshWorkspace, refreshCurrentFile, ensureCurrentFileSavedBeforeExternalWrite]);
+
+  const handleReplaceAll = useCallback(async (replaceText: string, searchState: SearchState) => {
+    try {
+      if (selectedPath && !(await ensureCurrentFileSavedBeforeExternalWrite(selectedPath))) return;
+      const res = await fetch("/api/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId,
+          query: searchState.query,
+          replaceText,
+          matchCase: searchState.options.matchCase,
+          matchWholeWord: searchState.options.matchWholeWord,
+          useRegex: searchState.options.useRegex,
+          scope: searchState.options.scope,
+          startLine: searchState.options.startLine,
+          endLine: searchState.options.endLine,
           selectedPath: selectedPath || "",
         }),
       });
       const data = await res.json();
-      if (data.success) {
-        // Reload workspace tree
+      if (Array.isArray(data.modifiedFiles) && data.modifiedFiles.length > 0) {
         refreshWorkspace();
-        // If selected file was updated, reload its content in the editor
-        // (handleFileSelect now no-ops on the already-open file, so reload directly)
         if (selectedPath && data.modifiedFiles.includes(selectedPath)) {
           refreshCurrentFile();
         }
       }
+      searchPanelRef.current?.refresh();
+      if (!data.success) {
+        toast.error(data.error || "Some files could not be replaced");
+        return;
+      }
     } catch (err) {
       console.error(err);
     }
-  }, [projectId, selectedPath, refreshWorkspace, refreshCurrentFile]);
+  }, [projectId, selectedPath, refreshWorkspace, refreshCurrentFile, ensureCurrentFileSavedBeforeExternalWrite]);
 
   const handleSearchChange = useCallback((query: string, options: { matchCase: boolean; matchWholeWord: boolean; useRegex: boolean }) => {
-    setSearchState({ query, options });
+    setSearchState((previous) => ({
+      query,
+      options: { ...previous.options, ...options },
+    }));
   }, []);
 
   const handleCreateResourceSubmit = useCallback(async (isDir: boolean) => {
@@ -2715,6 +2795,7 @@ const Example = () => {
             ref={searchPanelRef}
             selectedPath={selectedPath}
             onSelectMatch={handleSelectMatch}
+            onReplace={handleReplace}
             onReplaceAll={handleReplaceAll}
             onSearchChange={handleSearchChange}
           />

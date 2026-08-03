@@ -32,3 +32,38 @@ export function buildSearchPattern(
   const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return new RegExp(opts.matchWholeWord ? `\\b${escaped}\\b` : escaped, flags);
 }
+
+/**
+ * Replaces exactly one match at the offset returned by the search endpoint.
+ * The pattern is global so all occurrences can be enumerated deterministically.
+ * Returns null when the source line no longer contains a match at that offset.
+ */
+export function replaceMatchAt(
+  lineText: string,
+  pattern: RegExp,
+  matchIndex: number,
+  replacement: string,
+  expectedLineText?: string
+): string | null {
+  if (expectedLineText !== undefined && lineText !== expectedLineText) {
+    return null;
+  }
+  if (!pattern.global || !Number.isInteger(matchIndex) || matchIndex < 0) {
+    return null;
+  }
+
+  pattern.lastIndex = 0;
+  try {
+    let match = pattern.exec(lineText);
+    while (match !== null) {
+      if (match.index === matchIndex) {
+        return lineText.slice(0, match.index) + replacement + lineText.slice(match.index + match[0].length);
+      }
+      if (match[0].length === 0) pattern.lastIndex += 1;
+      match = pattern.exec(lineText);
+    }
+    return null;
+  } finally {
+    pattern.lastIndex = 0;
+  }
+}

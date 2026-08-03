@@ -25,3 +25,10 @@ export function versionKey<T extends { clientId: number }>(peers: T[], field: ke
     .sort()
     .join("|");
 }
+
+/** Backward-compatible file-tree-specific wrapper for older callers/tests. */
+export function fileTreeVersionKey<T extends { clientId: number; fileTreeVersion?: string }>(
+  peers: T[]
+): string {
+  return versionKey(peers, "fileTreeVersion");
+}

@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { storage, type FileNode } from "@/lib/storage";
 import { requireProject, touchProject, apiError } from "@/lib/authz";
 import { notifyCollabPathsChanged } from "@/lib/collab-notify";
-import { buildSearchPattern } from "@/lib/search-pattern";
+import { buildSearchPattern, replaceMatchAt } from "@/lib/search-pattern";
 import path from "path";
 
 export interface SearchResult {
@@ -21,6 +21,59 @@ const BINARY_EXTENSIONS = new Set([
 function isTextFile(filename: string): boolean {
   const ext = path.extname(filename).toLowerCase();
   return !BINARY_EXTENSIONS.has(ext);
+}
+
+interface SingleMatchTarget {
+  fileId: string;
+  line: number;
+  matchIndex: number;
+  lineText: string;
+}
+
+function parseSingleMatchTarget(value: unknown): SingleMatchTarget | null {
+  if (!value || typeof value !== "object") return null;
+  const target = value as Record<string, unknown>;
+  const fileId = target.fileId;
+  const line = target.line;
+  const matchIndex = target.matchIndex;
+  const lineText = target.lineText;
+  if (
+    typeof fileId !== "string" ||
+    fileId.length === 0 ||
+    !isTextFile(fileId) ||
+    typeof line !== "number" ||
+    !Number.isInteger(line) ||
+    line < 1 ||
+    typeof matchIndex !== "number" ||
+    !Number.isInteger(matchIndex) ||
+    matchIndex < 0 ||
+    typeof lineText !== "string" ||
+    lineText.length > 1_000_000
+  ) {
+    return null;
+  }
+  return {
+    fileId,
+    line,
+    matchIndex,
+    lineText,
+  };
+}
+
+function containsSearchableFile(nodes: FileNode[], targetPath: string): boolean {
+  for (const node of nodes) {
+    if (!node.isDir && node.path === targetPath) return true;
+    if (node.isDir && node.children && containsSearchableFile(node.children, targetPath)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function parseLineBoundary(value: unknown): number | null | undefined {
+  if (value === undefined || value === null || value === "") return null;
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isInteger(parsed) && parsed >= 1 ? parsed : undefined;
 }
 
 import { checkRate } from "@/lib/rate-limit";
@@ -127,6 +180,15 @@ export async function POST(req: NextRequest) {
     const useRegex = body.useRegex === true;
     const scope = body.scope || "all";
     const selectedPath = body.selectedPath || "";
+    const startLine = parseLineBoundary(body.startLine);
+    const endLine = parseLineBoundary(body.endLine);
+
+    if (scope !== "all" && scope !== "current") {
+      return Response.json({ error: "Invalid search scope" }, { status: 400 });
+    }
+    if (startLine === undefined || endLine === undefined) {
+      return Response.json({ error: "Invalid line range" }, { status: 400 });
+    }
 
     if (!query) {
       return Response.json({ error: "Missing query" }, { status: 400 });
@@ -134,8 +196,60 @@ export async function POST(req: NextRequest) {
 
     const pattern = buildSearchPattern(query, { matchCase, matchWholeWord, useRegex });
     const files = await storage.listProjectFiles(projectId);
+
+    // Single-match replace: target identifies one occurrence by file/line/offset
+    // (as returned by GET) so only that occurrence is touched, not every match in the file.
+    if (body.target !== undefined && body.target !== null) {
+      const target = parseSingleMatchTarget(body.target);
+      if (!target) {
+        return Response.json({ error: "Invalid match target" }, { status: 400 });
+      }
+      if (!containsSearchableFile(files, target.fileId)) {
+        return Response.json({ error: "File not found" }, { status: 404 });
+      }
+      if (
+        (scope === "current" && (!selectedPath || target.fileId !== selectedPath)) ||
+        (startLine !== null && target.line < startLine) ||
+        (endLine !== null && target.line > endLine)
+      ) {
+        return Response.json({ error: "Search result is stale; refresh the search" }, { status: 409 });
+      }
+
+      let snapshot;
+      try {
+        snapshot = await storage.readFileWithVersion(projectId, target.fileId);
+      } catch (error) {
+        const details = error as { code?: string; name?: string; message?: string };
+        if (details.code === "ENOENT" || details.name === "NoSuchKey" || details.message?.includes("ENOENT")) {
+          return Response.json({ error: "File not found" }, { status: 404 });
+        }
+        throw error;
+      }
+      const content = snapshot.content;
+      const lines = content.split("\n");
+      const lineText = lines[target.line - 1];
+      if (lineText === undefined) {
+        return Response.json({ error: "Search result is stale; refresh the search" }, { status: 409 });
+      }
+
+      const replacedLine = replaceMatchAt(lineText, pattern, target.matchIndex, replaceText, target.lineText);
+      if (replacedLine === null) {
+        return Response.json({ error: "Search result is stale; refresh the search" }, { status: 409 });
+      }
+
+      lines[target.line - 1] = replacedLine;
+      const wrote = await storage.writeFileIfVersion(projectId, target.fileId, snapshot.version, lines.join("\n"));
+      if (!wrote) {
+        return Response.json({ error: "File changed while replacing; refresh the search" }, { status: 409 });
+      }
+      await touchProject(projectId);
+      await notifyCollabPathsChanged(projectId, [target.fileId]);
+      return Response.json({ success: true, count: 1, modifiedFiles: [target.fileId] });
+    }
+
     let count = 0;
     const modifiedFiles: string[] = [];
+    const conflicts: string[] = [];
 
     const traverse = async (nodes: FileNode[]) => {
       for (const node of nodes) {
@@ -150,11 +264,15 @@ export async function POST(req: NextRequest) {
           }
 
           try {
-            const content = await storage.readFile(projectId, node.path);
-            const matches = content.match(pattern);
+            const snapshot = await storage.readFileWithVersion(projectId, node.path);
+            const matches = snapshot.content.match(pattern);
             if (matches && matches.length > 0) {
-              const newContent = content.replace(pattern, () => replaceText);
-              await storage.writeFile(projectId, node.path, newContent);
+              const newContent = snapshot.content.replace(pattern, () => replaceText);
+              const wrote = await storage.writeFileIfVersion(projectId, node.path, snapshot.version, newContent);
+              if (!wrote) {
+                conflicts.push(node.path);
+                continue;
+              }
               count += matches.length;
               modifiedFiles.push(node.path);
             }
@@ -169,6 +287,18 @@ export async function POST(req: NextRequest) {
     if (modifiedFiles.length > 0) {
       await touchProject(projectId);
       await notifyCollabPathsChanged(projectId, modifiedFiles);
+    }
+    if (conflicts.length > 0) {
+      return Response.json(
+        {
+          success: false,
+          error: "Some files changed while replacing; refresh the search",
+          count,
+          modifiedFiles,
+          conflicts,
+        },
+        { status: 409 }
+      );
     }
     return Response.json({ success: true, count, modifiedFiles });
   } catch (error) {

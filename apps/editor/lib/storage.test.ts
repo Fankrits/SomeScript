@@ -33,6 +33,22 @@ test("isBinaryContent treats plain text and empty buffers as text", () => {
   expect(isBinaryContent(Buffer.alloc(0))).toBe(false);
 });
 
+test("compare-and-swap writes reject a stale file version", async () => {
+  const projectId = `test-cas-${Date.now()}`;
+  const baseDir = path.join(process.cwd(), "projects", projectId);
+  try {
+    await p.writeFile(projectId, "main.tex", "old content");
+    const snapshot = await p.readFileWithVersion(projectId, "main.tex");
+
+    expect(await p.writeFileIfVersion(projectId, "main.tex", snapshot.version, "new content")).toBe(true);
+    expect(await p.readFile(projectId, "main.tex")).toBe("new content");
+    expect(await p.writeFileIfVersion(projectId, "main.tex", snapshot.version, "lost content")).toBe(false);
+    expect(await p.readFile(projectId, "main.tex")).toBe("new content");
+  } finally {
+    await fs.rm(baseDir, { recursive: true, force: true });
+  }
+});
+
 test("copy rejects traversal in the source path", async () => {
   await expect(p.copy("abc", "../abc-evil/secret.txt", "dest.txt")).rejects.toThrow("Directory traversal");
 });
