@@ -14,6 +14,7 @@ RUN bun install
 # Collaboration's own source, kept at its real repo-relative path so its
 # "../editor/lib/storage" import resolves exactly as it does outside Docker.
 COPY apps/collaboration/server.ts ./apps/collaboration/server.ts
+COPY apps/collaboration/splice.ts ./apps/collaboration/splice.ts
 
 # server.ts imports apps/editor/lib/storage.ts directly (reuses the editor's
 # storage abstraction instead of reimplementing S3/FS logic — see CLAUDE.md's
