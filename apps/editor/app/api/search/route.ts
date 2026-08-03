@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { storage, type FileNode } from "@/lib/storage";
 import { requireProject, touchProject, apiError } from "@/lib/authz";
+import { notifyCollabPathsChanged } from "@/lib/collab-notify";
 import { buildSearchPattern } from "@/lib/search-pattern";
 import path from "path";
 
@@ -165,7 +166,10 @@ export async function POST(req: NextRequest) {
     };
 
     await traverse(files);
-    if (modifiedFiles.length > 0) await touchProject(projectId);
+    if (modifiedFiles.length > 0) {
+      await touchProject(projectId);
+      await notifyCollabPathsChanged(projectId, modifiedFiles);
+    }
     return Response.json({ success: true, count, modifiedFiles });
   } catch (error) {
     return apiError(error);
