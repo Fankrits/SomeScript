@@ -1,6 +1,8 @@
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
+import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import HeroMockup from "@/components/hero-mockup";
 import GridBackgroundDemo from "@/components/grid-background-demo";
@@ -13,7 +15,11 @@ const HowItWorks = dynamic(() => import("@/components/sections/how-it-works").th
 const Testimonials = dynamic(() => import("@/components/sections/testimonials").then((mod) => mod.Testimonials));
 const Faq = dynamic(() => import("@/components/sections/faq").then((mod) => mod.Faq));
 
-export default function Home() {
+export default async function Home() {
+  // Signed in? Skip the marketing page and go straight to the dashboard.
+  const { userId } = await auth();
+  if (userId) redirect("/dashboard");
+
   return (
     <div className="flex flex-col min-h-screen bg-background text-foreground font-sans selection:bg-primary/20 relative overflow-x-clip">
       {/* Shared Header Component */}
