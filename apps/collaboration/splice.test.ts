@@ -67,3 +67,85 @@ test("a change at the tail leaves a position anchored in the head intact", () =>
   const resolved = Y.createAbsolutePositionFromRelativePosition(anchor, doc);
   expect(resolved?.index).toBe(0);
 });
+
+// --- Room reload / reconnect duplication -------------------------------------
+// Reproduces the mechanism that silently doubled real files on disk: Hocuspocus
+// destroys a room when the last client leaves, but the browser keeps its Y.Doc
+// (memoized per room). If the reloaded room re-seeds by INSERTING plaintext, it
+// mints operations the returning client doesn't have, and Yjs — correctly —
+// merges them alongside the client's originals. Every line appears twice, and
+// compounds on each reconnect. onLoadDocument restores the binary snapshot
+// first to keep operation identity stable across reloads.
+
+const FILE = "\\documentclass{article}\n\\begin{document}\nHi.\n\\end{document}\n";
+const KEY = "file:main.tex";
+
+/** Two-way Yjs sync, the same state-vector exchange the provider performs. */
+function sync(a: Y.Doc, b: Y.Doc): void {
+  Y.applyUpdate(b, Y.encodeStateAsUpdate(a, Y.encodeStateVector(b)));
+  Y.applyUpdate(a, Y.encodeStateAsUpdate(b, Y.encodeStateVector(a)));
+}
+
+test("NEGATIVE CONTROL: re-seeding plaintext into a fresh room doubles content", () => {
+  const room1 = new Y.Doc();
+  room1.getText(KEY).insert(0, FILE); // server load #1
+  const client = new Y.Doc();
+  sync(room1, client);
+  expect(client.getText(KEY).toString()).toBe(FILE);
+
+  // Room unloaded and destroyed; a brand-new Y.Doc seeds from plaintext again.
+  const room2 = new Y.Doc();
+  room2.getText(KEY).insert(0, FILE);
+
+  sync(room2, client); // client still holds room1's operations
+  expect(client.getText(KEY).toString()).toBe(FILE + FILE); // the bug
+});
+
+test("restoring the snapshot across a reload keeps content intact", () => {
+  const room1 = new Y.Doc();
+  room1.getText(KEY).insert(0, FILE);
+  const client = new Y.Doc();
+  sync(room1, client);
+
+  const snapshot = Y.encodeStateAsUpdate(room1); // what onStoreDocument persists
+
+  const room2 = new Y.Doc();
+  Y.applyUpdate(room2, snapshot); // onLoadDocument restores identity
+  spliceText(room2.getText(KEY), FILE); // reconcile vs plaintext -> no-op here
+
+  sync(room2, client);
+  expect(client.getText(KEY).toString()).toBe(FILE);
+  expect(room2.getText(KEY).toString()).toBe(FILE);
+});
+
+test("reload survives repeated reconnects without compounding", () => {
+  const client = new Y.Doc();
+  let snapshot: Uint8Array | null = null;
+
+  for (let cycle = 0; cycle < 4; cycle++) {
+    const room = new Y.Doc();
+    if (snapshot) Y.applyUpdate(room, snapshot);
+    spliceText(room.getText(KEY), FILE);
+    sync(room, client);
+    snapshot = Y.encodeStateAsUpdate(room);
+    expect(room.getText(KEY).toString()).toBe(FILE);
+  }
+  expect(client.getText(KEY).toString()).toBe(FILE);
+});
+
+test("an out-of-band edit made while the room was unloaded still lands", () => {
+  const room1 = new Y.Doc();
+  room1.getText(KEY).insert(0, FILE);
+  const client = new Y.Doc();
+  sync(room1, client);
+  const snapshot = Y.encodeStateAsUpdate(room1);
+
+  // Room unloaded; Eve rewrites the file on disk, then a client rejoins.
+  const edited = FILE.replace("Hi.", "Edited by Eve.");
+  const room2 = new Y.Doc();
+  Y.applyUpdate(room2, snapshot);
+  spliceText(room2.getText(KEY), edited);
+
+  sync(room2, client);
+  expect(client.getText(KEY).toString()).toBe(edited);
+});

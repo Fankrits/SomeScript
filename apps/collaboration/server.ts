@@ -4,11 +4,19 @@ import { Logger } from "@hocuspocus/extension-logger";
 import { Redis } from "@hocuspocus/extension-redis";
 import { verifyToken } from "@clerk/backend";
 import { Pool } from "pg";
+import * as Y from "yjs";
 // Reuse the editor's storage abstraction (local FS / S3) so collaborative edits
 // land in the exact same store the compiler reads. The Dockerfile copies this
 // single file into the image; keep it dependency-light (npm-only imports).
 import { storage, isBinaryContent, type FileNode } from "../editor/lib/storage";
 import { spliceText } from "./splice";
+
+// Binary Y.Doc state, stored next to (not instead of) the plaintext files.
+// Lives under .somescript/ which storage.ts EXCLUDEs from listProjectFiles, so
+// it never shows in the file tree, never gets compiled, and is never itself
+// seeded as a Y.Text. Plaintext remains the source of truth for the compiler;
+// this only carries CRDT *operation identity* — see onLoadDocument.
+const COLLAB_STATE_PATH = ".somescript/collab-state.bin";
 
 const port = Number(process.env.PORT) || 1234;
 const redisUrl = process.env.REDIS_URL;
@@ -137,8 +145,18 @@ const server = new Hocuspocus({
   // attached; once the last one leaves the doc is unloaded and its state is
   // gone. Without this hook a reconnecting client syncs an EMPTY room and then
   // binds its editor to an empty Y.Text — which is exactly how open files got
-  // blanked. Loading from storage here (once per room, server-side, before any
-  // client syncs) is race-free and makes disk the source of truth.
+  // blanked.
+  //
+  // Restoring the binary snapshot FIRST is what makes reloading safe to repeat.
+  // Yjs identifies content by operation identity (clientID + clock), not by the
+  // characters, so re-inserting the same plaintext into a fresh Y.Doc mints
+  // genuinely NEW operations. A client that kept its Y.Doc across the reconnect
+  // (the editor memoizes it per room, so it always does) then merges the old and
+  // new operations — and every line of the file appears TWICE, compounding on
+  // each reconnect and persisting to disk via onStoreDocument. Applying the
+  // snapshot instead replays the ORIGINAL operations, which the returning
+  // client already has, so the merge is a no-op. Verified by
+  // splice.test.ts's "reload" cases.
   async onLoadDocument(data: { documentName: string; document: any }) {
     let projectId: string;
     try {
@@ -147,6 +165,18 @@ const server = new Hocuspocus({
       return;
     }
     const doc = data.document;
+
+    let restored = false;
+    try {
+      const snapshot = await storage.readBinaryFile(projectId, COLLAB_STATE_PATH);
+      if (snapshot.length > 0) {
+        Y.applyUpdate(doc, new Uint8Array(snapshot));
+        restored = true;
+      }
+    } catch {
+      // No snapshot yet (first ever load of this project) — the plaintext pass
+      // below seeds from scratch, which is safe precisely once.
+    }
 
     const flatten = (nodes: FileNode[]): string[] =>
       nodes.flatMap((n) => (n.isDir ? flatten(n.children ?? []) : [n.path]));
@@ -159,6 +189,8 @@ const server = new Hocuspocus({
       return doc;
     }
 
+    let mutated = false;
+    const seenTextPaths = new Set<string>();
     for (const relPath of paths) {
       try {
         const buf = await storage.readBinaryFile(projectId, relPath);
@@ -166,14 +198,46 @@ const server = new Hocuspocus({
         // (PDFs, images, fonts) into a Y.Text.
         if (isBinaryContent(buf)) continue;
         const text = buf.toString("utf-8");
+        seenTextPaths.add(relPath);
         if (text.length === 0) continue;
-        const ytext = doc.getText(`file:${relPath}`);
-        if (ytext.length === 0) ytext.insert(0, text);
+        // Reconciles storage edits made while the room was unloaded (Eve,
+        // /api/files, search-replace). A no-op when the snapshot already
+        // matches, so the common reload path mints no operations at all.
+        if (spliceText(doc.getText(`file:${relPath}`), text)) mutated = true;
       } catch (err) {
         console.error(`[collab] failed to seed ${projectId}/${relPath}:`, err);
       }
     }
-    console.log(`📄 Seeded room ${data.documentName} with ${paths.length} path(s) from storage`);
+
+    // A snapshot outlives the files it describes: anything deleted from storage
+    // while the room was unloaded would otherwise come back from the snapshot
+    // and be re-persisted by onStoreDocument. Clearing it leaves an empty
+    // Y.Text, which onStoreDocument skips.
+    for (const key of doc.share.keys()) {
+      if (!key.startsWith("file:")) continue;
+      const relPath = key.slice("file:".length);
+      if (seenTextPaths.has(relPath)) continue;
+      if (spliceText(doc.getText(key), "")) mutated = true;
+    }
+
+    // Persist the snapshot NOW if this load minted operations. onStoreDocument
+    // can't be relied on here: a load that only seeds (no client edit follows)
+    // never triggers a store, so the snapshot would still be missing on the
+    // next load — which would seed from plaintext all over again and duplicate
+    // against the returning client's retained doc. That is the exact bug this
+    // whole mechanism exists to prevent, so close the window at the source.
+    if (!restored || mutated) {
+      try {
+        await storage.writeFile(projectId, COLLAB_STATE_PATH, Buffer.from(Y.encodeStateAsUpdate(doc)));
+      } catch (err) {
+        console.error(`[collab] failed to persist CRDT snapshot for ${projectId}:`, err);
+      }
+    }
+
+    console.log(
+      `📄 Loaded room ${data.documentName}: ${paths.length} path(s), ` +
+        `snapshot=${restored ? "restored" : "seeded"}${mutated ? "+reconciled" : ""}`
+    );
     return doc;
   },
 
@@ -209,6 +273,19 @@ const server = new Hocuspocus({
       } catch (err) {
         console.error(`[collab] failed to persist ${projectId}/${relPath}:`, err);
       }
+    }
+
+    // The CRDT operation log, so the next room load can restore identity rather
+    // than re-inserting plaintext (see onLoadDocument). Written after the files:
+    // if this fails, the plaintext above is still correct and the next load just
+    // falls back to seeding — degraded, not lost.
+    // ponytail: full state every debounce. Yjs GCs deleted content, so this
+    // tracks document size rather than edit count; switch to appending
+    // incremental updates if snapshot writes ever show up as a cost.
+    try {
+      await storage.writeFile(projectId, COLLAB_STATE_PATH, Buffer.from(Y.encodeStateAsUpdate(doc)));
+    } catch (err) {
+      console.error(`[collab] failed to persist CRDT snapshot for ${projectId}:`, err);
     }
   },
 
@@ -274,6 +351,10 @@ const server = new Hocuspocus({
     // then immediately triggers the store hooks) — an async callback here would
     // let onStoreDocument persist the doc before any splice actually landed.
     // The callback below must therefore be synchronous.
+    // ponytail: silently caps a project-wide search-replace touching >200
+    // files — those extra files are still correctly written to storage by
+    // the caller, just not pushed live until the room reloads. Raise this or
+    // chunk the caller's notify call if that gap is ever reported as real.
     const nextContents = await Promise.all(
       paths.slice(0, 200).map(async (relPath) => {
         try {

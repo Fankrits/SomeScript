@@ -9,9 +9,10 @@ import type * as Y from "yjs";
 // to one big delete+insert spanning both. Upgrade to the `diff` package
 // (already a dependency in apps/editor) for a real multi-hunk diff if peer
 // cursors need to survive that case.
-export function spliceText(ytext: Y.Text, next: string): void {
+/** Returns true when it actually mutated the text (i.e. minted operations). */
+export function spliceText(ytext: Y.Text, next: string): boolean {
   const prev = ytext.toString();
-  if (prev === next) return;
+  if (prev === next) return false;
   let start = 0;
   const maxStart = Math.min(prev.length, next.length);
   while (start < maxStart && prev[start] === next[start]) start++;
@@ -19,11 +20,12 @@ export function spliceText(ytext: Y.Text, next: string): void {
   const maxEnd = maxStart - start;
   while (end < maxEnd && prev[prev.length - 1 - end] === next[next.length - 1 - end]) end++;
   const doc = ytext.doc;
-  if (!doc) return;
+  if (!doc) return false;
   doc.transact(() => {
     const delLen = prev.length - start - end;
     if (delLen > 0) ytext.delete(start, delLen);
     const inserted = next.slice(start, next.length - end);
     if (inserted) ytext.insert(start, inserted);
   });
+  return true;
 }
