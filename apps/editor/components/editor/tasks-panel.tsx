@@ -1,4 +1,4 @@
-import React, { forwardRef, useEffect, useImperativeHandle, useState } from "react";
+import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { Eye, EyeOff, ListTodoIcon, Plus, Trash2, Pencil, GripVertical, ChevronDown, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -27,10 +27,14 @@ interface TasksPanelProps {
   projectId: string;
   onSelectMatch: (filePath: string, line: number) => void;
   onSelectPdfPage: (page: number) => void;
+  /** Best-effort ping so other tabs on this project know to refetch (see use-collaboration.ts). */
+  notifyTasksChanged?: () => void;
 }
 
 export interface TasksPanelHandle {
   addTask: (text: string, source?: Task["source"]) => void;
+  /** Re-fetches from /api/tasks — called when a peer's notifyTasksChanged lands. */
+  refresh: () => void;
 }
 
 function sourceLabel(source: Task["source"]): string | null {
@@ -182,7 +186,7 @@ function TaskItem({
 }
 
 export const TasksPanel = forwardRef<TasksPanelHandle, TasksPanelProps>(
-  ({ projectId, onSelectMatch, onSelectPdfPage }, ref) => {
+  ({ projectId, onSelectMatch, onSelectPdfPage, notifyTasksChanged }, ref) => {
     const [tasks, setTasks] = useState<Task[]>([]);
     const [draft, setDraft] = useState("");
     const [isMounted, setIsMounted] = useState(false);
@@ -203,20 +207,28 @@ export const TasksPanel = forwardRef<TasksPanelHandle, TasksPanelProps>(
     const [descriptionDraft, setDescriptionDraft] = useState("");
     const [sourceDraft, setSourceDraft] = useState<Task["source"]>(undefined);
 
+    // Counter, not a boolean: unlike the mount-only fetch this replaced,
+    // loadTasks is also called imperatively (peer's notifyTasksChanged) and
+    // can overlap with itself — only the response to the MOST RECENT call
+    // should ever be allowed to land in state.
+    const latestRequestRef = useRef(0);
+    const loadTasks = useCallback(() => {
+      const requestId = ++latestRequestRef.current;
+      return fetch(`/api/tasks?projectId=${encodeURIComponent(projectId)}`)
+        .then((r) => r.json())
+        .then((data) => {
+          if (requestId === latestRequestRef.current && Array.isArray(data?.tasks)) {
+            setTasks(data.tasks);
+          }
+        })
+        .catch(() => {});
+    }, [projectId]);
+
     useEffect(() => {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- SSR-safe: DragDropContext reads the DOM and mismatches during hydration, so it only renders after mount
       setIsMounted(true);
-      let cancelled = false;
-      fetch(`/api/tasks?projectId=${encodeURIComponent(projectId)}`)
-        .then((r) => r.json())
-        .then((data) => {
-          if (!cancelled && Array.isArray(data?.tasks)) setTasks(data.tasks);
-        })
-        .catch(() => {});
-      return () => {
-        cancelled = true;
-      };
-    }, [projectId]);
+      void loadTasks();
+    }, [loadTasks]);
 
     const save = (next: Task[]) => {
       setTasks(next);
@@ -226,7 +238,8 @@ export const TasksPanel = forwardRef<TasksPanelHandle, TasksPanelProps>(
         body: JSON.stringify({ projectId, tasks: next }),
       })
         .then((r) => {
-          if (!r.ok) toast.error("Failed to save tasks");
+          if (r.ok) notifyTasksChanged?.();
+          else toast.error("Failed to save tasks");
         })
         .catch(() => toast.error("Failed to save tasks"));
     };
@@ -239,6 +252,7 @@ export const TasksPanel = forwardRef<TasksPanelHandle, TasksPanelProps>(
         setSourceDraft(source);
         setDialogOpen(true);
       },
+      refresh: loadTasks,
     }));
 
     const confirmAttach = () => {

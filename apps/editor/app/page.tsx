@@ -120,7 +120,12 @@ import {
 } from "@/components/ui/select";
 import { pickDetectedMainFile } from "@/lib/main-file";
 import { threadsListKey, activeThreadIdKey } from "@/lib/thread-history";
-import { fileTreeVersionKey } from "@/lib/file-tree-sync";
+import {
+  versionKey,
+  FILE_TREE_VERSION_FIELD,
+  TASK_LIST_VERSION_FIELD,
+  PROJECT_SETTINGS_VERSION_FIELD,
+} from "@/lib/file-tree-sync";
 
 
 // Types
@@ -764,38 +769,53 @@ const Example = () => {
     }
   }, [searchState, currentCode]);
 
-  // Load Settings from LocalStorage on mount
+  // Personal editor preferences — NOT mainFilePath/compilerEngine, those are
+  // project properties and load from the server below. Scoped per project so
+  // switching projects in the same browser can't leak one project's prefs
+  // into another (a single global key here used to do exactly that).
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const stored = localStorage.getItem("somescript-user-settings");
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored);
-        // eslint-disable-next-line react-hooks/set-state-in-effect -- SSR-safe: settings hydrate from localStorage after mount
-        setSettings({
-          mainFilePath: parsed.mainFilePath ?? "main.tex",
-          compilerEngine: parsed.compilerEngine ?? "tectonic",
-          tooltipsEnabled: parsed.tooltipsEnabled ?? (typeof parsed.tooltipsEnabled === "boolean" ? parsed.tooltipsEnabled : true),
-          vimModeEnabled: parsed.vimModeEnabled ?? false,
-          foldingEnabled: parsed.foldingEnabled ?? true,
-          autocompleteEnabled: parsed.autocompleteEnabled ?? true,
-          bracketMatchingEnabled: parsed.bracketMatchingEnabled ?? true,
-        });
-      } catch (e) {
-        console.error("Failed to parse settings", e);
-      }
-    } else {
-      setSettings({
-        mainFilePath: "main.tex",
-        compilerEngine: "tectonic",
-        tooltipsEnabled: true,
-        vimModeEnabled: false,
-        foldingEnabled: true,
-        autocompleteEnabled: true,
-        bracketMatchingEnabled: true,
-      });
+    if (typeof window === "undefined" || !projectId) return;
+    const stored = localStorage.getItem(`somescript-editor-prefs-${projectId}`);
+    if (!stored) return;
+    try {
+      const parsed = JSON.parse(stored);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- SSR-safe: prefs hydrate from localStorage after mount
+      setSettings((prev) => ({
+        ...prev,
+        tooltipsEnabled: typeof parsed.tooltipsEnabled === "boolean" ? parsed.tooltipsEnabled : true,
+        vimModeEnabled: typeof parsed.vimModeEnabled === "boolean" ? parsed.vimModeEnabled : false,
+        foldingEnabled: typeof parsed.foldingEnabled === "boolean" ? parsed.foldingEnabled : true,
+        autocompleteEnabled: typeof parsed.autocompleteEnabled === "boolean" ? parsed.autocompleteEnabled : true,
+        bracketMatchingEnabled: typeof parsed.bracketMatchingEnabled === "boolean" ? parsed.bracketMatchingEnabled : true,
+      }));
+    } catch (e) {
+      console.error("Failed to parse editor preferences", e);
     }
-  }, []);
+  }, [projectId]);
+
+  // Project settings (mainFilePath, compilerEngine) — server-backed so every
+  // collaborator sees the same values instead of each browser guessing its
+  // own; see api/project-settings/route.ts. Live-refreshed by the
+  // remoteProjectSettingsVersionKey watch further down.
+  const loadProjectSettings = useCallback(async () => {
+    try {
+      const res = await fetch(withProject("/api/project-settings"));
+      const data = await res.json();
+      if (data.settings) {
+        setSettings((prev) => ({
+          ...prev,
+          mainFilePath: data.settings.mainFilePath ?? prev.mainFilePath,
+          compilerEngine: data.settings.compilerEngine ?? prev.compilerEngine,
+        }));
+      }
+    } catch (err) {
+      console.error("Failed to load project settings", err);
+    }
+  }, [withProject]);
+
+  useEffect(() => {
+    void loadProjectSettings();
+  }, [loadProjectSettings]);
 
   // Restore sidebar open state from localStorage, then reveal the editor (hide skeleton).
   useEffect(() => {
@@ -837,10 +857,34 @@ const Example = () => {
 
   const saveSettings = useCallback((newSettings: typeof settings) => {
     setSettings(newSettings);
-    if (typeof window !== "undefined") {
-      localStorage.setItem("somescript-user-settings", JSON.stringify(newSettings));
+
+    if (typeof window !== "undefined" && projectId) {
+      localStorage.setItem(
+        `somescript-editor-prefs-${projectId}`,
+        JSON.stringify({
+          tooltipsEnabled: newSettings.tooltipsEnabled,
+          vimModeEnabled: newSettings.vimModeEnabled,
+          foldingEnabled: newSettings.foldingEnabled,
+          autocompleteEnabled: newSettings.autocompleteEnabled,
+          bracketMatchingEnabled: newSettings.bracketMatchingEnabled,
+        })
+      );
     }
-  }, []);
+
+    fetch("/api/project-settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId,
+        settings: { mainFilePath: newSettings.mainFilePath, compilerEngine: newSettings.compilerEngine },
+      }),
+    })
+      .then((r) => {
+        if (r.ok) collab.notifyProjectSettingsChanged();
+        else toast.error("Failed to save project settings");
+      })
+      .catch(() => toast.error("Failed to save project settings"));
+  }, [projectId, collab.notifyProjectSettingsChanged]);
 
   // Recursively collect all .tex files in project
   const getTexFiles = useCallback((nodes: FileNode[]): string[] => {
@@ -1454,7 +1498,7 @@ const Example = () => {
   }, [withProject]);
 
   const remoteFileTreeVersionKey = useMemo(
-    () => fileTreeVersionKey(collab.collaborators),
+    () => versionKey(collab.collaborators, FILE_TREE_VERSION_FIELD),
     [collab.collaborators]
   );
   const lastRemoteFileTreeVersionKey = useRef("");
@@ -1465,6 +1509,36 @@ const Example = () => {
     if (!remoteFileTreeVersionKey || previousKey === remoteFileTreeVersionKey) return;
     void refreshWorkspace();
   }, [refreshWorkspace, remoteFileTreeVersionKey]);
+
+  // Same shape as the file-tree watch above, for the tasks panel's
+  // notifyTasksChanged (use-collaboration.ts) — it has no CRDT to sync via,
+  // so a peer's save can only be surfaced as "go refetch."
+  const remoteTaskListVersionKey = useMemo(
+    () => versionKey(collab.collaborators, TASK_LIST_VERSION_FIELD),
+    [collab.collaborators]
+  );
+  const lastRemoteTaskListVersionKey = useRef("");
+
+  useEffect(() => {
+    const previousKey = lastRemoteTaskListVersionKey.current;
+    lastRemoteTaskListVersionKey.current = remoteTaskListVersionKey;
+    if (!remoteTaskListVersionKey || previousKey === remoteTaskListVersionKey) return;
+    tasksPanelRef.current?.refresh();
+  }, [remoteTaskListVersionKey]);
+
+  // Same shape again, for mainFilePath/compilerEngine (api/project-settings/route.ts).
+  const remoteProjectSettingsVersionKey = useMemo(
+    () => versionKey(collab.collaborators, PROJECT_SETTINGS_VERSION_FIELD),
+    [collab.collaborators]
+  );
+  const lastRemoteProjectSettingsVersionKey = useRef("");
+
+  useEffect(() => {
+    const previousKey = lastRemoteProjectSettingsVersionKey.current;
+    lastRemoteProjectSettingsVersionKey.current = remoteProjectSettingsVersionKey;
+    if (!remoteProjectSettingsVersionKey || previousKey === remoteProjectSettingsVersionKey) return;
+    void loadProjectSettings();
+  }, [remoteProjectSettingsVersionKey]);
 
   // Reload current file content (defined before handleReplaceAll, which uses it)
   const refreshCurrentFile = useCallback(async () => {
@@ -2910,6 +2984,7 @@ const Example = () => {
             projectId={projectId}
             onSelectMatch={handleSelectMatch}
             onSelectPdfPage={handleSelectPdfPage}
+            notifyTasksChanged={collab.notifyTasksChanged}
           />
         </div>
       </div>

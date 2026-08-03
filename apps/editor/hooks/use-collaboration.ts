@@ -3,7 +3,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as Y from "yjs";
 import { HocuspocusProvider } from "@hocuspocus/provider";
-import { createFileTreeVersion, FILE_TREE_VERSION_FIELD } from "@/lib/file-tree-sync";
+import {
+  createVersionToken,
+  FILE_TREE_VERSION_FIELD,
+  TASK_LIST_VERSION_FIELD,
+  PROJECT_SETTINGS_VERSION_FIELD,
+} from "@/lib/file-tree-sync";
 
 export interface CollaboratorCursor {
   anchor: unknown;
@@ -23,6 +28,8 @@ export interface Collaborator {
   cursor?: CollaboratorCursor | null;
   cursorLine?: number;
   fileTreeVersion?: string;
+  taskListVersion?: string;
+  projectSettingsVersion?: string;
 }
 
 export type CollabStatus = "disconnected" | "connecting" | "connected" | "unauthorized";
@@ -90,7 +97,9 @@ function normalizeCursorLine(value: unknown): number | undefined {
   return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : undefined;
 }
 
-function normalizeFileTreeVersion(value: unknown): string | undefined {
+// Shared by every *Version field — all opaque short tokens (see
+// createVersionToken), not meaningful strings on their own.
+function normalizeVersionToken(value: unknown): string | undefined {
   return typeof value === "string" && value.length <= 128 ? value : undefined;
 }
 
@@ -191,7 +200,9 @@ export function useCollaboration({
             selection: normalizeSelection(record ? record.selection : undefined),
             cursor: normalizeCursor(record ? record.cursor : undefined),
             cursorLine: normalizeCursorLine(record ? record.cursorLine : undefined),
-            fileTreeVersion: normalizeFileTreeVersion(record ? record[FILE_TREE_VERSION_FIELD] : undefined),
+            fileTreeVersion: normalizeVersionToken(record ? record[FILE_TREE_VERSION_FIELD] : undefined),
+            taskListVersion: normalizeVersionToken(record ? record[TASK_LIST_VERSION_FIELD] : undefined),
+            projectSettingsVersion: normalizeVersionToken(record ? record[PROJECT_SETTINGS_VERSION_FIELD] : undefined),
           });
         }
       });
@@ -249,7 +260,28 @@ export function useCollaboration({
   const notifyFileTreeChanged = useCallback(() => {
     providerRef.current?.awareness?.setLocalStateField(
       FILE_TREE_VERSION_FIELD,
-      createFileTreeVersion()
+      createVersionToken()
+    );
+  }, []);
+
+  // Tasks have no CRDT of their own (tasks.json is a whole-list overwrite —
+  // see api/tasks/route.ts) — this is the cheap fix for peers not seeing
+  // each other's tasks live: bump a version token on save, other tabs watch
+  // for it (page.tsx) and refetch. Still last-write-wins on a true race
+  // between two saves; only kills the staleness window, not the conflict.
+  const notifyTasksChanged = useCallback(() => {
+    providerRef.current?.awareness?.setLocalStateField(
+      TASK_LIST_VERSION_FIELD,
+      createVersionToken()
+    );
+  }, []);
+
+  // Same shape as notifyTasksChanged, for mainFilePath/compilerEngine
+  // (api/project-settings/route.ts) — also a whole-object overwrite, no CRDT.
+  const notifyProjectSettingsChanged = useCallback(() => {
+    providerRef.current?.awareness?.setLocalStateField(
+      PROJECT_SETTINGS_VERSION_FIELD,
+      createVersionToken()
     );
   }, []);
 
@@ -265,6 +297,8 @@ export function useCollaboration({
       setActiveFile,
       setCursor,
       notifyFileTreeChanged,
+      notifyTasksChanged,
+      notifyProjectSettingsChanged,
     }),
     [
       ydoc,
@@ -277,6 +311,8 @@ export function useCollaboration({
       setActiveFile,
       setCursor,
       notifyFileTreeChanged,
+      notifyTasksChanged,
+      notifyProjectSettingsChanged,
     ]
   );
 }
