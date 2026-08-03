@@ -93,6 +93,8 @@ const LayoutIconRight = ({ active }: { active: boolean }) => (
 import CodeMirror, { EditorView, type ViewUpdate } from "@uiw/react-codemirror";
 import { undo, redo, undoDepth, redoDepth, selectAll } from "@codemirror/commands";
 import { wrapInsert, activeFormats } from "@/lib/latex-insert";
+import { getLatexOutline } from "@/lib/latex-outline";
+import { OutlinePanel } from "@/components/editor/outline-panel";
 import { EditorToolbar } from "@/components/editor/editor-toolbar";
 import { RemoteCursorAvatars } from "@/components/editor/remote-cursor-avatars";
 import { CommandPalette } from "@/components/editor/command-palette";
@@ -675,6 +677,15 @@ const Example = () => {
 
   const contentBound = !!bound && bound.path === selectedPath;
   const boundYText = contentBound ? bound.ytext : undefined;
+
+  // Same source CodeMirror renders (see the `value` prop below) — collaboration's
+  // Y.Text once bound, otherwise the local buffer — so the outline never drifts
+  // from what's actually on screen.
+  const activeFileContent = contentBound && boundYText ? boundYText.toString() : editedCode;
+  const outline = useMemo(
+    () => (currentLanguage === "latex" ? getLatexOutline(activeFileContent) : []),
+    [activeFileContent, currentLanguage]
+  );
 
   // Broadcast which file we're viewing for peer presence (file-tree dots,
   // header avatars, jump target) — independent of whether it's a bound text file.
@@ -2604,6 +2615,18 @@ const Example = () => {
               onDuplicate={handleFileDuplicate}
               onDownload={handleFileDownload}
               onUploadFiles={handleUploadFiles}
+            />
+          </div>
+          <div className="border-b border-t px-3 py-2 bg-muted/10 flex items-center justify-between shrink-0">
+            <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+              Outline
+            </span>
+          </div>
+          <div className="flex-1 overflow-auto p-1">
+            <OutlinePanel
+              outline={outline}
+              isLatex={currentLanguage === "latex"}
+              onSelect={(line) => setPendingLineJump({ path: selectedPath, line })}
             />
           </div>
         </div>
