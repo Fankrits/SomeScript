@@ -1,9 +1,15 @@
 import { SignIn } from "@clerk/nextjs";
+import { auth } from "@clerk/nextjs/server";
 import Image from "next/image";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 
-export default function SignInPage() {
+export default async function SignInPage() {
+  // Already signed in? Skip the form and go straight to the dashboard.
+  const { userId } = await auth();
+  if (userId) redirect("/dashboard");
+
   return (
     <div className="flex min-h-screen bg-background text-foreground font-sans relative">
       {/* Background decoration */}
