@@ -1,11 +1,19 @@
-import type { IncomingMessage, ServerResponse } from "http";
-import { Hocuspocus } from "@hocuspocus/server";
+import { Hocuspocus, type WebSocketLike } from "@hocuspocus/server";
 import { Logger } from "@hocuspocus/extension-logger";
 import { Redis } from "@hocuspocus/extension-redis";
 import { verifyToken } from "@clerk/backend";
 import { Pool } from "pg";
 import { createHash } from "crypto";
 import * as Y from "yjs";
+// @hocuspocus/server v4 split networking out of the Hocuspocus class into a
+// separate `Server` wrapper that only runs on Node (it hardcodes
+// crossws/adapters/node, which throws under Bun). This service runs on Bun
+// (`bun run server.ts`), so it drives the Bun-native path the Hocuspocus
+// maintainers document for non-Node runtimes instead: the `Hocuspocus` class
+// directly, bridged to Bun.serve via crossws's own Bun adapter. Reference:
+// https://github.com/ueberdosis/hocuspocus/blob/main/playground/backend/src/bun.ts
+import crossws from "crossws/adapters/bun";
+import type { Peer, Message } from "crossws";
 // Reuse the editor's storage abstraction (local FS / S3) so collaborative edits
 // land in the exact same store the compiler reads. The Dockerfile copies this
 // single file into the image; keep it dependency-light (npm-only imports).
@@ -97,8 +105,10 @@ if (redisUrl || process.env.REDIS_HOST) {
   );
 }
 
-const server = new Hocuspocus({
-  port,
+// The Hocuspocus class itself has no `port`/`.listen()` in v4 — those moved to
+// the Node-only `Server` wrapper this file deliberately doesn't use (see the
+// crossws import note above). Networking is wired up below via Bun.serve.
+const hocuspocus = new Hocuspocus({
   name: "somescript-collaboration",
   extensions,
 
@@ -295,91 +305,103 @@ const server = new Hocuspocus({
       console.error(`[collab] failed to persist CRDT snapshot for ${projectId}:`, err);
     }
   },
-
-  // Internal HTTP endpoint for out-of-band writes (Eve's tools, /api/files) to
-  // push a change into the live CRDT. Those writers hit storage directly —
-  // correct, since Eve/API routes must keep working with collab disabled or
-  // down — but without this, nothing tells an already-loaded room that
-  // storage moved out from under it, and the next debounce would silently
-  // overwrite the fresh write with the stale in-memory text (this is exactly
-  // how a prior collaboration bug destroyed a real project file).
-  //
-  // Trusted service-to-service call, not a per-user request — auth is a
-  // shared secret, not a Clerk token, and there is deliberately no per-user
-  // ownership check here (the caller already did one before writing storage).
-  // Fails closed: COLLAB_INTERNAL_SECRET must be set, matching the
-  // onAuthenticate posture for CLERK_SECRET_KEY above.
-  async onRequest(data: { request: IncomingMessage; response: ServerResponse; instance: Hocuspocus }) {
-    const { request, response, instance } = data;
-    if (request.method !== "POST" || request.url !== "/apply") return; // let the default 200 OK fall through
-
-    const fail = (status: number, message: string) => {
-      response.writeHead(status, { "Content-Type": "application/json" });
-      response.end(JSON.stringify({ error: message }));
-      throw undefined; // Hocuspocus convention: message-less throw stops here without logging an error
-    };
-
-    if (!collabInternalSecret) return fail(503, "Collaboration server misconfigured: COLLAB_INTERNAL_SECRET is not set");
-    if (request.headers["x-collab-secret"] !== collabInternalSecret) return fail(401, "Unauthorized");
-
-    let body: unknown;
-    try {
-      const chunks: Buffer[] = [];
-      let size = 0;
-      for await (const chunk of request) {
-        size += chunk.length;
-        if (size > 262_144) throw new Error("Body too large");
-        chunks.push(chunk);
-      }
-      body = JSON.parse(Buffer.concat(chunks).toString("utf-8"));
-    } catch {
-      return fail(400, "Invalid JSON body");
-    }
-
-    const { projectId, paths } = (body ?? {}) as { projectId?: unknown; paths?: unknown };
-    if (typeof projectId !== "string" || !Array.isArray(paths) || !paths.every((p) => typeof p === "string")) {
-      return fail(400, "Expected { projectId: string, paths: string[] }");
-    }
-    if (projectId !== "default" && !UUID_RE.test(projectId)) return fail(400, "Invalid projectId");
-
-    // Read every path from storage FIRST. DirectConnection.transact() does not
-    // await its callback (it calls `transaction(this.document)` fire-and-forget,
-    // then immediately triggers the store hooks) — an async callback here would
-    // let onStoreDocument persist the doc before any splice actually landed.
-    // The callback below must therefore be synchronous.
-    // ponytail: silently caps a project-wide search-replace touching >200
-    // files — those extra files are still correctly written to storage by
-    // the caller, just not pushed live until the room reloads. Raise this or
-    // chunk the caller's notify call if that gap is ever reported as real.
-    const nextContents = await Promise.all(
-      paths.slice(0, 200).map(async (relPath) => {
-        try {
-          const buf = await storage.readBinaryFile(projectId, relPath);
-          return { relPath, text: isBinaryContent(buf) ? null : buf.toString("utf-8") };
-        } catch {
-          return { relPath, text: "" }; // not found on disk -> the write was a delete
-        }
-      })
-    );
-
-    const documentName = `project:${projectId}`;
-    const connection = await instance.openDirectConnection(documentName, {});
-    try {
-      await connection.transact((doc: any) => {
-        for (const { relPath, text } of nextContents) {
-          if (text === null) continue; // binary — never force-decode into a Y.Text
-          spliceText(doc.getText(`file:${relPath}`), text);
-        }
-      });
-    } finally {
-      await connection.disconnect();
-    }
-
-    response.writeHead(200, { "Content-Type": "application/json" });
-    response.end(JSON.stringify({ ok: true }));
-    throw undefined;
-  },
 });
+
+// Internal HTTP endpoint for out-of-band writes (Eve's tools, /api/files) to
+// push a change into the live CRDT. Those writers hit storage directly —
+// correct, since Eve/API routes must keep working with collab disabled or
+// down — but without this, nothing tells an already-loaded room that
+// storage moved out from under it, and the next debounce would silently
+// overwrite the fresh write with the stale in-memory text (this is exactly
+// how a prior collaboration bug destroyed a real project file).
+//
+// Trusted service-to-service call, not a per-user request — auth is a
+// shared secret, not a Clerk token, and there is deliberately no per-user
+// ownership check here (the caller already did one before writing storage).
+// Fails closed: COLLAB_INTERNAL_SECRET must be set, matching the
+// onAuthenticate posture for CLERK_SECRET_KEY above.
+//
+// Lives outside the Hocuspocus config on purpose: the `onRequest` hook's
+// payload is still Node's IncomingMessage/ServerResponse even in v4 (it's
+// only ever invoked by the Node-only `Server` wrapper this file doesn't use),
+// so this route is wired directly into the Bun.serve fetch handler below
+// instead, using web-standard Request/Response.
+async function handleApplyRequest(request: Request): Promise<Response> {
+  const fail = (status: number, message: string) =>
+    new Response(JSON.stringify({ error: message }), {
+      status,
+      headers: { "Content-Type": "application/json" },
+    });
+
+  if (!collabInternalSecret) return fail(503, "Collaboration server misconfigured: COLLAB_INTERNAL_SECRET is not set");
+  if (request.headers.get("x-collab-secret") !== collabInternalSecret) return fail(401, "Unauthorized");
+
+  let body: unknown;
+  try {
+    // Manual capped read (not request.json()) so an oversized body is rejected
+    // by actual bytes received, not a Content-Length header the caller could
+    // omit or lie about — same bound the old for-await-of-request loop kept.
+    const reader = request.body?.getReader();
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    if (reader) {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        size += value.length;
+        if (size > 262_144) {
+          await reader.cancel("Body too large").catch(() => {});
+          throw new Error("Body too large");
+        }
+        chunks.push(value);
+      }
+    }
+    body = JSON.parse(Buffer.concat(chunks).toString("utf-8"));
+  } catch {
+    return fail(400, "Invalid JSON body");
+  }
+
+  const { projectId, paths } = (body ?? {}) as { projectId?: unknown; paths?: unknown };
+  if (typeof projectId !== "string" || !Array.isArray(paths) || !paths.every((p) => typeof p === "string")) {
+    return fail(400, "Expected { projectId: string, paths: string[] }");
+  }
+  if (projectId !== "default" && !UUID_RE.test(projectId)) return fail(400, "Invalid projectId");
+
+  // Read every path from storage FIRST. DirectConnection.transact() does not
+  // await its callback (it calls `transaction(this.document)` fire-and-forget,
+  // then immediately triggers the store hooks) — an async callback here would
+  // let onStoreDocument persist the doc before any splice actually landed.
+  // The callback below must therefore be synchronous.
+  // ponytail: silently caps a project-wide search-replace touching >200
+  // files — those extra files are still correctly written to storage by
+  // the caller, just not pushed live until the room reloads. Raise this or
+  // chunk the caller's notify call if that gap is ever reported as real.
+  const nextContents = await Promise.all(
+    paths.slice(0, 200).map(async (relPath) => {
+      try {
+        const buf = await storage.readBinaryFile(projectId, relPath);
+        return { relPath, text: isBinaryContent(buf) ? null : buf.toString("utf-8") };
+      } catch {
+        return { relPath, text: "" }; // not found on disk -> the write was a delete
+      }
+    })
+  );
+
+  const documentName = `project:${projectId}`;
+  const connection = await hocuspocus.openDirectConnection(documentName, {});
+  try {
+    await connection.transact((doc: any) => {
+      for (const { relPath, text } of nextContents) {
+        if (text === null) continue; // binary — never force-decode into a Y.Text
+        spliceText(doc.getText(`file:${relPath}`), text);
+      }
+    });
+  } finally {
+    await connection.disconnect();
+  }
+
+  return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
+}
 
 process.on("uncaughtException", (err: any) => {
   if (err?.code === "EADDRINUSE" || err?.syscall === "listen" || String(err?.message || "").includes("in use")) {
@@ -391,9 +413,66 @@ process.on("uncaughtException", (err: any) => {
   }
 });
 
-server.listen(port).then(() => {
+// Tracks each socket's ClientConnection by its crossws Peer. A WeakMap (not a
+// property bolted onto `peer`, which is what Hocuspocus's own Bun example
+// does with an `as any` cast) keeps this typed and lets entries drop for free
+// once a peer is garbage-collected after close.
+const connections = new WeakMap<Peer, ReturnType<typeof hocuspocus.handleConnection>>();
+
+const ws = crossws({
+  hooks: {
+    open(peer: Peer) {
+      // peer.websocket is a live Partial<WebSocket> that hits Bun's Proxy
+      // `this`-binding issue with ServerWebSocket when handed to code that
+      // doesn't call through the peer itself (the Hocuspocus team hit this
+      // exact issue writing playground/backend/src/bun.ts) — bridge through
+      // peer's own bound send/close instead of the raw websocket.
+      const wsLike: WebSocketLike = {
+        get readyState() {
+          return peer.websocket.readyState ?? 3; // 3 = CLOSED
+        },
+        send: (data) => peer.send(data),
+        close: (code, reason) => peer.close(code, reason),
+      };
+      connections.set(peer, hocuspocus.handleConnection(wsLike, peer.request));
+    },
+    message(peer: Peer, message: Message) {
+      connections.get(peer)?.handleMessage(message.uint8Array());
+    },
+    close(peer: Peer, event) {
+      // Hocuspocus's handleClose wants the DOM CloseEvent shape (code/reason
+      // required); crossws's close details make both optional. 1005 is the
+      // WebSocket spec's own "no status was actually provided" code.
+      connections.get(peer)?.handleClose({
+        code: event.code ?? 1005,
+        reason: event.reason ?? "",
+        wasClean: true,
+      } as CloseEvent);
+    },
+    error(peer: Peer, error) {
+      console.error("[collab] WebSocket error for peer:", peer.id, error);
+    },
+  },
+});
+
+try {
+  Bun.serve({
+    port,
+    websocket: ws.websocket,
+    async fetch(request, server) {
+      if (request.headers.get("upgrade") === "websocket") {
+        return ws.handleUpgrade(request, server);
+      }
+      if (request.method === "POST" && new URL(request.url).pathname === "/apply") {
+        return handleApplyRequest(request);
+      }
+      return new Response("Welcome to Hocuspocus!");
+    },
+  });
   console.log(`🚀 Hocuspocus collaboration server listening on port ${port}`);
-}).catch((err: any) => {
+} catch (err: any) {
+  // Bun.serve throws synchronously (not a rejected promise) on a bind
+  // failure — confirmed empirically: {code: "EADDRINUSE", syscall: "listen"}.
   if (err?.code === "EADDRINUSE" || err?.syscall === "listen" || String(err?.message || "").includes("in use")) {
     console.log(`[COLLABORATION] Port ${port} is already in use (e.g. running in Docker). Skipping local collaboration startup.`);
     setInterval(() => {}, 100000);
@@ -401,4 +480,4 @@ server.listen(port).then(() => {
     console.error("Failed to start Hocuspocus server:", err);
     process.exit(1);
   }
-});
+}
