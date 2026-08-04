@@ -17,7 +17,10 @@ export function getPool(): Pool {
   if (!globalForPool.authzPool) {
     const url = process.env.DATABASE_URL;
     if (!url) throw new ApiError(500, "Internal server error"); // DATABASE_URL missing — logged via apiError
-    globalForPool.authzPool = new Pool({ connectionString: url, max: 5 });
+    // Small on purpose: this pool is per serverless instance, which serves
+    // ~one request at a time. A big pool here just multiplies idle connections
+    // across warm instances and exhausts Postgres. See apps/web/lib/db.ts.
+    globalForPool.authzPool = new Pool({ connectionString: url, max: 2 });
   }
   return globalForPool.authzPool;
 }

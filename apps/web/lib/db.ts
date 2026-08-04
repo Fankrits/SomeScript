@@ -15,8 +15,11 @@ const pool =
   globalForDb.conn ??
   new Pool({
     connectionString,
-    // Add connection pool config suitable for serverless
-    max: 10,
+    // A serverless instance serves ~one request at a time, so a large pool is
+    // mostly idle reservations — and each warm instance claims its own, so a
+    // handful of instances at max:10 exhausts a default Postgres. Keep it small
+    // and scale by adding a pooler (PgBouncer) if this ever isn't enough.
+    max: 2,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 2000,
   });
