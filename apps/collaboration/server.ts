@@ -4,6 +4,7 @@ import { Logger } from "@hocuspocus/extension-logger";
 import { Redis } from "@hocuspocus/extension-redis";
 import { verifyToken } from "@clerk/backend";
 import { Pool } from "pg";
+import { createHash } from "crypto";
 import * as Y from "yjs";
 // Reuse the editor's storage abstraction (local FS / S3) so collaborative edits
 // land in the exact same store the compiler reads. The Dockerfile copies this
@@ -56,16 +57,18 @@ async function assertProjectAccess(projectId: string, workspace: string): Promis
   }
 }
 
-// Applying an out-of-band write (Eve, /api/files) re-reads the same storage
-// onStoreDocument is about to write back — so the very next debounce after a
-// splice would immediately persist byte-identical content. Harmless, but
-// tracking each room+path's last-written text lets onStoreDocument skip
-// truly untouched files, which is what stops it from re-persisting a STALE
-// room copy over a file it never saw change (see onStoreDocument below).
-// ponytail: process-memory map, fine for a single instance. If this service
-// ever runs >1 replica, either extension-redis's shared state or moving this
-// check onto the Document itself (a custom field) would need to replace it.
-const lastWrittenText = new Map<string, string>();
+// Skip re-persisting files that haven't changed since we last wrote them — this
+// is what stops a debounce from writing a STALE room copy over a file it never
+// saw change (an out-of-band write from Eve, /api/files, or /apply). The record
+// of "last written" lives INSIDE the Y.Doc as a hidden map (path -> content
+// hash), NOT in process memory, so it rides the same extension-redis sync every
+// other shared type does: with >1 replica, replica B sees what replica A already
+// persisted instead of clobbering it. Keyed on a hash, not the text, so it costs
+// a few bytes per file rather than doubling the document.
+const LAST_WRITTEN_MAP = "__lastWritten";
+function contentHash(text: string): string {
+  return createHash("sha256").update(text).digest("hex");
+}
 
 let redisHost = process.env.REDIS_HOST || "127.0.0.1";
 let redisPort = Number(process.env.REDIS_PORT) || 6379;
@@ -252,6 +255,10 @@ const server = new Hocuspocus({
       return;
     }
     const doc = data.document;
+    // Shared, doc-resident record of what each file was last written as (see
+    // LAST_WRITTEN_MAP). Skipped by the "file:" prefix check in every file loop,
+    // so it never seeds as a Y.Text or persists as a file of its own.
+    const lastWritten = doc.getMap(LAST_WRITTEN_MAP);
     for (const key of doc.share.keys()) {
       if (!key.startsWith("file:")) continue;
       const relPath = key.slice("file:".length);
@@ -265,11 +272,11 @@ const server = new Hocuspocus({
       // stomps out-of-band writes (Eve, /api/files) applied via /apply below —
       // editing any file in the room would persist every other file's stale
       // room copy straight back over the change that just landed on disk.
-      const mapKey = `${data.documentName}:${key}`;
-      if (lastWrittenText.get(mapKey) === text) continue;
+      const hash = contentHash(text);
+      if (lastWritten.get(relPath) === hash) continue;
       try {
         await storage.writeFile(projectId, relPath, text);
-        lastWrittenText.set(mapKey, text);
+        lastWritten.set(relPath, hash);
       } catch (err) {
         console.error(`[collab] failed to persist ${projectId}/${relPath}:`, err);
       }
@@ -286,17 +293,6 @@ const server = new Hocuspocus({
       await storage.writeFile(projectId, COLLAB_STATE_PATH, Buffer.from(Y.encodeStateAsUpdate(doc)));
     } catch (err) {
       console.error(`[collab] failed to persist CRDT snapshot for ${projectId}:`, err);
-    }
-  },
-
-  // Releases this room's dirty-tracking entries — otherwise lastWrittenText
-  // grows for as long as the process lives, one entry per file ever touched
-  // in any room. Safe to drop: the next room load re-seeds correctness from
-  // storage regardless of what's in the map.
-  async afterUnloadDocument(data: { documentName: string }) {
-    const prefix = `${data.documentName}:`;
-    for (const key of lastWrittenText.keys()) {
-      if (key.startsWith(prefix)) lastWrittenText.delete(key);
     }
   },
 
