@@ -401,18 +401,31 @@ class S3StorageProvider implements StorageProvider {
     );
   }
 
+  // S3 ListObjectsV2 caps each response at 1000 keys. Without following the
+  // continuation token, a project past 1000 files silently loses the rest —
+  // dropped from the file tree and from compiles, and only partially
+  // moved/copied/deleted, with no error. Every listing in this class routes
+  // through here so the truncation can't reappear one method at a time.
+  private async listAllObjects(prefix: string): Promise<{ Key?: string }[]> {
+    const all: { Key?: string }[] = [];
+    let ContinuationToken: string | undefined;
+    do {
+      const res = await this.client.send(
+        new ListObjectsV2Command({ Bucket: this.bucket, Prefix: prefix, ContinuationToken })
+      );
+      if (res.Contents) all.push(...res.Contents);
+      ContinuationToken = res.IsTruncated ? res.NextContinuationToken : undefined;
+    } while (ContinuationToken);
+    return all;
+  }
+
   async move(projectId: string, oldPath: string, newPath: string): Promise<void> {
     const oldPrefix = this.getS3Key(projectId, oldPath);
     const newPrefix = this.getS3Key(projectId, newPath);
 
-    const listResponse = await this.client.send(
-      new ListObjectsV2Command({
-        Bucket: this.bucket,
-        Prefix: oldPrefix,
-      })
-    );
+    const objects = await this.listAllObjects(oldPrefix);
 
-    if (!listResponse.Contents || listResponse.Contents.length === 0) {
+    if (objects.length === 0) {
       try {
         await this.client.send(
           new CopyObjectCommand({
@@ -433,7 +446,7 @@ class S3StorageProvider implements StorageProvider {
       return;
     }
 
-    for (const object of listResponse.Contents) {
+    for (const object of objects) {
       if (!object.Key) continue;
       const relativePart = object.Key.substring(oldPrefix.length);
       const destKey = newPrefix + relativePart;
@@ -459,14 +472,9 @@ class S3StorageProvider implements StorageProvider {
     const srcPrefix = this.getS3Key(projectId, srcPath);
     const destPrefix = this.getS3Key(projectId, destPath);
 
-    const listResponse = await this.client.send(
-      new ListObjectsV2Command({
-        Bucket: this.bucket,
-        Prefix: `${srcPrefix}/`,
-      })
-    );
+    const objects = await this.listAllObjects(`${srcPrefix}/`);
 
-    if (!listResponse.Contents || listResponse.Contents.length === 0) {
+    if (objects.length === 0) {
       await this.client.send(
         new CopyObjectCommand({
           Bucket: this.bucket,
@@ -477,7 +485,7 @@ class S3StorageProvider implements StorageProvider {
       return;
     }
 
-    for (const object of listResponse.Contents) {
+    for (const object of objects) {
       if (!object.Key) continue;
       const relativePart = object.Key.substring(srcPrefix.length);
       const destKey = destPrefix + relativePart;
@@ -496,18 +504,13 @@ class S3StorageProvider implements StorageProvider {
     const srcPrefix = `projects/${srcProjectId || "default"}/`;
     const destPrefix = `projects/${destProjectId || "default"}/`;
 
-    const listResponse = await this.client.send(
-      new ListObjectsV2Command({
-        Bucket: this.bucket,
-        Prefix: srcPrefix,
-      })
-    );
+    const objects = await this.listAllObjects(srcPrefix);
 
-    if (!listResponse.Contents || listResponse.Contents.length === 0) {
+    if (objects.length === 0) {
       throw new Error(`No files found for project ${srcProjectId}`);
     }
 
-    for (const object of listResponse.Contents) {
+    for (const object of objects) {
       if (!object.Key) continue;
       const relativePart = object.Key.substring(srcPrefix.length);
       if (!relativePart || relativePart === "main.pdf") continue;
@@ -526,14 +529,9 @@ class S3StorageProvider implements StorageProvider {
   async delete(projectId: string, fileRelativePath: string): Promise<void> {
     const prefix = this.getS3Key(projectId, fileRelativePath);
 
-    const listResponse = await this.client.send(
-      new ListObjectsV2Command({
-        Bucket: this.bucket,
-        Prefix: prefix,
-      })
-    );
+    const objects = await this.listAllObjects(prefix);
 
-    if (!listResponse.Contents || listResponse.Contents.length === 0) {
+    if (objects.length === 0) {
       await this.client.send(
         new DeleteObjectCommand({
           Bucket: this.bucket,
@@ -543,7 +541,7 @@ class S3StorageProvider implements StorageProvider {
       return;
     }
 
-    for (const object of listResponse.Contents) {
+    for (const object of objects) {
       if (!object.Key) continue;
       await this.client.send(
         new DeleteObjectCommand({
@@ -556,19 +554,14 @@ class S3StorageProvider implements StorageProvider {
 
   async listProjectFiles(projectId: string): Promise<FileNode[]> {
     const prefix = `projects/${projectId || "default"}/`;
-    const response = await this.client.send(
-      new ListObjectsV2Command({
-        Bucket: this.bucket,
-        Prefix: prefix,
-      })
-    );
+    const objects = await this.listAllObjects(prefix);
 
-    if (!response.Contents) return [];
+    if (objects.length === 0) return [];
 
     // Hide a compiled main.pdf next to main.tex, but not a genuine PDF figure
     // asset — those never share a directory + basename with a .tex file.
     const texStems = new Set(
-      response.Contents
+      objects
         .map((o) => o.Key?.substring(prefix.length) ?? "")
         .filter((p) => p.endsWith(".tex"))
         .map((p) => p.slice(0, -4))
@@ -577,7 +570,7 @@ class S3StorageProvider implements StorageProvider {
     const fileNodes: FileNode[] = [];
     const dirMap = new Map<string, FileNode>();
 
-    for (const object of response.Contents) {
+    for (const object of objects) {
       if (!object.Key) continue;
 
       // Get path relative to the project folder prefix
