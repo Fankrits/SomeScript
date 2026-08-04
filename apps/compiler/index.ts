@@ -3,6 +3,7 @@ import { existsSync } from "fs";
 import fs from "fs/promises";
 import path from "path";
 import Redis from "ioredis";
+import { createCompileGate } from "./compile-gate";
 
 
 const PORT = process.env.PORT || 3001;
@@ -85,6 +86,20 @@ async function setCachedCompile(hash: string, result: CachedCompileResult): Prom
 }
 
 
+// Where compile workspaces live. Overridable so a Railway volume can be mounted
+// at a fixed path (e.g. WORKSPACES_DIR=/data/workspaces) — otherwise this sits on
+// the container's ephemeral disk and every redeploy wipes it, forcing each user's
+// next compile into a full project re-upload instead of a differential sync.
+const WORKSPACES_DIR = process.env.WORKSPACES_DIR || path.resolve(process.cwd(), "workspaces");
+
+// Bounded concurrency for Tectonic. One replica on 8 vCPU: cap how many compiles
+// run at once so a spawn storm can't OOM the box, allow a little queue slack, then
+// shed with 503 rather than letting every in-flight compile crawl. See
+// compile-gate.ts for the mechanism, compile-gate.test.ts for its accounting.
+const MAX_CONCURRENT_COMPILES = Number(process.env.MAX_CONCURRENT_COMPILES) || 6;
+const MAX_QUEUED_COMPILES = Number(process.env.MAX_QUEUED_COMPILES) || 12;
+const compileGate = createCompileGate(MAX_CONCURRENT_COMPILES, MAX_QUEUED_COMPILES);
+
 // Helper to safely write uploaded files to a directory
 async function writeFiles(baseDir: string, files: { path: string; content: string }[]) {
   for (const file of files) {
@@ -105,7 +120,7 @@ async function writeFiles(baseDir: string, files: { path: string; content: strin
 
 // Cleanup workspaces stale for more than 24 hours
 async function cleanupStaleWorkspaces() {
-  const workspacesDir = path.resolve(process.cwd(), "workspaces");
+  const workspacesDir = WORKSPACES_DIR;
   try {
     await fs.mkdir(workspacesDir, { recursive: true });
     const dirs = await fs.readdir(workspacesDir);
@@ -186,7 +201,7 @@ try {
           if (!ALLOW_LOCAL) return Response.json({ error: "local mode disabled" }, { status: 403 });
           base = path.resolve(localProjectPath);
         } else {
-          const workspacesDir = path.resolve(process.cwd(), "workspaces");
+          const workspacesDir = WORKSPACES_DIR;
           base = path.resolve(workspacesDir, projectId);
           const rel = path.relative(workspacesDir, base);
           if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) {
@@ -255,6 +270,14 @@ try {
             return Response.json({ error: "Access denied" }, { status: 403 });
           }
 
+          const release = await compileGate.acquire();
+          if (!release) {
+            return Response.json(
+              { error: "Compiler busy: too many concurrent compilations, please retry shortly" },
+              { status: 503 }
+            );
+          }
+
           const { readable, writable } = new TransformStream();
           const writer = writable.getWriter();
           const encoder = new TextEncoder();
@@ -309,6 +332,7 @@ try {
               writer.write(encoder.encode(`\n[ERROR] Compilation process error: ${err.message}\n`));
             } finally {
               writer.close();
+              release();
             }
           })();
 
@@ -338,7 +362,7 @@ try {
             }
           }
 
-          const workspacesDir = path.resolve(process.cwd(), "workspaces");
+          const workspacesDir = WORKSPACES_DIR;
           const projectDir = path.join(workspacesDir, projectId);
 
           const relativeDir = path.relative(workspacesDir, projectDir);
@@ -437,6 +461,15 @@ try {
 
           const flags = ["-C", "--synctex", resolvedTexPath];
 
+          const release = await compileGate.acquire();
+          if (!release) {
+            return Response.json(
+              { error: "Compiler busy: too many concurrent compilations, please retry shortly" },
+              { status: 503 }
+            );
+          }
+
+          try {
           let code = await runTectonicUpload(flags);
           if (code !== 0) {
             logs += `\n[INFO] Cached compilation failed or package missing. Retrying with remote package fetching...\n`;
@@ -471,8 +504,11 @@ try {
               logs: logs + `\n[ERROR] Tectonic exited with code ${code}\n`,
             }, { status: 422 });
           }
+          } finally {
+            release();
+          }
         }
- 
+
         return Response.json({ error: "Invalid mode" }, { status: 400 });
       } catch (error: any) {
         return Response.json({ error: error.message }, { status: 500 });
