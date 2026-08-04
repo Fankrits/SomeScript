@@ -48,6 +48,7 @@ export function UseTemplateDialog({ template, open, onOpenChange }: UseTemplateD
     setLoading(true);
     setError(null);
 
+    // eslint-disable-next-line react-hooks/rules-of-hooks -- useTemplate is a "use server" action (app/dashboard/templates/actions.ts), not a React hook; the rule only flags it because of the use* name
     const result = await useTemplate(template.id, projectName);
 
     setLoading(false);

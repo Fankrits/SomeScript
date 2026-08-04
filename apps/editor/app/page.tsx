@@ -529,9 +529,10 @@ const Example = () => {
   // pdfUrl goes back to null on nearly every non-PDF file selection, so
   // gating the mount on pdfUrl itself thrashes the engine on normal browsing.
   const [hasShownPdf, setHasShownPdf] = useState(false);
-  useEffect(() => {
-    if (pdfUrl) setHasShownPdf(true);
-  }, [pdfUrl]);
+  // Latch during render rather than in an effect: set-during-render is React's
+  // supported way to adjust state from a prior render, and it avoids the extra
+  // effect commit an effect-based latch would add on every PDF appearance.
+  if (pdfUrl && !hasShownPdf) setHasShownPdf(true);
   // Project-relative path of the last successfully compiled root .tex — SyncTeX
   // queries resolve the PDF/.synctex.gz from it. null until the first compile.
   const [compiledPath, setCompiledPath] = useState<string | null>(null);
@@ -669,6 +670,7 @@ const Example = () => {
 
     const roomText = ytext.toString();
     if (roomText === editedCode) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- this effect synchronizes React binding state with the CodeMirror/Yjs external system, the rule's own documented carve-out; binding must happen here, only once room text equals editor text
       setBound({ path: selectedPath, ytext });
       return;
     }
@@ -818,6 +820,7 @@ const Example = () => {
   }, [withProject]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- data-fetch on mount; loadProjectSettings only calls setState after awaiting fetch, so it is not the synchronous set the rule targets
     void loadProjectSettings();
   }, [loadProjectSettings]);
 

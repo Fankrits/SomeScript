@@ -55,10 +55,18 @@ const collabCursorTheme = EditorView.theme({
 
 import { yCollab } from "y-codemirror.next";
 import type * as Y from "yjs";
+import type { HocuspocusProvider } from "@hocuspocus/provider";
+
+// y-protocols' Awareness, sourced through the provider (a direct dep) since
+// y-protocols is only transitively installed and not resolvable on its own.
+// This is exactly the value the caller passes in — provider.awareness.
+type Awareness = NonNullable<HocuspocusProvider["awareness"]>;
 
 export interface CollaborationConfig {
   ytext?: Y.Text;
-  awareness?: any;
+  // null when the provider has awareness disabled; the guard below treats it
+  // the same as undefined, so both callers and the memo need only truthiness.
+  awareness?: Awareness | null;
 }
 
 export interface EditorSettings {
@@ -76,11 +84,18 @@ export function useCodeMirrorExtensions(
   currentLanguage: string,
   collaboration?: CollaborationConfig
 ): Extension[] {
+  // Hoist to locals so the memo body reads plain variables whose access shape
+  // matches the dependency array exactly. Reading `collaboration?.ytext` inside
+  // the closure while listing the same optional-chained access as a dep makes
+  // the React Compiler infer a broader dependency (`collaboration`) than the
+  // hand-written one and bail out of optimizing this hook entirely.
+  const ytext = collaboration?.ytext;
+  const awareness = collaboration?.awareness;
   return useMemo(() => {
     const extensions: Extension[] = [EditorView.lineWrapping, searchExtension(), lintGutter(), compactLintGutterTheme];
 
-    if (collaboration?.ytext && collaboration?.awareness) {
-      extensions.push(yCollab(collaboration.ytext, collaboration.awareness));
+    if (ytext && awareness) {
+      extensions.push(yCollab(ytext, awareness));
       extensions.push(collabCursorTheme);
     }
 
@@ -125,8 +140,8 @@ export function useCodeMirrorExtensions(
     settings.bracketMatchingEnabled,
     settings.autocompleteEnabled,
     currentLanguage,
-    collaboration?.ytext,
-    collaboration?.awareness,
+    ytext,
+    awareness,
   ]);
 }
 

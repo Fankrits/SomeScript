@@ -143,6 +143,7 @@ export function useCollaboration({
 
   useEffect(() => {
     if (!enabled || !roomName) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- resetting to the disconnected state is part of syncing with the provider (an external system); status is otherwise driven by the provider's own callbacks below
       setStatus("disconnected");
       setSynced(false);
       return;

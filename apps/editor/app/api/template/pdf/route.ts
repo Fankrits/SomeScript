@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { storage } from "@/lib/storage";
+import { storage, type FileNode } from "@/lib/storage";
 import { apiError, ApiError } from "@/lib/authz";
 import { compileUpload } from "@/lib/compile";
 
@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
 
     // 2. Search if any PDF file already exists in storage before attempting re-compilation
     const files = await storage.listProjectFiles(storageId);
-    const findPdf = (nodes: any[]): string | null => {
+    const findPdf = (nodes: FileNode[]): string | null => {
       for (const node of nodes) {
         if (node.isDir && node.children) {
           const res = findPdf(node.children);
@@ -70,7 +70,7 @@ export async function GET(req: NextRequest) {
 
     // 3. Find primary .tex file
     let texFile = "main.tex";
-    const findTex = (nodes: any[]): string | null => {
+    const findTex = (nodes: FileNode[]): string | null => {
       for (const node of nodes) {
         if (node.isDir && node.children) {
           const res = findTex(node.children);
