@@ -7,10 +7,11 @@
     "start": "bun index.ts"
   },
   "dependencies": {
-    "ioredis": "^5.11.1",
+    "ioredis": "^6.0.0",
+    "typescript": "6.0.3",
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@types/node": "^26.1.1"
+    "@types/node": "^26.1.2"
   }
 }
