@@ -36,7 +36,10 @@ let redisClient: Redis | null = null;
 
 if (REDIS_URL) {
   try {
-    redisClient = new Redis(REDIS_URL, { maxRetriesPerRequest: 1, lazyConnect: true });
+    // ioredis v6 defaults to RESP3; pin RESP2 since we can't confirm the deployed
+    // Redis/Valkey version negotiates RESP3 cleanly, and legacy reply shapes are
+    // what the rest of this file assumes.
+    redisClient = new Redis(REDIS_URL, { maxRetriesPerRequest: 1, lazyConnect: true, protocol: 2 });
     redisClient.connect().catch((err) => console.warn("[COMPILER REDIS] Connect failed:", err.message));
   } catch (err: any) {
     console.warn("[COMPILER REDIS] Init error:", err.message);

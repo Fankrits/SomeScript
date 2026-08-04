@@ -21,6 +21,10 @@ export function getRedisClient(): Redis | null {
           return Math.min(times * 100, 2000);
         },
         lazyConnect: true,
+        // ioredis v6 defaults to RESP3; pin RESP2 since we can't confirm the
+        // deployed Redis/Valkey version negotiates RESP3 cleanly, and legacy
+        // reply shapes are what redisHGetAll's callers assume.
+        protocol: 2,
       });
 
       redisInstance.on("connect", () => {
