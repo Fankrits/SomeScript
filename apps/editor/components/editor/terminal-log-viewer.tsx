@@ -45,10 +45,7 @@ export function TerminalLogViewer({
 }: TerminalLogViewerProps) {
   const [mode, setMode] = useState<"raw" | "cards">("cards");
 
-  const errors = useMemo(
-    () => parseCompileErrors(output, compilePath),
-    [output, compilePath]
-  );
+  const errors = useMemo(() => parseCompileErrors(output, compilePath), [output, compilePath]);
 
   return (
     <Terminal
@@ -69,7 +66,7 @@ export function TerminalLogViewer({
                 "flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition-colors",
                 mode === "raw"
                   ? "bg-zinc-800 text-zinc-100 shadow-sm"
-                  : "text-zinc-400 hover:text-zinc-200"
+                  : "text-zinc-400 hover:text-zinc-200",
               )}
             >
               <SquareTerminalIcon className="size-3.5" />
@@ -82,7 +79,7 @@ export function TerminalLogViewer({
                 "flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition-colors",
                 mode === "cards"
                   ? "bg-zinc-800 text-zinc-100 shadow-sm"
-                  : "text-zinc-400 hover:text-zinc-200"
+                  : "text-zinc-400 hover:text-zinc-200",
               )}
             >
               <LayoutListIcon className="size-3.5" />
@@ -171,7 +168,7 @@ export function TerminalLogViewer({
                         size="sm"
                         onClick={() =>
                           onSendToChat(
-                            `I got a compilation error in ${err.file} at line ${err.line}:\n\n${err.message}\n\nHow do I fix this?`
+                            `I got a compilation error in ${err.file} at line ${err.line}:\n\n${err.message}\n\nHow do I fix this?`,
                           )
                         }
                         className="h-7 text-xs gap-1.5 bg-violet-600/20 text-violet-300 hover:bg-violet-600/30 border border-violet-500/30 hover:text-violet-100"

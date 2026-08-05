@@ -53,14 +53,14 @@ export function formatCompileForModel(errors: CompileError[], log: string): stri
 
   if (errors.length > 0) {
     parts.push(
-      `Errors (${errors.length}):\n${errors.map((e) => `- ${e.file}:${e.line}: ${e.message}`).join("\n")}`
+      `Errors (${errors.length}):\n${errors.map((e) => `- ${e.file}:${e.line}: ${e.message}`).join("\n")}`,
     );
   }
 
   const clean = log.replace(ANSI_RE, "").trimEnd();
   if (clean) {
     parts.push(
-      `Log:\n${clean.length > MAX_MODEL_LOG_CHARS ? `…(truncated)\n${clean.slice(-MAX_MODEL_LOG_CHARS)}` : clean}`
+      `Log:\n${clean.length > MAX_MODEL_LOG_CHARS ? `…(truncated)\n${clean.slice(-MAX_MODEL_LOG_CHARS)}` : clean}`,
     );
   }
 

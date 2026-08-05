@@ -8,8 +8,16 @@ export function Step1WritePromptCanvas() {
   const codeLines = [
     { line: "01", text: "\\begin{equation}", color: "text-purple-600 dark:text-purple-400" },
     { line: "02", text: "  R = \\begin{pmatrix}", color: "text-blue-600 dark:text-blue-400" },
-    { line: "03", text: "    \\cos\\theta & -\\sin\\theta \\\\", color: "text-emerald-600 dark:text-emerald-400" },
-    { line: "04", text: "    \\sin\\theta &  \\cos\\theta", color: "text-emerald-600 dark:text-emerald-400" },
+    {
+      line: "03",
+      text: "    \\cos\\theta & -\\sin\\theta \\\\",
+      color: "text-emerald-600 dark:text-emerald-400",
+    },
+    {
+      line: "04",
+      text: "    \\sin\\theta &  \\cos\\theta",
+      color: "text-emerald-600 dark:text-emerald-400",
+    },
     { line: "05", text: "  \\end{pmatrix}", color: "text-blue-600 dark:text-blue-400" },
     { line: "06", text: "\\end{equation}", color: "text-purple-600 dark:text-purple-400" },
   ];
@@ -105,14 +113,18 @@ export function Step1WritePromptCanvas() {
               </div>
               <span className="font-mono text-foreground/80 font-medium">matrix_rotation.tex</span>
             </div>
-            <span className="bg-primary/10 text-primary px-1 py-0.5 rounded font-mono text-[9px]">LaTeX</span>
+            <span className="bg-primary/10 text-primary px-1 py-0.5 rounded font-mono text-[9px]">
+              LaTeX
+            </span>
           </div>
 
           {/* Code Content */}
           <div className="space-y-1 font-mono text-[11px] leading-relaxed min-h-[140px]">
             {codeLines.slice(0, visibleLineCount).map((item) => (
               <div key={item.line} className="flex items-center gap-2">
-                <span className="text-foreground/30 text-[9px] select-none w-4 text-right font-mono">{item.line}</span>
+                <span className="text-foreground/30 text-[9px] select-none w-4 text-right font-mono">
+                  {item.line}
+                </span>
                 <span className={`${item.color} font-medium tracking-wide`}>{item.text}</span>
               </div>
             ))}
@@ -224,7 +236,9 @@ export function Step3ExportShareCanvas() {
       {/* Publication Export Card */}
       <LiquidGlassCard className="border-border/60 bg-background/95 p-5 flex flex-col justify-between shadow-2xl backdrop-blur-xl">
         <div className="flex items-start justify-between mb-4">
-          <span className="text-[10px] font-mono font-semibold text-primary uppercase tracking-wider">PDF Export</span>
+          <span className="text-[10px] font-mono font-semibold text-primary uppercase tracking-wider">
+            PDF Export
+          </span>
           <span className="text-[10px] bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded font-mono">
             arXiv Ready
           </span>
@@ -239,7 +253,10 @@ export function Step3ExportShareCanvas() {
 
         <div className="mt-4 pt-3 border-t border-border/40 flex items-center justify-between">
           <span className="text-[11px] font-mono text-foreground/50">2.4 MB PDF</span>
-          <button type="button" className="text-xs bg-primary text-primary-foreground px-3.5 py-1.5 rounded-lg font-medium shadow-md hover:bg-primary/90 transition-colors">
+          <button
+            type="button"
+            className="text-xs bg-primary text-primary-foreground px-3.5 py-1.5 rounded-lg font-medium shadow-md hover:bg-primary/90 transition-colors"
+          >
             Download
           </button>
         </div>
@@ -248,7 +265,9 @@ export function Step3ExportShareCanvas() {
       {/* Live Co-Author Sandbox Card */}
       <LiquidGlassCard className="border-border/60 bg-background/95 p-5 flex flex-col justify-between shadow-2xl backdrop-blur-xl">
         <div className="flex items-start justify-between mb-4">
-          <span className="text-[10px] font-mono font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Collaboration</span>
+          <span className="text-[10px] font-mono font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">
+            Collaboration
+          </span>
           <span className="text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded font-mono">
             Live Sandbox
           </span>

@@ -35,7 +35,8 @@ export const metadata: Metadata = {
     default: "SomeScript - Visual LaTeX Editor & AI Writing Suite",
     template: "%s | SomeScript",
   },
-  description: "The modern visual LaTeX editor powered by AI. Design, generate, collaborate, and compile beautiful scientific documents with real-time preview and SyncTeX.",
+  description:
+    "The modern visual LaTeX editor powered by AI. Design, generate, collaborate, and compile beautiful scientific documents with real-time preview and SyncTeX.",
   keywords: [
     "LaTeX editor",
     "Visual LaTeX",
@@ -59,7 +60,8 @@ export const metadata: Metadata = {
   },
   openGraph: {
     title: "SomeScript - Visual LaTeX Editor & AI Writing Suite",
-    description: "The modern visual LaTeX editor powered by AI. Design, edit, collaborate, and compile beautiful scientific documents with real-time preview.",
+    description:
+      "The modern visual LaTeX editor powered by AI. Design, edit, collaborate, and compile beautiful scientific documents with real-time preview.",
     url: siteUrl,
     siteName: "SomeScript",
     images: [
@@ -101,8 +103,10 @@ export const metadata: Metadata = {
     "geo.position": "37.7749;-122.4194",
     ICBM: "37.7749, -122.4194",
     // GEO (Generative Engine Optimization / AI Engine tags)
-    "ai:description": "SomeScript is an AI-powered visual LaTeX editor and scientific document creation platform.",
-    "chatgpt:description": "SomeScript is a visual LaTeX document editor with real-time compilation, an AI authoring assistant, and SyncTeX support.",
+    "ai:description":
+      "SomeScript is an AI-powered visual LaTeX editor and scientific document creation platform.",
+    "chatgpt:description":
+      "SomeScript is a visual LaTeX document editor with real-time compilation, an AI authoring assistant, and SyncTeX support.",
     summary: "Visual LaTeX editor with AI authoring and Tectonic compilation.",
   },
 };
@@ -125,7 +129,8 @@ const jsonLd = {
       operatingSystem: "All",
       applicationCategory: "DeveloperApplication",
       offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
-      description: "Visual LaTeX editor powered by AI and Tectonic compiler for real-time document creation.",
+      description:
+        "Visual LaTeX editor powered by AI and Tectonic compiler for real-time document creation.",
     },
     {
       "@type": "Organization",
@@ -156,7 +161,15 @@ export default function RootLayout({
     >
       <html
         lang="en"
-        className={cn("h-full", "antialiased", geistSans.variable, geistMono.variable, "font-sans", inter.variable, playfair.variable)}
+        className={cn(
+          "h-full",
+          "antialiased",
+          geistSans.variable,
+          geistMono.variable,
+          "font-sans",
+          inter.variable,
+          playfair.variable,
+        )}
       >
         <head>
           <script
@@ -174,4 +187,3 @@ export default function RootLayout({
     </ClerkProvider>
   );
 }
-

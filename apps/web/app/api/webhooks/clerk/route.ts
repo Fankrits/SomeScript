@@ -9,9 +9,12 @@ export async function POST(req: Request) {
   const WEBHOOK_SECRET = process.env.CLERK_WEBHOOK_SECRET;
 
   if (!WEBHOOK_SECRET) {
-    return new Response("Error: Please add CLERK_WEBHOOK_SECRET from Clerk Dashboard to .env or .env.local", {
-      status: 500,
-    });
+    return new Response(
+      "Error: Please add CLERK_WEBHOOK_SECRET from Clerk Dashboard to .env or .env.local",
+      {
+        status: 500,
+      },
+    );
   }
 
   // Get headers
@@ -83,7 +86,9 @@ export async function POST(req: Request) {
             } catch {
               // If username is taken, append random numbers as fallback
               const fallbackUsername = `${basePrefix}_${Math.floor(1000 + Math.random() * 9000)}`;
-              const updatedUser = await clerkClient.users.updateUser(id, { username: fallbackUsername });
+              const updatedUser = await clerkClient.users.updateUser(id, {
+                username: fallbackUsername,
+              });
               currentUsername = updatedUser.username;
             }
           }
@@ -92,7 +97,8 @@ export async function POST(req: Request) {
         }
       }
 
-      const fullName = currentUsername || [first_name, last_name].filter(Boolean).join(" ") || email.split("@")[0];
+      const fullName =
+        currentUsername || [first_name, last_name].filter(Boolean).join(" ") || email.split("@")[0];
 
       await db
         .insert(users)

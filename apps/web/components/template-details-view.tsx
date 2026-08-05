@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, User, Sparkles, Pencil, Trash2, ArrowUpRight, Calendar, Layers, FileText } from "lucide-react";
+import { ArrowLeft, User, Pencil, Trash2, ArrowUpRight, Calendar, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { UseTemplateDialog } from "@/components/use-template-dialog";
@@ -119,7 +119,10 @@ export function TemplateDetailsView({ template, currentUserId }: TemplateDetails
         <div className="w-full lg:w-96 bg-card p-6 flex flex-col justify-between overflow-y-auto shrink-0 space-y-6">
           <div className="space-y-6">
             <div>
-              <Badge variant="secondary" className="text-[10px] uppercase font-semibold px-2 py-0.5 tracking-wider mb-2">
+              <Badge
+                variant="secondary"
+                className="text-[10px] uppercase font-semibold px-2 py-0.5 tracking-wider mb-2"
+              >
                 {template.category}
               </Badge>
               <h1 className="text-2xl font-bold text-foreground tracking-tight leading-snug">
@@ -160,7 +163,8 @@ export function TemplateDetailsView({ template, currentUserId }: TemplateDetails
                   Usage
                 </span>
                 <span className="text-lg font-bold text-foreground mt-1">
-                  {template.usageCount.toLocaleString()} {template.usageCount === 1 ? "time" : "times"}
+                  {template.usageCount.toLocaleString()}{" "}
+                  {template.usageCount === 1 ? "time" : "times"}
                 </span>
               </div>
 
@@ -177,7 +181,9 @@ export function TemplateDetailsView({ template, currentUserId }: TemplateDetails
 
             {/* Description */}
             <div className="space-y-2">
-              <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Description</h3>
+              <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                Description
+              </h3>
               <p className="text-sm text-foreground/90 leading-relaxed font-light whitespace-pre-wrap">
                 {template.description || "No detailed description provided for this template."}
               </p>
@@ -198,11 +204,7 @@ export function TemplateDetailsView({ template, currentUserId }: TemplateDetails
       </div>
 
       {/* Dialogs */}
-      <UseTemplateDialog
-        template={template}
-        open={useDialogOpen}
-        onOpenChange={setUseDialogOpen}
-      />
+      <UseTemplateDialog template={template} open={useDialogOpen} onOpenChange={setUseDialogOpen} />
 
       {isOwner && (
         <EditTemplateDialog

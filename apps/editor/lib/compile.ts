@@ -82,7 +82,10 @@ async function getProjectFileHashes(projectId: string): Promise<Record<string, s
   return result;
 }
 
-async function updateProjectFileHashesBatch(projectId: string, updates: { path: string; hash: string }[]): Promise<void> {
+async function updateProjectFileHashesBatch(
+  projectId: string,
+  updates: { path: string; hash: string }[],
+): Promise<void> {
   if (updates.length === 0) return;
   const record = Object.fromEntries(updates.map((u) => [u.path, u.hash]));
 
@@ -116,7 +119,10 @@ interface DifferentialFile {
 // an allow-list of "known" extensions is always one project away from being wrong.
 // Base64 round-trips text just as losslessly as binary, so there's no need for a
 // separate text path.
-async function getAllStorageFiles(projectId: string, nodes: FileNode[]): Promise<{ path: string; content: string }[]> {
+async function getAllStorageFiles(
+  projectId: string,
+  nodes: FileNode[],
+): Promise<{ path: string; content: string }[]> {
   const filePromises: Promise<{ path: string; content: string }>[] = [];
 
   function collectNodes(nodeList: FileNode[]) {
@@ -128,7 +134,7 @@ async function getAllStorageFiles(projectId: string, nodes: FileNode[]): Promise
           storage.readBinaryFile(projectId, node.path).then((buffer) => ({
             path: node.path,
             content: buffer.toString("base64"),
-          }))
+          })),
         );
       }
     }
@@ -181,10 +187,10 @@ export async function compileUpload(opts: {
   // second (and, on a 409 retry, third) time just to fingerprint the
   // project state.
   const fileHashes = new Map(
-    allFiles.map((f) => [f.path, createHash("sha256").update(f.content).digest("hex")] as const)
+    allFiles.map((f) => [f.path, createHash("sha256").update(f.content).digest("hex")] as const),
   );
 
-  const sortedPaths = [...fileHashes.keys()].sort();
+  const sortedPaths = [...fileHashes.keys()].toSorted();
   const projectHash = createHash("sha256")
     .update(JSON.stringify(sortedPaths.map((path) => ({ path, hash: fileHashes.get(path) }))))
     .update(fileRelativePath)

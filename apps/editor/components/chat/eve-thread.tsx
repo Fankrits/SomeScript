@@ -52,7 +52,7 @@ function ComposerInbox() {
     const onInsert = (e: Event) => {
       const { name, text } = (e as CustomEvent<{ name: string; text: string }>).detail;
       if (!text) return;
-      aui.composer.addAttachment(new File([text], name, { type: "text/plain" }));
+      void aui.composer.addAttachment(new File([text], name, { type: "text/plain" }));
     };
     window.addEventListener("somescript:attach-to-chat", onInsert);
     return () => window.removeEventListener("somescript:attach-to-chat", onInsert);

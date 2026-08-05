@@ -52,7 +52,8 @@ export function BillingPanel() {
   if (error && !summary) return <p className="p-4 text-sm text-red-600">{error}</p>;
   if (!summary) return <Loader2 className="m-4 h-5 w-5 animate-spin text-gray-400" />;
 
-  const { plan, status, seats, currentPeriodEnd, cancelAtPeriodEnd, credits, purchasedCredits } = summary;
+  const { plan, status, seats, currentPeriodEnd, cancelAtPeriodEnd, credits, purchasedCredits } =
+    summary;
 
   return (
     <div className="flex flex-col">
@@ -64,7 +65,9 @@ export function BillingPanel() {
         </Row>
       )}
       {currentPeriodEnd && (
-        <Row label={cancelAtPeriodEnd ? "Cancels" : "Renews"}>{new Date(currentPeriodEnd).toLocaleDateString()}</Row>
+        <Row label={cancelAtPeriodEnd ? "Cancels" : "Renews"}>
+          {new Date(currentPeriodEnd).toLocaleDateString()}
+        </Row>
       )}
       <Row label="AI credits">
         {credits.toLocaleString()} available

@@ -33,7 +33,12 @@ export function ClarityAnalytics() {
     Clarity.init(CLARITY_PROJECT_ID);
     Clarity.setTag("app", "editor");
     if (user) {
-      Clarity.identify(user.id, undefined, undefined, user.fullName ?? user.primaryEmailAddress?.emailAddress ?? undefined);
+      Clarity.identify(
+        user.id,
+        undefined,
+        undefined,
+        user.fullName ?? user.primaryEmailAddress?.emailAddress ?? undefined,
+      );
     }
   }, [user, pathname]);
 

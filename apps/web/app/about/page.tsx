@@ -37,8 +37,11 @@ export default function AboutPage() {
               Typesetting for the Next Century
             </h2>
             <p className="text-foreground/80 font-light text-sm md:text-base leading-relaxed">
-              Writing research is hard enough. Manually compiling PDF packages, aligning matrices, and debugging missing bibtex citation links shouldn&apos;t add to the burden.
-              SomeScript is a modern, collaborative LaTeX environment combining a visual editor with instant cloud Tectonic compilation and context-aware AI tools. We help researchers submit to journals faster, with absolute layout perfection.
+              Writing research is hard enough. Manually compiling PDF packages, aligning matrices,
+              and debugging missing bibtex citation links shouldn&apos;t add to the burden.
+              SomeScript is a modern, collaborative LaTeX environment combining a visual editor with
+              instant cloud Tectonic compilation and context-aware AI tools. We help researchers
+              submit to journals faster, with absolute layout perfection.
             </p>
           </div>
 
@@ -48,30 +51,34 @@ export default function AboutPage() {
               <Compass className="h-6 w-6 text-primary" />
               <h3 className="text-base font-medium font-serif text-foreground">Our Vision</h3>
               <p className="text-xs text-muted-foreground font-light leading-relaxed">
-                An intuitive workspace that simplifies the distance between a scientific idea and a camera-ready PDF.
+                An intuitive workspace that simplifies the distance between a scientific idea and a
+                camera-ready PDF.
               </p>
             </div>
             <div className="space-y-2">
               <Users className="h-6 w-6 text-primary" />
               <h3 className="text-base font-medium font-serif text-foreground">Collaborative</h3>
               <p className="text-xs text-muted-foreground font-light leading-relaxed">
-                Isolated sandboxes with git worktrees mean authors co-write in real time without merge conflicts.
+                Isolated sandboxes with git worktrees mean authors co-write in real time without
+                merge conflicts.
               </p>
             </div>
             <div className="space-y-2">
               <Award className="h-6 w-6 text-primary" />
               <h3 className="text-base font-medium font-serif text-foreground">AI-First</h3>
               <p className="text-xs text-muted-foreground font-light leading-relaxed">
-                Automated outline generation, citation lookup, and error correction right at your cursor.
+                Automated outline generation, citation lookup, and error correction right at your
+                cursor.
               </p>
             </div>
           </div>
 
           <div className="pt-6 text-center">
-            <Button asChild className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold px-8 py-5 rounded-lg text-sm transition-all shadow-md shadow-primary/10 cursor-pointer">
-              <Link href="/dashboard">
-                Start Typesetting Now
-              </Link>
+            <Button
+              asChild
+              className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold px-8 py-5 rounded-lg text-sm transition-all shadow-md shadow-primary/10 cursor-pointer"
+            >
+              <Link href="/dashboard">Start Typesetting Now</Link>
             </Button>
           </div>
         </LiquidGlassCard>

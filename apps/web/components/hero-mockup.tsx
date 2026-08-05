@@ -48,7 +48,10 @@ export default function HeroMockup({ overlay }: HeroMockupProps) {
   }, [phase, charIndex]);
 
   return (
-    <div className="relative mx-auto w-full max-w-6xl flex flex-col gap-6 lg:block lg:h-[min(720px,70vh)] xl:h-[min(780px,72vh)]" style={{ perspective: "1000px" }}>
+    <div
+      className="relative mx-auto w-full max-w-6xl flex flex-col gap-6 lg:block lg:h-[min(720px,70vh)] xl:h-[min(780px,72vh)]"
+      style={{ perspective: "1000px" }}
+    >
       {overlay && (
         <div className="order-0 lg:absolute lg:inset-0 lg:z-30 lg:flex lg:items-center lg:justify-center">
           {overlay}
@@ -56,11 +59,13 @@ export default function HeroMockup({ overlay }: HeroMockupProps) {
       )}
 
       {/* Window 2: PDF Preview (Top-Right / Background) */}
-      <div className={`order-1 w-full bg-white border border-[#e5dacd] rounded-xl shadow-2xl p-3 sm:p-4 transition-all duration-700 font-sans overflow-hidden animate-hero-float lg:absolute lg:top-0 lg:right-0 lg:z-10 lg:w-[34%] lg:aspect-[3/4] lg:-rotate-y-[10deg] lg:rotate-x-[2deg] ${
-        phase === "success"
-          ? "translate-x-1 -translate-y-1 scale-[1.02] ring-2 ring-emerald-500/20 border-emerald-300"
-          : "translate-x-0 translate-y-0 scale-100 opacity-90"
-      }`}>
+      <div
+        className={`order-1 w-full bg-white border border-[#e5dacd] rounded-xl shadow-2xl p-3 sm:p-4 transition-all duration-700 font-sans overflow-hidden animate-hero-float lg:absolute lg:top-0 lg:right-0 lg:z-10 lg:w-[34%] lg:aspect-[3/4] lg:-rotate-y-[10deg] lg:rotate-x-[2deg] ${
+          phase === "success"
+            ? "translate-x-1 -translate-y-1 scale-[1.02] ring-2 ring-emerald-500/20 border-emerald-300"
+            : "translate-x-0 translate-y-0 scale-100 opacity-90"
+        }`}
+      >
         {/* Header section */}
         <div className="border-b border-[#e5dacd]/60 pb-1.5 sm:pb-2 mb-2 sm:mb-2.5 text-center">
           <h4 className="text-[9px] sm:text-[11px] font-semibold text-[#0f4c5c] uppercase tracking-wider">
@@ -90,16 +95,33 @@ export default function HeroMockup({ overlay }: HeroMockupProps) {
           <div className="absolute top-1.5 left-1.5 text-[6px] sm:text-[8px] font-mono text-[#5a737e]/60">
             [Equation 1]
           </div>
-          
+
           {phase === "success" ? (
             <div className="w-full flex items-center justify-center animate-in fade-in zoom-in-95 duration-500">
-              <svg viewBox="0 0 240 60" className="w-full max-w-[150px] sm:max-w-[200px] h-8 sm:h-10 text-[#0f4c5c]" fill="currentColor">
-                <path d="M12,10 C13,5 16,3 18,3 C20,3 21,5 21,7 C21,8 20,9 19,9 C18,9 18,8 18,7 C18,6 17,5 16,5 C14,5 13,10 11,25 L8,45 C7,50 6,53 5,53 C3,53 2,51 2,49 C2,48 3,47 4,47 C5,47 5,48 5,49 C5,50 6,51 7,51 C8,51 10,40 12,25 Z" transform="scale(0.85) translate(10, 2)" />
-                <text x="23" y="14" fontSize="10" fontStyle="italic" fontFamily="serif">b</text>
-                <text x="18" y="44" fontSize="10" fontStyle="italic" fontFamily="serif">a</text>
-                <text x="34" y="32" fontSize="15" fontStyle="italic" fontFamily="serif">f(x) dx</text>
-                <text x="88" y="32" fontSize="15" fontFamily="serif">=</text>
-                <text x="110" y="32" fontSize="15" fontStyle="italic" fontFamily="serif">F(b) - F(a)</text>
+              <svg
+                viewBox="0 0 240 60"
+                className="w-full max-w-[150px] sm:max-w-[200px] h-8 sm:h-10 text-[#0f4c5c]"
+                fill="currentColor"
+              >
+                <path
+                  d="M12,10 C13,5 16,3 18,3 C20,3 21,5 21,7 C21,8 20,9 19,9 C18,9 18,8 18,7 C18,6 17,5 16,5 C14,5 13,10 11,25 L8,45 C7,50 6,53 5,53 C3,53 2,51 2,49 C2,48 3,47 4,47 C5,47 5,48 5,49 C5,50 6,51 7,51 C8,51 10,40 12,25 Z"
+                  transform="scale(0.85) translate(10, 2)"
+                />
+                <text x="23" y="14" fontSize="10" fontStyle="italic" fontFamily="serif">
+                  b
+                </text>
+                <text x="18" y="44" fontSize="10" fontStyle="italic" fontFamily="serif">
+                  a
+                </text>
+                <text x="34" y="32" fontSize="15" fontStyle="italic" fontFamily="serif">
+                  f(x) dx
+                </text>
+                <text x="88" y="32" fontSize="15" fontFamily="serif">
+                  =
+                </text>
+                <text x="110" y="32" fontSize="15" fontStyle="italic" fontFamily="serif">
+                  F(b) - F(a)
+                </text>
               </svg>
             </div>
           ) : (
@@ -121,8 +143,10 @@ export default function HeroMockup({ overlay }: HeroMockupProps) {
       </div>
 
       {/* Window 1: Code Editor (Bottom-Left / Foreground) */}
-      <LiquidGlassCard glassSize="sm" className="order-2 w-full bg-background border border-border rounded-xl shadow-2xl p-3 sm:p-4 transition-all duration-500 hover:-translate-y-1 hover:shadow-3xl animate-hero-float [animation-delay:-3s] lg:absolute lg:bottom-0 lg:left-0 lg:z-20 lg:w-[42%] lg:aspect-[4/3] lg:rotate-y-[10deg] lg:rotate-x-[-2deg] font-mono text-[9px] sm:text-[11px] leading-relaxed">
-
+      <LiquidGlassCard
+        glassSize="sm"
+        className="order-2 w-full bg-background border border-border rounded-xl shadow-2xl p-3 sm:p-4 transition-all duration-500 hover:-translate-y-1 hover:shadow-3xl animate-hero-float [animation-delay:-3s] lg:absolute lg:bottom-0 lg:left-0 lg:z-20 lg:w-[42%] lg:aspect-[4/3] lg:rotate-y-[10deg] lg:rotate-x-[-2deg] font-mono text-[9px] sm:text-[11px] leading-relaxed"
+      >
         {/* Header Bar */}
         <div className="flex items-center justify-between border-b border-border pb-1.5 mb-2 select-none relative z-10">
           {/* macOS Buttons */}
@@ -240,7 +264,6 @@ export default function HeroMockup({ overlay }: HeroMockupProps) {
           </div>
         </div>
       </LiquidGlassCard>
-
     </div>
   );
 }

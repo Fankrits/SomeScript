@@ -7,7 +7,10 @@ export async function GET() {
   try {
     await requireWorkspace();
     const res = await webFetch("/api/workspace/credits");
-    return new Response(await res.text(), { status: res.status, headers: { "Content-Type": "application/json" } });
+    return new Response(await res.text(), {
+      status: res.status,
+      headers: { "Content-Type": "application/json" },
+    });
   } catch (err) {
     return apiError(err);
   }
@@ -22,7 +25,10 @@ export async function POST(req: NextRequest) {
       headers: { "Content-Type": "application/json" },
       body,
     });
-    return new Response(await res.text(), { status: res.status, headers: { "Content-Type": "application/json" } });
+    return new Response(await res.text(), {
+      status: res.status,
+      headers: { "Content-Type": "application/json" },
+    });
   } catch (err) {
     return apiError(err);
   }

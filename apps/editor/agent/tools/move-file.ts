@@ -7,7 +7,9 @@ import { notifyCollabPathsChanged } from "../../lib/collab-notify";
 export default defineTool({
   description: "Moves or renames a file within the workspace.",
   inputSchema: z.object({
-    projectId: z.string().describe("The projectId from the [projectId: ...] context marker in the conversation"),
+    projectId: z
+      .string()
+      .describe("The projectId from the [projectId: ...] context marker in the conversation"),
     oldPath: z.string().describe("Current relative path of the file from project root"),
     newPath: z.string().describe("New relative path for the file from project root"),
   }),
@@ -19,7 +21,12 @@ export default defineTool({
       await notifyCollabPathsChanged(pid, [oldPath, newPath]);
       return { ok: true as const, oldPath, newPath };
     } catch (e) {
-      return { ok: false as const, oldPath, newPath, error: e instanceof Error ? e.message : String(e) };
+      return {
+        ok: false as const,
+        oldPath,
+        newPath,
+        error: e instanceof Error ? e.message : String(e),
+      };
     }
   },
   toModelOutput(output) {

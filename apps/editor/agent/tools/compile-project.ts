@@ -2,7 +2,11 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveToolProject } from "../../lib/authz";
 import { compileUpload, compilerMode } from "../../lib/compile";
-import { formatCompileForModel, parseCompileErrors, type CompileError } from "../../lib/compile-errors";
+import {
+  formatCompileForModel,
+  parseCompileErrors,
+  type CompileError,
+} from "../../lib/compile-errors";
 
 // Each call re-reads every project file out of storage and base64s it before the
 // compiler's own cache can help, so a tight tool loop is genuinely expensive.
@@ -39,7 +43,7 @@ export default defineTool({
       .string()
       .optional()
       .describe(
-        "Project-relative .tex file to compile as the root document, e.g. 'main.tex' or 'chapters/intro.tex'. Omit to compile 'main.tex'. Use the [openFile: ...] context marker when the user says 'this file' or 'the current file'."
+        "Project-relative .tex file to compile as the root document, e.g. 'main.tex' or 'chapters/intro.tex'. Omit to compile 'main.tex'. Use the [openFile: ...] context marker when the user says 'this file' or 'the current file'.",
       ),
   }),
   async execute({ projectId, path }, ctx) {
@@ -52,7 +56,7 @@ export default defineTool({
     if (compilerMode() !== "upload") {
       return didNotRun(
         texPath,
-        "Compiling from chat needs the compiler in upload mode. Set COMPILER_MODE=\"upload\" in apps/editor/.env.local and restart the dev server. The Compile button in the toolbar still works."
+        'Compiling from chat needs the compiler in upload mode. Set COMPILER_MODE="upload" in apps/editor/.env.local and restart the dev server. The Compile button in the toolbar still works.',
       );
     }
 
@@ -63,7 +67,7 @@ export default defineTool({
       if (since < MIN_COMPILE_INTERVAL_MS) {
         return didNotRun(
           texPath,
-          `Already compiled ${Math.round(since / 1000)}s ago. Use read-compile-log to see that result, or wait a moment before compiling again.`
+          `Already compiled ${Math.round(since / 1000)}s ago. Use read-compile-log to see that result, or wait a moment before compiling again.`,
         );
       }
       lastCompileAt.set(pid, Date.now());
@@ -84,19 +88,17 @@ export default defineTool({
     } catch (e) {
       return didNotRun(
         texPath,
-        `Error compiling ${texPath}: ${e instanceof Error ? e.message : String(e)}`
+        `Error compiling ${texPath}: ${e instanceof Error ? e.message : String(e)}`,
       );
     }
   },
   // The model gets the errors plus a log tail; the full log still reaches the UI
   // card via the stream. See eve docs/tools/overview.mdx.
   toModelOutput(output) {
-    const out = output as CompileToolOutput;
+    const out = output;
     if (out.error) return { type: "text", value: out.error };
 
-    const header = out.ok
-      ? `Compiled ${out.path} successfully.`
-      : `Compile of ${out.path} FAILED.`;
+    const header = out.ok ? `Compiled ${out.path} successfully.` : `Compile of ${out.path} FAILED.`;
     const body = formatCompileForModel(out.errors, out.log);
     return { type: "text", value: body ? `${header}\n\n${body}` : header };
   },

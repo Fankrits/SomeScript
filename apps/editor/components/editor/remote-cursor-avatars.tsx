@@ -13,7 +13,15 @@ interface RemoteCursorAvatarsProps {
 }
 
 function initialsFor(name: string): string {
-  return name.trim().split(/\s+/).map((n) => n[0]).join("").toUpperCase().slice(0, 2) || "U";
+  return (
+    name
+      .trim()
+      .split(/\s+/)
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2) || "U"
+  );
 }
 
 function resolveHeadPosition(cursor: Collaborator["cursor"], ytext: Y.Text): number | null {
@@ -21,7 +29,10 @@ function resolveHeadPosition(cursor: Collaborator["cursor"], ytext: Y.Text): num
 
   try {
     const relativePosition = Y.createRelativePositionFromJSON(cursor.head);
-    const absolutePosition = Y.createAbsolutePositionFromRelativePosition(relativePosition, ytext.doc);
+    const absolutePosition = Y.createAbsolutePositionFromRelativePosition(
+      relativePosition,
+      ytext.doc,
+    );
     if (
       !absolutePosition ||
       absolutePosition.type !== ytext ||
@@ -54,7 +65,8 @@ export function RemoteCursorAvatars({ view, ytext, collaborators }: RemoteCursor
     scroller.addEventListener("scroll", refresh, { passive: true });
     ownerWindow?.addEventListener("resize", refresh);
 
-    const resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(refresh);
+    const resizeObserver =
+      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(refresh);
     resizeObserver?.observe(root);
     resizeObserver?.observe(scroller);
 

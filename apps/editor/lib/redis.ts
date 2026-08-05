@@ -51,7 +51,9 @@ export function getRedisClient(): Redis | null {
     }
   }
 
-  return isRedisConnected || redisInstance?.status === "ready" || redisInstance?.status === "connect"
+  return isRedisConnected ||
+    redisInstance?.status === "ready" ||
+    redisInstance?.status === "connect"
     ? redisInstance
     : null;
 }
@@ -81,7 +83,12 @@ export async function redisSet(key: string, value: string, ttlSeconds?: number):
   }
 }
 
-export async function redisHSet(key: string, field: string, value: string, ttlSeconds?: number): Promise<boolean> {
+export async function redisHSet(
+  key: string,
+  field: string,
+  value: string,
+  ttlSeconds?: number,
+): Promise<boolean> {
   const client = getRedisClient();
   if (!client) return false;
   try {
@@ -106,7 +113,11 @@ export async function redisHGetAll(key: string): Promise<Record<string, string> 
   }
 }
 
-export async function redisHMSet(key: string, record: Record<string, string>, ttlSeconds?: number): Promise<boolean> {
+export async function redisHMSet(
+  key: string,
+  record: Record<string, string>,
+  ttlSeconds?: number,
+): Promise<boolean> {
   const client = getRedisClient();
   if (!client || Object.keys(record).length === 0) return false;
   try {
@@ -120,7 +131,6 @@ export async function redisHMSet(key: string, record: Record<string, string>, tt
     return false;
   }
 }
-
 
 export async function redisHDel(key: string, fields: string[]): Promise<boolean> {
   const client = getRedisClient();

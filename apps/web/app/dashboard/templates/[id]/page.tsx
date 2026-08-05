@@ -5,11 +5,7 @@ import { eq } from "drizzle-orm";
 import { notFound, redirect } from "next/navigation";
 import { TemplateDetailsView } from "@/components/template-details-view";
 
-export default async function TemplateDetailsPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function TemplateDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   const { userId } = await auth();
   if (!userId) {
     redirect("/");
@@ -17,7 +13,8 @@ export default async function TemplateDetailsPage({
 
   const { id } = await params;
   const user = await currentUser();
-  const currentUsername = user?.username || user?.firstName || user?.emailAddresses[0]?.emailAddress?.split("@")[0];
+  const currentUsername =
+    user?.username || user?.firstName || user?.emailAddresses[0]?.emailAddress?.split("@")[0];
 
   const [row] = await db
     .select({
@@ -45,7 +42,8 @@ export default async function TemplateDetailsPage({
   if (row.authorId === userId && currentUsername) {
     resolvedAuthorName = currentUsername;
   } else if (!resolvedAuthorName || resolvedAuthorName === "User") {
-    resolvedAuthorName = row.userAuthorName && row.userAuthorName !== "User" ? row.userAuthorName : "Community Member";
+    resolvedAuthorName =
+      row.userAuthorName && row.userAuthorName !== "User" ? row.userAuthorName : "Community Member";
   }
 
   const template = {
@@ -55,7 +53,8 @@ export default async function TemplateDetailsPage({
     category: row.category,
     authorId: row.authorId,
     authorName: resolvedAuthorName,
-    authorAvatarUrl: (row.authorId === userId && user?.imageUrl) || row.userAvatarUrl || row.authorAvatarUrl,
+    authorAvatarUrl:
+      (row.authorId === userId && user?.imageUrl) || row.userAvatarUrl || row.authorAvatarUrl,
     usageCount: row.usageCount,
     createdAt: row.createdAt,
   };

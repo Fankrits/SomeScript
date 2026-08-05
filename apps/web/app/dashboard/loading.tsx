@@ -10,7 +10,9 @@ export default function DashboardLoading() {
       <header className="border-b border-border py-4 sm:py-6 px-4 sm:px-8 flex items-center justify-between z-10">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground">Projects</h1>
-          <p className="text-xs sm:text-sm text-muted-foreground font-light mt-0.5">Manage and compile your LaTeX documents.</p>
+          <p className="text-xs sm:text-sm text-muted-foreground font-light mt-0.5">
+            Manage and compile your LaTeX documents.
+          </p>
         </div>
         <div className="flex items-center gap-3">
           <Skeleton className="h-10 w-32 rounded-lg" />
@@ -53,4 +55,3 @@ export default function DashboardLoading() {
     </main>
   );
 }
-

@@ -66,17 +66,13 @@ export default defineTool({
               .join(", ") ?? "";
           const venue = w["container-title"]?.[0] ?? "";
           const bibtex = doi ? await fetchBibtex(doi) : null;
-          const header = [
-            `${title} (${year})`,
-            authors && `— ${authors}`,
-            venue && `— ${venue}`,
-          ]
+          const header = [`${title} (${year})`, authors && `— ${authors}`, venue && `— ${venue}`]
             .filter(Boolean)
             .join(" ");
           return bibtex
             ? `${header}\nDOI: ${doi}\n\n${bibtex}`
             : `${header}\nDOI: ${doi}\n(BibTeX unavailable for this DOI)`;
-        })
+        }),
       );
 
       return `Found ${items.length} result(s) for "${query}":\n\n${entries.join("\n\n---\n\n")}`;

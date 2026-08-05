@@ -56,7 +56,7 @@ export function DashboardDropzone({ children }: DashboardDropzoneProps) {
       (file) =>
         file.name.endsWith(".zip") ||
         file.type === "application/zip" ||
-        file.type === "application/x-zip-compressed"
+        file.type === "application/x-zip-compressed",
     );
 
     if (zipFiles.length === 0) {
@@ -68,7 +68,10 @@ export function DashboardDropzone({ children }: DashboardDropzoneProps) {
 
     for (const file of zipFiles) {
       const baseName =
-        file.name.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " ").trim() || "Imported Project";
+        file.name
+          .replace(/\.[^/.]+$/, "")
+          .replace(/[-_]/g, " ")
+          .trim() || "Imported Project";
       const toastId = toast.loading(`Importing "${baseName}"...`);
 
       try {
@@ -83,7 +86,9 @@ export function DashboardDropzone({ children }: DashboardDropzoneProps) {
           toast.success(`Successfully imported "${baseName}"!`, { id: toastId });
         }
       } catch (err: any) {
-        toast.error(`Failed to import "${baseName}": ${err.message || "Failed to process"}`, { id: toastId });
+        toast.error(`Failed to import "${baseName}": ${err.message || "Failed to process"}`, {
+          id: toastId,
+        });
       }
     }
 

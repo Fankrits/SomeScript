@@ -6,7 +6,9 @@ import { storage } from "../../lib/storage";
 export default defineTool({
   description: "Reads the content of any file in the workspace.",
   inputSchema: z.object({
-    projectId: z.string().describe("The projectId from the [projectId: ...] context marker in the conversation"),
+    projectId: z
+      .string()
+      .describe("The projectId from the [projectId: ...] context marker in the conversation"),
     path: z.string().describe("Relative path to the file from project root"),
   }),
   async execute({ projectId, path: filePath }) {

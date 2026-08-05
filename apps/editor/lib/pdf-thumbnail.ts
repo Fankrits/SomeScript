@@ -33,6 +33,9 @@ export async function renderPdfThumbnail(pdfBuffer: Buffer, width = 600): Promis
       .png()
       .toBuffer();
   } finally {
-    await engine.destroy().toPromise().catch(() => {});
+    await engine
+      .destroy()
+      .toPromise()
+      .catch(() => {});
   }
 }

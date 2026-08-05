@@ -1,7 +1,11 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { CheckoutElementsProvider, PaymentElement, useCheckoutElements } from "@stripe/react-stripe-js/checkout";
+import {
+  CheckoutElementsProvider,
+  PaymentElement,
+  useCheckoutElements,
+} from "@stripe/react-stripe-js/checkout";
 import { getStripe } from "@/lib/stripe-client";
 import { Button } from "@/components/ui/button";
 import { CheckCircle2, Loader2 } from "lucide-react";
@@ -73,16 +77,27 @@ function ConfirmForm({ onSuccess }: { onSuccess: () => void }) {
           reports complete — without this, a stuck-incomplete Payment Element just makes
           the button silently unclickable with zero indication why. */}
       {!checkout.canConfirm && !submitting && (
-        <p className="text-center text-xs text-muted-foreground">Complete the payment details above to continue.</p>
+        <p className="text-center text-xs text-muted-foreground">
+          Complete the payment details above to continue.
+        </p>
       )}
     </form>
   );
 }
 
 /** Mounts a Checkout Session's (`ui_mode: "elements"`) Payment Element in-page — no redirect to checkout.stripe.com. */
-export function CheckoutForm({ clientSecret, onSuccess }: { clientSecret: string; onSuccess: () => void }) {
+export function CheckoutForm({
+  clientSecret,
+  onSuccess,
+}: {
+  clientSecret: string;
+  onSuccess: () => void;
+}) {
   return (
-    <CheckoutElementsProvider stripe={getStripe()} options={{ clientSecret, elementsOptions: { appearance: { theme: "stripe" } } }}>
+    <CheckoutElementsProvider
+      stripe={getStripe()}
+      options={{ clientSecret, elementsOptions: { appearance: { theme: "stripe" } } }}
+    >
       <ConfirmForm onSuccess={onSuccess} />
     </CheckoutElementsProvider>
   );

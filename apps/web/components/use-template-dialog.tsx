@@ -66,7 +66,8 @@ export function UseTemplateDialog({ template, open, onOpenChange }: UseTemplateD
           <DialogHeader>
             <DialogTitle className="text-lg font-bold">Create Project from Template</DialogTitle>
             <DialogDescription className="text-sm text-muted-foreground">
-              Create a new document using <span className="font-semibold text-foreground">{template.name}</span>.
+              Create a new document using{" "}
+              <span className="font-semibold text-foreground">{template.name}</span>.
             </DialogDescription>
           </DialogHeader>
 
@@ -78,7 +79,9 @@ export function UseTemplateDialog({ template, open, onOpenChange }: UseTemplateD
 
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
-              <Label htmlFor="projectName" className="text-xs font-medium">Project Name</Label>
+              <Label htmlFor="projectName" className="text-xs font-medium">
+                Project Name
+              </Label>
               <Input
                 id="projectName"
                 value={projectName}

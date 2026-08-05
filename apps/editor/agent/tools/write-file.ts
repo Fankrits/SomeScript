@@ -12,16 +12,16 @@ const MAX_SNAPSHOT_BYTES = 1_000_000;
 function isNotFound(e: unknown): boolean {
   const err = e as { code?: string; message?: string; name?: string };
   return (
-    err?.code === "ENOENT" ||
-    Boolean(err?.message?.includes("ENOENT")) ||
-    err?.name === "NoSuchKey"
+    err?.code === "ENOENT" || Boolean(err?.message?.includes("ENOENT")) || err?.name === "NoSuchKey"
   );
 }
 
 export default defineTool({
   description: "Writes or updates the content of a file in the workspace.",
   inputSchema: z.object({
-    projectId: z.string().describe("The projectId from the [projectId: ...] context marker in the conversation"),
+    projectId: z
+      .string()
+      .describe("The projectId from the [projectId: ...] context marker in the conversation"),
     path: z.string().describe("Relative path to the file from project root"),
     content: z.string().describe("The complete file content to write"),
   }),
@@ -47,7 +47,11 @@ export default defineTool({
       await notifyCollabPathsChanged(pid, [filePath]);
       return { ok: true as const, path: filePath, before, created };
     } catch (e) {
-      return { ok: false as const, path: filePath, error: e instanceof Error ? e.message : String(e) };
+      return {
+        ok: false as const,
+        path: filePath,
+        error: e instanceof Error ? e.message : String(e),
+      };
     }
   },
   // The model only needs the outcome line; the full object (incl. `before`) still

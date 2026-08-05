@@ -1,9 +1,9 @@
-import { parser } from "codemirror-lang-latex"
+import { parser } from "codemirror-lang-latex";
 
 export interface OutlineEntry {
-  level: number
-  title: string
-  line: number
+  level: number;
+  title: string;
+  line: number;
 }
 
 // codemirror-lang-latex's grammar nests each sectioning macro (\part..\subparagraph)
@@ -21,43 +21,43 @@ const SECTION_LEVELS: Record<string, number> = {
   SubSubSection: 5,
   Paragraph: 6,
   SubParagraph: 7,
-}
+};
 
 export function getLatexOutline(content: string): OutlineEntry[] {
-  const entries: OutlineEntry[] = []
-  const cursor = parser.parse(content).cursor()
+  const entries: OutlineEntry[] = [];
+  const cursor = parser.parse(content).cursor();
   do {
-    const level = SECTION_LEVELS[cursor.name]
-    if (level === undefined) continue
-    const cmd = cursor.node.getChild("SectioningCommand")
-    if (!cmd) continue
-    const text = content.slice(cmd.from, cmd.to)
-    const braceStart = text.indexOf("{")
-    const rawTitle = braceStart >= 0 ? text.slice(braceStart + 1, -1) : text
+    const level = SECTION_LEVELS[cursor.name];
+    if (level === undefined) continue;
+    const cmd = cursor.node.getChild("SectioningCommand");
+    if (!cmd) continue;
+    const text = content.slice(cmd.from, cmd.to);
+    const braceStart = text.indexOf("{");
+    const rawTitle = braceStart >= 0 ? text.slice(braceStart + 1, -1) : text;
     entries.push({
       level,
       title: rawTitle.replace(/\s+/g, " ").trim() || "Untitled",
       line: content.slice(0, cmd.from).split("\n").length,
-    })
-  } while (cursor.next())
-  return entries
+    });
+  } while (cursor.next());
+  return entries;
 }
 
 export interface OutlineNode extends OutlineEntry {
-  children: OutlineNode[]
+  children: OutlineNode[];
 }
 
 // Turns the flat, level-annotated list into a real tree (via a stack of open
 // ancestors) so the panel can draw indent guides and collapse a heading's subtree.
 export function nestOutline(entries: OutlineEntry[]): OutlineNode[] {
-  const root: OutlineNode[] = []
-  const stack: OutlineNode[] = []
+  const root: OutlineNode[] = [];
+  const stack: OutlineNode[] = [];
   for (const entry of entries) {
-    const node: OutlineNode = { ...entry, children: [] }
-    while (stack.length > 0 && stack[stack.length - 1].level >= node.level) stack.pop()
-    const parent = stack[stack.length - 1]
-    ;(parent ? parent.children : root).push(node)
-    stack.push(node)
+    const node: OutlineNode = { ...entry, children: [] };
+    while (stack.length > 0 && stack[stack.length - 1].level >= node.level) stack.pop();
+    const parent = stack[stack.length - 1];
+    (parent ? parent.children : root).push(node);
+    stack.push(node);
   }
-  return root
+  return root;
 }

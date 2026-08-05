@@ -19,17 +19,15 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const { plan, status } = await getWorkspaceSubscription(workspaceId);
   const workspaceLocked = plan !== "free" && status !== "active" && status !== "trialing";
 
-  const creditBalance = await db.query.creditBalances.findFirst({ where: eq(creditBalances.workspaceId, workspaceId) });
+  const creditBalance = await db.query.creditBalances.findFirst({
+    where: eq(creditBalances.workspaceId, workspaceId),
+  });
   const credits = creditBalance
     ? creditBalance.includedBalance + creditBalance.purchasedBalance
     : PLAN_LIMITS[plan].monthlyAiCredits;
 
   return (
-    <DashboardSidebar
-      plan={plan}
-      credits={credits}
-      workspaceLocked={workspaceLocked}
-    >
+    <DashboardSidebar plan={plan} credits={credits} workspaceLocked={workspaceLocked}>
       {children}
     </DashboardSidebar>
   );

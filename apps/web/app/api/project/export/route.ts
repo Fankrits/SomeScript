@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
   if (!project) return Response.json({ error: "Project not found" }, { status: 404 });
 
   const upstream = await editorFetch(
-    `/api/project/export?projectId=${encodeURIComponent(projectId)}&type=${type}`
+    `/api/project/export?projectId=${encodeURIComponent(projectId)}&type=${type}`,
   );
 
   return new Response(upstream.body, {

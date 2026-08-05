@@ -20,7 +20,9 @@ export function sanitizeProjectSettings(input: unknown): ProjectSettings {
   const s = typeof input === "object" && input !== null ? (input as Record<string, unknown>) : {};
   return {
     mainFilePath:
-      typeof s.mainFilePath === "string" && s.mainFilePath.length > 0 && s.mainFilePath.length <= 1024
+      typeof s.mainFilePath === "string" &&
+      s.mainFilePath.length > 0 &&
+      s.mainFilePath.length <= 1024
         ? s.mainFilePath
         : DEFAULT_PROJECT_SETTINGS.mainFilePath,
     compilerEngine:

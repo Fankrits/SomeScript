@@ -8,9 +8,7 @@ import { primaryModelFor, fallbackModelsFor } from "./model-config";
 // switching modes mid-conversation takes effect on the next turn.
 const MODE_RE = /\[mode:\s*(lite|pro|expert)\]/i;
 
-function modeFromMessages(
-  messages: readonly { role: string; content: unknown }[],
-): EveMode {
+function modeFromMessages(messages: readonly { role: string; content: unknown }[]): EveMode {
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i];
     if (m.role !== "user") continue;

@@ -26,7 +26,9 @@ export async function GET(): Promise<Response> {
   const workspaceId = orgId || userId;
 
   const { plan, status } = await getWorkspaceSubscription(workspaceId);
-  const balance = await db.query.creditBalances.findFirst({ where: eq(creditBalances.workspaceId, workspaceId) });
+  const balance = await db.query.creditBalances.findFirst({
+    where: eq(creditBalances.workspaceId, workspaceId),
+  });
 
   return Response.json({
     includedBalance: balance?.includedBalance ?? defaultIncludedBalance(plan, status),
@@ -59,7 +61,9 @@ export async function POST(req: Request): Promise<Response> {
   const { plan, status } = await getWorkspaceSubscription(workspaceId);
 
   await db.transaction(async (tx) => {
-    const balance = await tx.query.creditBalances.findFirst({ where: eq(creditBalances.workspaceId, workspaceId) });
+    const balance = await tx.query.creditBalances.findFirst({
+      where: eq(creditBalances.workspaceId, workspaceId),
+    });
     const { newIncluded, newPurchased } = drainCredits(
       balance?.includedBalance ?? defaultIncludedBalance(plan, status),
       balance?.purchasedBalance ?? 0,
@@ -80,7 +84,11 @@ export async function POST(req: Request): Promise<Response> {
       })
       .onConflictDoUpdate({
         target: creditBalances.workspaceId,
-        set: { includedBalance: newIncluded, purchasedBalance: newPurchased, updatedAt: new Date() },
+        set: {
+          includedBalance: newIncluded,
+          purchasedBalance: newPurchased,
+          updatedAt: new Date(),
+        },
       });
 
     await tx.insert(creditTransactions).values({

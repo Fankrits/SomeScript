@@ -7,7 +7,11 @@ import { PLAN_LIMITS, maxMembersFor, type Plan } from "@/lib/plans";
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 /** Syncs this workspace's Clerk org member cap to match its current plan/seats. */
-export async function syncWorkspaceMemberLimit(workspaceId: string, plan: Plan, seats: number | null): Promise<void> {
+export async function syncWorkspaceMemberLimit(
+  workspaceId: string,
+  plan: Plan,
+  seats: number | null,
+): Promise<void> {
   const client = await clerkClient();
   await client.organizations.updateOrganization(workspaceId, {
     maxAllowedMemberships: maxMembersFor(plan, seats),
@@ -25,7 +29,13 @@ async function isFreeEligibleWorkspace(workspaceId: string, ownerId: string): Pr
   const [otherOrg] = await db
     .select({ id: workspaces.id })
     .from(workspaces)
-    .where(and(eq(workspaces.ownerId, ownerId), ne(workspaces.id, ownerId), ne(workspaces.id, workspaceId)))
+    .where(
+      and(
+        eq(workspaces.ownerId, ownerId),
+        ne(workspaces.id, ownerId),
+        ne(workspaces.id, workspaceId),
+      ),
+    )
     .limit(1);
   return !otherOrg;
 }
@@ -75,7 +85,9 @@ export async function seedWorkspaceDefaults(workspaceId: string, ownerId: string
 export async function getWorkspaceSubscription(
   workspaceId: string,
 ): Promise<{ plan: Plan; status: "active" | "trialing" | "past_due" | "canceled" }> {
-  const sub = await db.query.subscriptions.findFirst({ where: eq(subscriptions.workspaceId, workspaceId) });
+  const sub = await db.query.subscriptions.findFirst({
+    where: eq(subscriptions.workspaceId, workspaceId),
+  });
   return { plan: sub?.plan ?? "free", status: sub?.status ?? "active" };
 }
 
@@ -85,7 +97,10 @@ export async function assertProjectLimit(workspaceId: string): Promise<void> {
   const max = PLAN_LIMITS[plan].maxProjects;
   if (max === Infinity) return;
 
-  const [row] = await db.select({ n: count() }).from(projects).where(eq(projects.workspaceId, workspaceId));
+  const [row] = await db
+    .select({ n: count() })
+    .from(projects)
+    .where(eq(projects.workspaceId, workspaceId));
   if ((row?.n ?? 0) >= max) {
     throw new Error(`Free plan is limited to ${max} projects per workspace. Upgrade to add more.`);
   }
@@ -104,6 +119,8 @@ export async function assertWorkspaceActive(workspaceId: string): Promise<void> 
   const { plan, status } = await getWorkspaceSubscription(workspaceId);
   if (plan === "free") return;
   if (status === "past_due" || status === "canceled") {
-    throw new Error("This workspace needs an active Pro or Team subscription. Upgrade to continue.");
+    throw new Error(
+      "This workspace needs an active Pro or Team subscription. Upgrade to continue.",
+    );
   }
 }

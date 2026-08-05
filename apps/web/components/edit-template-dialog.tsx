@@ -53,7 +53,11 @@ export function EditTemplateDialog({ template, open, onOpenChange }: EditTemplat
 
     const droppedFile = e.dataTransfer.files?.[0];
     if (droppedFile) {
-      if (!droppedFile.name.endsWith(".zip") && droppedFile.type !== "application/zip" && droppedFile.type !== "application/x-zip-compressed") {
+      if (
+        !droppedFile.name.endsWith(".zip") &&
+        droppedFile.type !== "application/zip" &&
+        droppedFile.type !== "application/x-zip-compressed"
+      ) {
         setError("Please drop a valid .zip file");
         return;
       }
@@ -102,7 +106,9 @@ export function EditTemplateDialog({ template, open, onOpenChange }: EditTemplat
 
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
-              <Label htmlFor="name" className="text-xs font-medium">Template Name</Label>
+              <Label htmlFor="name" className="text-xs font-medium">
+                Template Name
+              </Label>
               <Input
                 id="name"
                 name="name"
@@ -113,7 +119,9 @@ export function EditTemplateDialog({ template, open, onOpenChange }: EditTemplat
             </div>
 
             <div className="grid gap-2">
-              <Label htmlFor="category" className="text-xs font-medium">Category</Label>
+              <Label htmlFor="category" className="text-xs font-medium">
+                Category
+              </Label>
               <select
                 id="category"
                 name="category"
@@ -129,7 +137,9 @@ export function EditTemplateDialog({ template, open, onOpenChange }: EditTemplat
             </div>
 
             <div className="grid gap-2">
-              <Label htmlFor="description" className="text-xs font-medium">Description</Label>
+              <Label htmlFor="description" className="text-xs font-medium">
+                Description
+              </Label>
               <Textarea
                 id="description"
                 name="description"
@@ -161,10 +171,17 @@ export function EditTemplateDialog({ template, open, onOpenChange }: EditTemplat
                     setFile(e.target.files?.[0] || null);
                   }}
                 />
-                <label htmlFor="edit-zip-upload" className="cursor-pointer flex flex-col items-center gap-2">
-                  <div className={`h-9 w-9 rounded-full flex items-center justify-center transition-colors ${
-                    isDragging ? "bg-primary text-primary-foreground" : "bg-secondary text-primary"
-                  }`}>
+                <label
+                  htmlFor="edit-zip-upload"
+                  className="cursor-pointer flex flex-col items-center gap-2"
+                >
+                  <div
+                    className={`h-9 w-9 rounded-full flex items-center justify-center transition-colors ${
+                      isDragging
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-secondary text-primary"
+                    }`}
+                  >
                     <FileArchive className="h-4 w-4" />
                   </div>
                   {file ? (
@@ -174,9 +191,13 @@ export function EditTemplateDialog({ template, open, onOpenChange }: EditTemplat
                   ) : (
                     <>
                       <span className="text-xs font-medium text-foreground">
-                        {isDragging ? "Drop your new .zip file here" : "Click or drag to replace .zip file"}
+                        {isDragging
+                          ? "Drop your new .zip file here"
+                          : "Click or drag to replace .zip file"}
                       </span>
-                      <span className="text-[11px] text-muted-foreground">Leave empty to keep existing files</span>
+                      <span className="text-[11px] text-muted-foreground">
+                        Leave empty to keep existing files
+                      </span>
                     </>
                   )}
                 </label>

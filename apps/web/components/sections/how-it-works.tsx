@@ -16,21 +16,24 @@ const steps = [
     number: "01",
     title: "Prompt & Co-Author",
     subtitle: "AI Generation",
-    description: "Type LaTeX directly or describe what you need in plain English. Our AI Agent processes your requests to instantly generate formulas, TikZ diagrams, and structured document code.",
+    description:
+      "Type LaTeX directly or describe what you need in plain English. Our AI Agent processes your requests to instantly generate formulas, TikZ diagrams, and structured document code.",
     canvas: <Step1WritePromptCanvas />,
   },
   {
     number: "02",
     title: "Instant Compile",
     subtitle: "Tectonic Engine",
-    description: "The background Tectonic engine compiles your project on-the-fly. The visual editor updates in real time with page-accurate previews of math, layout, and images as you type.",
+    description:
+      "The background Tectonic engine compiles your project on-the-fly. The visual editor updates in real time with page-accurate previews of math, layout, and images as you type.",
     canvas: <Step2TectonicCompileCanvas />,
   },
   {
     number: "03",
     title: "Export & Share",
     subtitle: "Publication Ready",
-    description: "Download your final typeset, publication-ready PDF document, or invite your co-authors and research collaborators to join your shared isolated sandboxes.",
+    description:
+      "Download your final typeset, publication-ready PDF document, or invite your co-authors and research collaborators to join your shared isolated sandboxes.",
     canvas: <Step3ExportShareCanvas />,
   },
 ];
@@ -130,8 +133,8 @@ export function HowItWorks() {
                     isActive
                       ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20 ring-4 ring-primary/15 scale-110"
                       : isPassed
-                      ? "bg-primary/90 text-primary-foreground"
-                      : "bg-background border-2 border-border text-foreground/50 hover:border-primary/50"
+                        ? "bg-primary/90 text-primary-foreground"
+                        : "bg-background border-2 border-border text-foreground/50 hover:border-primary/50"
                   }`}
                 >
                   {step.number}
@@ -235,7 +238,11 @@ export function HowItWorks() {
                   <ChevronRight className="w-4 h-4" />
                 </button>
               ) : (
-                <Button asChild size="sm" className="bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold rounded-md h-8 px-3">
+                <Button
+                  asChild
+                  size="sm"
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold rounded-md h-8 px-3"
+                >
                   <Link href="/dashboard">
                     Try Now <ArrowRight className="ml-1 w-3.5 h-3.5" />
                   </Link>
@@ -278,9 +285,13 @@ export function HowItWorks() {
                     }`}
                   >
                     <div className="flex items-center gap-3">
-                      <span className={`text-xs font-mono font-bold px-2 py-0.5 rounded ${
-                        isActive ? "bg-primary text-primary-foreground" : "bg-foreground/10 text-foreground/60"
-                      }`}>
+                      <span
+                        className={`text-xs font-mono font-bold px-2 py-0.5 rounded ${
+                          isActive
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-foreground/10 text-foreground/60"
+                        }`}
+                      >
                         {step.number}
                       </span>
                       <h3 className="text-lg font-serif font-medium text-foreground">
@@ -323,4 +334,3 @@ export function HowItWorks() {
     </section>
   );
 }
-

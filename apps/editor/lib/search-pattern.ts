@@ -9,7 +9,7 @@ const MAX_QUERY_LENGTH = 512;
  */
 export function buildSearchPattern(
   query: string,
-  opts: { matchCase: boolean; matchWholeWord: boolean; useRegex: boolean }
+  opts: { matchCase: boolean; matchWholeWord: boolean; useRegex: boolean },
 ): RegExp {
   if (query.length > MAX_QUERY_LENGTH) {
     throw new ApiError(400, `Query too long (max ${MAX_QUERY_LENGTH} characters)`);
@@ -43,7 +43,7 @@ export function replaceMatchAt(
   pattern: RegExp,
   matchIndex: number,
   replacement: string,
-  expectedLineText?: string
+  expectedLineText?: string,
 ): string | null {
   if (expectedLineText !== undefined && lineText !== expectedLineText) {
     return null;
@@ -57,7 +57,11 @@ export function replaceMatchAt(
     let match = pattern.exec(lineText);
     while (match !== null) {
       if (match.index === matchIndex) {
-        return lineText.slice(0, match.index) + replacement + lineText.slice(match.index + match[0].length);
+        return (
+          lineText.slice(0, match.index) +
+          replacement +
+          lineText.slice(match.index + match[0].length)
+        );
       }
       if (match[0].length === 0) pattern.lastIndex += 1;
       match = pattern.exec(lineText);

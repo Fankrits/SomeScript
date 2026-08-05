@@ -1,10 +1,7 @@
 import { NextRequest } from "next/server";
 import { editorFetch } from "@/lib/editor-api";
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
     const res = await editorFetch(`/api/template/thumbnail?templateId=${id}`);

@@ -10,9 +10,15 @@ import { FinalCta } from "@/components/sections/final-cta";
 import Header from "@/components/header";
 import Footer from "@/components/footer";
 
-const FeaturesBento = dynamic(() => import("@/components/sections/features-bento").then((mod) => mod.FeaturesBento));
-const HowItWorks = dynamic(() => import("@/components/sections/how-it-works").then((mod) => mod.HowItWorks));
-const Testimonials = dynamic(() => import("@/components/sections/testimonials").then((mod) => mod.Testimonials));
+const FeaturesBento = dynamic(() =>
+  import("@/components/sections/features-bento").then((mod) => mod.FeaturesBento),
+);
+const HowItWorks = dynamic(() =>
+  import("@/components/sections/how-it-works").then((mod) => mod.HowItWorks),
+);
+const Testimonials = dynamic(() =>
+  import("@/components/sections/testimonials").then((mod) => mod.Testimonials),
+);
 const Faq = dynamic(() => import("@/components/sections/faq").then((mod) => mod.Faq));
 
 export default async function Home() {
@@ -46,7 +52,11 @@ export default async function Home() {
 
                 {/* CTA */}
                 <div className="flex w-full justify-center">
-                  <Button asChild size="lg" className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-primary-foreground px-8 py-5 rounded-lg text-base shadow-lg shadow-primary/15 transition-all font-semibold cursor-pointer">
+                  <Button
+                    asChild
+                    size="lg"
+                    className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-primary-foreground px-8 py-5 rounded-lg text-base shadow-lg shadow-primary/15 transition-all font-semibold cursor-pointer"
+                  >
                     <Link href="/dashboard">
                       Start Typesetting Free <ChevronRight className="ml-1.5 h-5 w-5" />
                     </Link>

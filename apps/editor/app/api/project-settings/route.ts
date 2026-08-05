@@ -1,6 +1,10 @@
 import { storage } from "@/lib/storage";
 import { requireProject, apiError } from "@/lib/authz";
-import { readProjectSettings, sanitizeProjectSettings, PROJECT_SETTINGS_PATH } from "@/lib/project-settings";
+import {
+  readProjectSettings,
+  sanitizeProjectSettings,
+  PROJECT_SETTINGS_PATH,
+} from "@/lib/project-settings";
 import { NextRequest } from "next/server";
 
 export async function GET(req: NextRequest) {

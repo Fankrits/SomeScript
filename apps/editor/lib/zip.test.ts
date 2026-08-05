@@ -17,9 +17,10 @@ test("flattenFilePaths collects every path in a nested tree", () => {
   const tree = [
     { name: "main.tex", path: "main.tex", isDir: false },
     {
-      name: "sections", path: "sections", isDir: true, children: [
-        { name: "intro.tex", path: "sections/intro.tex", isDir: false },
-      ],
+      name: "sections",
+      path: "sections",
+      isDir: true,
+      children: [{ name: "intro.tex", path: "sections/intro.tex", isDir: false }],
     },
   ];
   const paths = flattenFilePaths(tree);

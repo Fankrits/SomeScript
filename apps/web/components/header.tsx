@@ -27,18 +27,32 @@ export default function Header({ dark = false }: { dark?: boolean }) {
       }`}
     >
       <Link href="/" className="flex items-center gap-1.5 hover:opacity-90 transition-opacity">
-        <Image src="/logo.svg" alt="SomeScript Logo" width={36} height={36} className="h-8 w-8 sm:h-9 sm:w-9 -mr-1" />
-        <span className={`font-semibold text-base sm:text-lg tracking-tight ${dark ? "text-white" : "text-foreground"}`}>
+        <Image
+          src="/logo.svg"
+          alt="SomeScript Logo"
+          width={36}
+          height={36}
+          className="h-8 w-8 sm:h-9 sm:w-9 -mr-1"
+        />
+        <span
+          className={`font-semibold text-base sm:text-lg tracking-tight ${dark ? "text-white" : "text-foreground"}`}
+        >
           SomeScript
         </span>
       </Link>
 
       {/* Desktop Navigation */}
       <nav className="hidden md:flex items-center gap-6">
-        <Link href="#features" className={`text-xs sm:text-sm font-medium transition-colors ${dark ? "text-white/70 hover:text-white" : "text-foreground/70 hover:text-foreground"}`}>
+        <Link
+          href="#features"
+          className={`text-xs sm:text-sm font-medium transition-colors ${dark ? "text-white/70 hover:text-white" : "text-foreground/70 hover:text-foreground"}`}
+        >
           Features
         </Link>
-        <Link href="#how-it-works" className={`text-xs sm:text-sm font-medium transition-colors ${dark ? "text-white/70 hover:text-white" : "text-foreground/70 hover:text-foreground"}`}>
+        <Link
+          href="#how-it-works"
+          className={`text-xs sm:text-sm font-medium transition-colors ${dark ? "text-white/70 hover:text-white" : "text-foreground/70 hover:text-foreground"}`}
+        >
           How it Works
         </Link>
         <a
@@ -49,10 +63,17 @@ export default function Header({ dark = false }: { dark?: boolean }) {
         >
           Docs
         </a>
-        <Link href="#faq" className={`text-xs sm:text-sm font-medium transition-colors ${dark ? "text-white/70 hover:text-white" : "text-foreground/70 hover:text-foreground"}`}>
+        <Link
+          href="#faq"
+          className={`text-xs sm:text-sm font-medium transition-colors ${dark ? "text-white/70 hover:text-white" : "text-foreground/70 hover:text-foreground"}`}
+        >
           FAQ
         </Link>
-        <Button asChild size="sm" className="bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-lg transition-all shadow-md shadow-primary/10">
+        <Button
+          asChild
+          size="sm"
+          className="bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-lg transition-all shadow-md shadow-primary/10"
+        >
           <Link href="/dashboard">
             Get Started <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
           </Link>
@@ -61,10 +82,12 @@ export default function Header({ dark = false }: { dark?: boolean }) {
 
       {/* Mobile Actions */}
       <div className="flex md:hidden items-center gap-2">
-        <Button asChild size="sm" className="bg-primary hover:bg-primary/90 text-primary-foreground text-xs px-3 py-1.5 h-8 rounded-md font-medium">
-          <Link href="/dashboard">
-            Start Free
-          </Link>
+        <Button
+          asChild
+          size="sm"
+          className="bg-primary hover:bg-primary/90 text-primary-foreground text-xs px-3 py-1.5 h-8 rounded-md font-medium"
+        >
+          <Link href="/dashboard">Start Free</Link>
         </Button>
         <button
           type="button"
@@ -109,7 +132,11 @@ export default function Header({ dark = false }: { dark?: boolean }) {
           >
             FAQ
           </Link>
-          <Button asChild size="lg" className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold rounded-lg mt-2">
+          <Button
+            asChild
+            size="lg"
+            className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold rounded-lg mt-2"
+          >
             <Link href="/dashboard" onClick={() => setMobileMenuOpen(false)}>
               Get Started Free <ArrowRight className="ml-2 h-4 w-4" />
             </Link>
@@ -119,4 +146,3 @@ export default function Header({ dark = false }: { dark?: boolean }) {
     </header>
   );
 }
-

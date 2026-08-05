@@ -39,7 +39,10 @@ const faqs = [
 
 export function Faq() {
   return (
-    <section id="faq" className="w-full max-w-3xl mx-auto px-4 sm:px-6 py-12 sm:py-20 relative z-10 border-t border-border/40">
+    <section
+      id="faq"
+      className="w-full max-w-3xl mx-auto px-4 sm:px-6 py-12 sm:py-20 relative z-10 border-t border-border/40"
+    >
       <div className="text-center mb-8 sm:mb-12">
         <h2 className="text-2xl sm:text-3xl lg:text-4xl font-medium font-serif tracking-tight text-foreground">
           Frequently Asked Questions

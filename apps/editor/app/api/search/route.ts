@@ -14,8 +14,21 @@ export interface SearchResult {
 }
 
 const BINARY_EXTENSIONS = new Set([
-  ".pdf", ".png", ".jpg", ".jpeg", ".gif", ".ico", ".zip", ".gz", ".tar",
-  ".woff", ".woff2", ".ttf", ".eot", ".mp4", ".mp3"
+  ".pdf",
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".gif",
+  ".ico",
+  ".zip",
+  ".gz",
+  ".tar",
+  ".woff",
+  ".woff2",
+  ".ttf",
+  ".eot",
+  ".mp4",
+  ".mp3",
 ]);
 
 function isTextFile(filename: string): boolean {
@@ -83,7 +96,7 @@ export async function GET(req: NextRequest) {
     await checkRate("search", 30, 60_000);
     const { searchParams } = new URL(req.url);
     const projectId = await requireProject(searchParams.get("projectId"));
-    
+
     const query = searchParams.get("query") || "";
     const matchCase = searchParams.get("matchCase") === "true";
     const matchWholeWord = searchParams.get("matchWholeWord") === "true";
@@ -212,7 +225,10 @@ export async function POST(req: NextRequest) {
         (startLine !== null && target.line < startLine) ||
         (endLine !== null && target.line > endLine)
       ) {
-        return Response.json({ error: "Search result is stale; refresh the search" }, { status: 409 });
+        return Response.json(
+          { error: "Search result is stale; refresh the search" },
+          { status: 409 },
+        );
       }
 
       let snapshot;
@@ -220,7 +236,11 @@ export async function POST(req: NextRequest) {
         snapshot = await storage.readFileWithVersion(projectId, target.fileId);
       } catch (error) {
         const details = error as { code?: string; name?: string; message?: string };
-        if (details.code === "ENOENT" || details.name === "NoSuchKey" || details.message?.includes("ENOENT")) {
+        if (
+          details.code === "ENOENT" ||
+          details.name === "NoSuchKey" ||
+          details.message?.includes("ENOENT")
+        ) {
           return Response.json({ error: "File not found" }, { status: 404 });
         }
         throw error;
@@ -229,18 +249,38 @@ export async function POST(req: NextRequest) {
       const lines = content.split("\n");
       const lineText = lines[target.line - 1];
       if (lineText === undefined) {
-        return Response.json({ error: "Search result is stale; refresh the search" }, { status: 409 });
+        return Response.json(
+          { error: "Search result is stale; refresh the search" },
+          { status: 409 },
+        );
       }
 
-      const replacedLine = replaceMatchAt(lineText, pattern, target.matchIndex, replaceText, target.lineText);
+      const replacedLine = replaceMatchAt(
+        lineText,
+        pattern,
+        target.matchIndex,
+        replaceText,
+        target.lineText,
+      );
       if (replacedLine === null) {
-        return Response.json({ error: "Search result is stale; refresh the search" }, { status: 409 });
+        return Response.json(
+          { error: "Search result is stale; refresh the search" },
+          { status: 409 },
+        );
       }
 
       lines[target.line - 1] = replacedLine;
-      const wrote = await storage.writeFileIfVersion(projectId, target.fileId, snapshot.version, lines.join("\n"));
+      const wrote = await storage.writeFileIfVersion(
+        projectId,
+        target.fileId,
+        snapshot.version,
+        lines.join("\n"),
+      );
       if (!wrote) {
-        return Response.json({ error: "File changed while replacing; refresh the search" }, { status: 409 });
+        return Response.json(
+          { error: "File changed while replacing; refresh the search" },
+          { status: 409 },
+        );
       }
       await touchProject(projectId);
       await notifyCollabPathsChanged(projectId, [target.fileId]);
@@ -268,7 +308,12 @@ export async function POST(req: NextRequest) {
             const matches = snapshot.content.match(pattern);
             if (matches && matches.length > 0) {
               const newContent = snapshot.content.replace(pattern, () => replaceText);
-              const wrote = await storage.writeFileIfVersion(projectId, node.path, snapshot.version, newContent);
+              const wrote = await storage.writeFileIfVersion(
+                projectId,
+                node.path,
+                snapshot.version,
+                newContent,
+              );
               if (!wrote) {
                 conflicts.push(node.path);
                 continue;
@@ -297,7 +342,7 @@ export async function POST(req: NextRequest) {
           modifiedFiles,
           conflicts,
         },
-        { status: 409 }
+        { status: 409 },
       );
     }
     return Response.json({ success: true, count, modifiedFiles });

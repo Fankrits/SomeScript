@@ -52,7 +52,9 @@ async function getOrCreateStripeCustomer(workspaceId: string, email: string): Pr
  * doesn't propagate session-level metadata to it automatically) — the webhook's
  * customer.subscription.created/updated handler reads it from there, unchanged by ui_mode.
  */
-export async function createSubscriptionCheckout(plan: "pro" | "team"): Promise<{ clientSecret: string }> {
+export async function createSubscriptionCheckout(
+  plan: "pro" | "team",
+): Promise<{ clientSecret: string }> {
   const priceId = PRICE_IDS[plan];
   if (!priceId) throw new Error(`Missing STRIPE_PRICE_${plan.toUpperCase()} env var`);
 
@@ -69,12 +71,15 @@ export async function createSubscriptionCheckout(plan: "pro" | "team"): Promise<
     subscription_data: { metadata: { workspaceId, plan } },
   });
 
-  if (!session.client_secret) throw new Error("Stripe did not return a Checkout Session client secret");
+  if (!session.client_secret)
+    throw new Error("Stripe did not return a Checkout Session client secret");
   return { clientSecret: session.client_secret };
 }
 
 /** Same `ui_mode: "elements"` Checkout Session, in one-time `mode: "payment"` for a credit top-up pack. */
-export async function createTopUpCheckout(packId: (typeof CREDIT_PACKS)[number]["id"]): Promise<{ clientSecret: string }> {
+export async function createTopUpCheckout(
+  packId: (typeof CREDIT_PACKS)[number]["id"],
+): Promise<{ clientSecret: string }> {
   const pack = CREDIT_PACKS.find((p) => p.id === packId);
   if (!pack) throw new Error("Unknown credit pack");
 
@@ -99,7 +104,8 @@ export async function createTopUpCheckout(packId: (typeof CREDIT_PACKS)[number][
     metadata: { workspaceId, type: "credit_pack", packId: pack.id, credits: String(pack.credits) },
   });
 
-  if (!session.client_secret) throw new Error("Stripe did not return a Checkout Session client secret");
+  if (!session.client_secret)
+    throw new Error("Stripe did not return a Checkout Session client secret");
   return { clientSecret: session.client_secret };
 }
 

@@ -20,13 +20,20 @@ export default function Footer() {
           {/* Branding Column */}
           <div className="sm:col-span-2 md:col-span-4 space-y-4">
             <Link href="/" className="flex items-center gap-2 hover:opacity-90 transition-opacity">
-              <Image src="/logo.svg" alt="SomeScript Logo" width={36} height={36} className="h-8 w-8 sm:h-9 sm:w-9" />
+              <Image
+                src="/logo.svg"
+                alt="SomeScript Logo"
+                width={36}
+                height={36}
+                className="h-8 w-8 sm:h-9 sm:w-9"
+              />
               <span className="font-semibold text-lg sm:text-xl tracking-tight text-white">
                 SomeScript
               </span>
             </Link>
             <p className="text-white/60 text-xs sm:text-sm font-light max-w-xs leading-relaxed">
-              Bridging the gap between raw manuscripts and prestigious academic publications with AI-driven rigor.
+              Bridging the gap between raw manuscripts and prestigious academic publications with
+              AI-driven rigor.
             </p>
             <div className="flex items-center gap-3 pt-1">
               <a
@@ -52,39 +59,67 @@ export default function Footer() {
           <div className="grid grid-cols-2 gap-6 sm:col-span-2 md:col-span-4">
             {/* Product */}
             <div className="space-y-3">
-              <h4 className="text-[11px] font-semibold uppercase tracking-wider text-white/40">Product</h4>
+              <h4 className="text-[11px] font-semibold uppercase tracking-wider text-white/40">
+                Product
+              </h4>
               <ul className="space-y-2 text-xs sm:text-sm text-white/60 font-light">
-                <li><Link href="#features" className="hover:text-white transition-colors">Features</Link></li>
-                <li><Link href="#how-it-works" className="hover:text-white transition-colors">How it Works</Link></li>
-                <li><Link href="/dashboard" className="hover:text-white transition-colors">Editor & Dashboard</Link></li>
+                <li>
+                  <Link href="#features" className="hover:text-white transition-colors">
+                    Features
+                  </Link>
+                </li>
+                <li>
+                  <Link href="#how-it-works" className="hover:text-white transition-colors">
+                    How it Works
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/dashboard" className="hover:text-white transition-colors">
+                    Editor & Dashboard
+                  </Link>
+                </li>
               </ul>
             </div>
 
             {/* Resources */}
             <div className="space-y-3">
-              <h4 className="text-[11px] font-semibold uppercase tracking-wider text-white/40">Resources</h4>
+              <h4 className="text-[11px] font-semibold uppercase tracking-wider text-white/40">
+                Resources
+              </h4>
               <ul className="space-y-2 text-xs sm:text-sm text-white/60 font-light">
                 <li>
-                  <a href="https://docs.somescript.com" target="_blank" rel="noreferrer" className="hover:text-white transition-colors">
+                  <a
+                    href="https://docs.somescript.com"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="hover:text-white transition-colors"
+                  >
                     Documentation
                   </a>
                 </li>
-                <li><Link href="/about" className="hover:text-white transition-colors">About Us</Link></li>
-                <li><Link href="#faq" className="hover:text-white transition-colors">FAQ</Link></li>
+                <li>
+                  <Link href="/about" className="hover:text-white transition-colors">
+                    About Us
+                  </Link>
+                </li>
+                <li>
+                  <Link href="#faq" className="hover:text-white transition-colors">
+                    FAQ
+                  </Link>
+                </li>
               </ul>
             </div>
           </div>
 
           {/* Newsletter */}
           <div className="sm:col-span-2 md:col-span-4 space-y-3">
-            <h4 className="text-[11px] font-semibold uppercase tracking-wider text-white/40">Stay Updated</h4>
+            <h4 className="text-[11px] font-semibold uppercase tracking-wider text-white/40">
+              Stay Updated
+            </h4>
             <p className="text-xs sm:text-sm text-white/60 font-light">
               Subscribe to our newsletter for the latest updates.
             </p>
-            <form
-              onSubmit={(e) => e.preventDefault()}
-              className="flex items-center gap-2 max-w-sm"
-            >
+            <form onSubmit={(e) => e.preventDefault()} className="flex items-center gap-2 max-w-sm">
               <input
                 type="email"
                 required
@@ -109,9 +144,15 @@ export default function Footer() {
             © 2026 SomeScript Inc. All rights reserved.
           </span>
           <div className="flex flex-wrap justify-center gap-4 sm:gap-6 font-light">
-            <Link href="/contact" className="hover:text-white transition-colors">Contact</Link>
-            <Link href="/legal" className="hover:text-white transition-colors">Privacy Policy</Link>
-            <Link href="/legal" className="hover:text-white transition-colors">Terms of Service</Link>
+            <Link href="/contact" className="hover:text-white transition-colors">
+              Contact
+            </Link>
+            <Link href="/legal" className="hover:text-white transition-colors">
+              Privacy Policy
+            </Link>
+            <Link href="/legal" className="hover:text-white transition-colors">
+              Terms of Service
+            </Link>
           </div>
         </div>
       </div>

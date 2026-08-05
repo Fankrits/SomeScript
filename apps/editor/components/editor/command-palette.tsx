@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 import {
   Command,
@@ -9,13 +9,13 @@ import {
   CommandItem,
   CommandList,
   CommandShortcut,
-} from "@/components/ui/command"
-import { GROUPS, LATEX_SYMBOLS } from "./toolbar-config"
+} from "@/components/ui/command";
+import { GROUPS, LATEX_SYMBOLS } from "./toolbar-config";
 
 interface CommandPaletteProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  onInsert: (text: string, cursorOffset?: number) => void
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onInsert: (text: string, cursorOffset?: number) => void;
 }
 
 /**
@@ -25,9 +25,9 @@ interface CommandPaletteProps {
  */
 export function CommandPalette({ open, onOpenChange, onInsert }: CommandPaletteProps) {
   const run = (text: string, cursorOffset?: number) => {
-    onInsert(text, cursorOffset)
-    onOpenChange(false)
-  }
+    onInsert(text, cursorOffset);
+    onOpenChange(false);
+  };
 
   return (
     <CommandDialog
@@ -39,42 +39,44 @@ export function CommandPalette({ open, onOpenChange, onInsert }: CommandPaletteP
       <Command>
         <CommandInput placeholder="Search commands and symbols…" />
         <CommandList>
-        <CommandEmpty>No matching command.</CommandEmpty>
+          <CommandEmpty>No matching command.</CommandEmpty>
 
-        {GROUPS.map((group) => (
-          <CommandGroup key={group.id} heading={group.title}>
-            {[...(group.primary ?? []), ...(group.menu ?? [])].map((item) => {
-              const Icon = item.icon
-              return (
-                <CommandItem
-                  key={`${group.id}:${item.label}`}
-                  value={`${item.label} ${item.text}`}
-                  onSelect={() => run(item.text, item.cursorOffset)}
-                >
-                  {Icon ? <Icon className="size-3.5" /> : <span className="size-3.5" />}
-                  <span>{item.label}</span>
-                  {item.shortcut && <CommandShortcut>{item.shortcut}</CommandShortcut>}
-                </CommandItem>
-              )
-            })}
-          </CommandGroup>
-        ))}
-
-        <CommandGroup heading="Symbols">
-          {LATEX_SYMBOLS.map((sym) => (
-            <CommandItem
-              key={sym.text}
-              value={`${sym.label} ${sym.text} ${sym.keywords ?? ""}`}
-              onSelect={() => run(sym.text, sym.cursorOffset ?? 0)}
-            >
-              <span className="w-5 text-center font-mono text-base leading-none">{sym.preview}</span>
-              <span>{sym.label}</span>
-              <CommandShortcut className="font-mono">{sym.text}</CommandShortcut>
-            </CommandItem>
+          {GROUPS.map((group) => (
+            <CommandGroup key={group.id} heading={group.title}>
+              {[...(group.primary ?? []), ...(group.menu ?? [])].map((item) => {
+                const Icon = item.icon;
+                return (
+                  <CommandItem
+                    key={`${group.id}:${item.label}`}
+                    value={`${item.label} ${item.text}`}
+                    onSelect={() => run(item.text, item.cursorOffset)}
+                  >
+                    {Icon ? <Icon className="size-3.5" /> : <span className="size-3.5" />}
+                    <span>{item.label}</span>
+                    {item.shortcut && <CommandShortcut>{item.shortcut}</CommandShortcut>}
+                  </CommandItem>
+                );
+              })}
+            </CommandGroup>
           ))}
-        </CommandGroup>
+
+          <CommandGroup heading="Symbols">
+            {LATEX_SYMBOLS.map((sym) => (
+              <CommandItem
+                key={sym.text}
+                value={`${sym.label} ${sym.text} ${sym.keywords ?? ""}`}
+                onSelect={() => run(sym.text, sym.cursorOffset ?? 0)}
+              >
+                <span className="w-5 text-center font-mono text-base leading-none">
+                  {sym.preview}
+                </span>
+                <span>{sym.label}</span>
+                <CommandShortcut className="font-mono">{sym.text}</CommandShortcut>
+              </CommandItem>
+            ))}
+          </CommandGroup>
         </CommandList>
       </Command>
     </CommandDialog>
-  )
+  );
 }

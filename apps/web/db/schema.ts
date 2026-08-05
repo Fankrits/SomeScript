@@ -1,4 +1,14 @@
-import { pgTable, text, timestamp, uuid, index, integer, pgEnum, jsonb, boolean } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+  index,
+  integer,
+  pgEnum,
+  jsonb,
+  boolean,
+} from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
   id: text("id").primaryKey(), // Clerk User ID
@@ -24,11 +34,13 @@ export const projects = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     name: text("name").notNull(),
-    workspaceId: text("workspace_id").references(() => workspaces.id, { onDelete: "cascade" }).notNull(),
+    workspaceId: text("workspace_id")
+      .references(() => workspaces.id, { onDelete: "cascade" })
+      .notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
-  (table) => [index("projects_workspace_id_idx").on(table.workspaceId)]
+  (table) => [index("projects_workspace_id_idx").on(table.workspaceId)],
 );
 
 export const subscriptionPlanEnum = pgEnum("subscription_plan", ["free", "pro", "team"]);
@@ -93,12 +105,14 @@ export const creditTransactions = pgTable(
     stripeEventId: text("stripe_event_id").unique(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
-  (table) => [index("credit_transactions_workspace_id_idx").on(table.workspaceId)]
+  (table) => [index("credit_transactions_workspace_id_idx").on(table.workspaceId)],
 );
 
 export const documents = pgTable("documents", {
   id: uuid("id").primaryKey().defaultRandom(),
-  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  projectId: uuid("project_id")
+    .references(() => projects.id, { onDelete: "cascade" })
+    .notNull(),
   filePath: text("file_path").notNull(), // relative path, e.g., "main.tex"
   storageKey: text("storage_key").notNull(), // e.g. "projects/project-uuid/main.tex"
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -117,14 +131,16 @@ export const chatThreads = pgTable(
   "chat_threads",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+    projectId: uuid("project_id")
+      .references(() => projects.id, { onDelete: "cascade" })
+      .notNull(),
     title: text("title").notNull().default("New Chat"),
     events: jsonb("events").notNull().default([]),
     sessionState: jsonb("session_state"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
-  (table) => [index("chat_threads_project_id_idx").on(table.projectId)]
+  (table) => [index("chat_threads_project_id_idx").on(table.projectId)],
 );
 
 export const templates = pgTable(
@@ -142,20 +158,23 @@ export const templates = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
-  (table) => [index("templates_is_public_idx").on(table.isPublic)]
+  (table) => [index("templates_is_public_idx").on(table.isPublic)],
 );
 
 export const templateBookmarks = pgTable(
   "template_bookmarks",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    userId: text("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
-    templateId: uuid("template_id").references(() => templates.id, { onDelete: "cascade" }).notNull(),
+    userId: text("user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    templateId: uuid("template_id")
+      .references(() => templates.id, { onDelete: "cascade" })
+      .notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => [
     index("template_bookmarks_user_id_idx").on(table.userId),
     index("template_bookmarks_user_template_idx").on(table.userId, table.templateId),
-  ]
+  ],
 );
-

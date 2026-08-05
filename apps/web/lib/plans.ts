@@ -10,7 +10,12 @@ export const PLAN_LIMITS: Record<
 > = {
   free: { maxProjects: 10, maxMembers: 3, maxOwnedWorkspaces: 1, monthlyAiCredits: 200 },
   pro: { maxProjects: Infinity, maxMembers: 3, maxOwnedWorkspaces: 1, monthlyAiCredits: 2000 },
-  team: { maxProjects: Infinity, maxMembers: Infinity, maxOwnedWorkspaces: 1, monthlyAiCredits: 5000 }, // members capped by `seats` on the subscription row, not here
+  team: {
+    maxProjects: Infinity,
+    maxMembers: Infinity,
+    maxOwnedWorkspaces: 1,
+    monthlyAiCredits: 5000,
+  }, // members capped by `seats` on the subscription row, not here
 };
 
 // Below Pro's flat per-workspace price for 3 members, so Team only makes sense at 3+ seats.

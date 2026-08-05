@@ -14,8 +14,7 @@ import {
  */
 function fakeStorage(budget: number): Storage & { bytes(): number } {
   const map = new Map<string, string>();
-  const size = () =>
-    [...map.entries()].reduce((n, [k, v]) => n + k.length + v.length, 0);
+  const size = () => [...map.entries()].reduce((n, [k, v]) => n + k.length + v.length, 0);
 
   const store = {
     getItem: (k: string) => map.get(k) ?? null,
@@ -43,7 +42,7 @@ function fakeStorage(budget: number): Storage & { bytes(): number } {
     ownKeys: () => [...map.keys()],
     getOwnPropertyDescriptor: () => ({ enumerable: true, configurable: true }),
     get: (t, p) => (t as never)[p],
-  }) as unknown as Storage & { bytes(): number };
+  });
 }
 
 const event = (i: number) => ({ i, blob: "x".repeat(100) });

@@ -4,11 +4,11 @@ import { notifyCollabPathsChanged } from "@/lib/collab-notify";
 import { NextRequest } from "next/server";
 
 const IMAGE_MIME: Record<string, string> = {
-  ".png":  "image/png",
-  ".jpg":  "image/jpeg",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
-  ".gif":  "image/gif",
-  ".svg":  "image/svg+xml",
+  ".gif": "image/gif",
+  ".svg": "image/svg+xml",
   ".webp": "image/webp",
 };
 
@@ -27,7 +27,9 @@ export async function GET(req: NextRequest) {
         const filename = filePath.split("/").pop() || filePath;
         return new Response(new Uint8Array(buffer), {
           headers: {
-            "Content-Type": filePath.endsWith(".pdf") ? "application/pdf" : imageMime || "application/octet-stream",
+            "Content-Type": filePath.endsWith(".pdf")
+              ? "application/pdf"
+              : imageMime || "application/octet-stream",
             "Content-Disposition": `attachment; filename="${filename}"`,
             "Content-Length": buffer.length.toString(),
           },

@@ -24,7 +24,8 @@ export function filterOrphanedMessages(all: readonly EveMessage[]): EveMessage[]
   const lastAssistantIdx = all.findLastIndex((m) => m.role === "assistant");
   return all.filter((m, i) => {
     if (m.role === "user" && m.metadata?.status === "failed" && i !== lastUserIdx) return false;
-    if (m.role === "assistant" && m.metadata?.status === "streaming" && i !== lastAssistantIdx) return false;
+    if (m.role === "assistant" && m.metadata?.status === "streaming" && i !== lastAssistantIdx)
+      return false;
     return true;
   });
 }

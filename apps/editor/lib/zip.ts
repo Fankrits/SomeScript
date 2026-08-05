@@ -2,15 +2,16 @@ import path from "path";
 import type { FileNode } from "./storage";
 
 export const MAX_ZIP_ENTRIES = 2000;
-export const MAX_ZIP_FILE_BYTES = 100 * 1024 * 1024;  // 100 MB per entry, decompressed
+export const MAX_ZIP_FILE_BYTES = 100 * 1024 * 1024; // 100 MB per entry, decompressed
 export const MAX_ZIP_TOTAL_BYTES = 500 * 1024 * 1024; // 500 MB total, decompressed
-export const MAX_UPLOAD_BYTES = 250 * 1024 * 1024;    // 250 MB compressed upload
+export const MAX_UPLOAD_BYTES = 250 * 1024 * 1024; // 250 MB compressed upload
 
 /** Returns the normalized safe relative path, or null if the entry must be rejected. */
 export function safeZipPath(name: string): string | null {
   if (name.includes("\\")) return null;
   const norm = path.posix.normalize(name);
-  if (norm.startsWith("..") || path.posix.isAbsolute(norm) || norm === "." || norm === "") return null;
+  if (norm.startsWith("..") || path.posix.isAbsolute(norm) || norm === "." || norm === "")
+    return null;
   return norm;
 }
 
@@ -42,7 +43,11 @@ export function flattenFilePaths(nodes: FileNode[], out: Set<string> = new Set()
  * Returns a path (joined under targetDir) for `name` that isn't in existingPaths,
  * appending -1, -2, ... before the extension on collision. Never overwrites.
  */
-export function dedupeUploadName(existingPaths: Set<string>, targetDir: string, name: string): string {
+export function dedupeUploadName(
+  existingPaths: Set<string>,
+  targetDir: string,
+  name: string,
+): string {
   const join = (n: string) => (targetDir ? `${targetDir}/${n}` : n);
   if (!existingPaths.has(join(name))) return join(name);
 

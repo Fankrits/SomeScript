@@ -22,13 +22,13 @@ export function versionKey<T extends { clientId: number }>(peers: T[], field: ke
   return peers
     .filter((peer) => typeof peer[field] === "string" && (peer[field] as string).length > 0)
     .map((peer) => `${peer.clientId}:${String(peer[field])}`)
-    .sort()
+    .toSorted()
     .join("|");
 }
 
 /** Backward-compatible file-tree-specific wrapper for older callers/tests. */
-export function fileTreeVersionKey<T extends { clientId: number; fileTreeVersion?: string }>(
-  peers: T[]
+export function fileTreeVersionKey(
+  peers: { clientId: number; fileTreeVersion?: string }[],
 ): string {
   return versionKey(peers, "fileTreeVersion");
 }

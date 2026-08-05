@@ -33,9 +33,9 @@ test("escapes session ids so a reserved character can't reshape the path", async
 });
 
 test("swallows a failed cancel — callers are on a recovery path", async () => {
-  globalThis.fetch = (async () => {
+  globalThis.fetch = async () => {
     throw new Error("offline");
-  }) as unknown as typeof fetch;
+  };
 
   // Resolves rather than rejecting: an unhandled throw here would break the
   // Stop button and the stall banner, which is worse than a missed cancel.

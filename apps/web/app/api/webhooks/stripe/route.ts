@@ -9,7 +9,9 @@ import { PLAN_LIMITS } from "@/lib/plans";
 // Stripe's full status enum has a few values our own `subscription_status` doesn't
 // need to distinguish — everything that isn't "paying fine" collapses to past_due
 // (restricted, not wiped) except Stripe's own terminal "canceled"/"incomplete_expired".
-function mapStripeStatus(status: Stripe.Subscription.Status): "active" | "trialing" | "past_due" | "canceled" {
+function mapStripeStatus(
+  status: Stripe.Subscription.Status,
+): "active" | "trialing" | "past_due" | "canceled" {
   if (status === "active") return "active";
   if (status === "trialing") return "trialing";
   if (status === "canceled" || status === "incomplete_expired") return "canceled";
@@ -52,7 +54,13 @@ async function downgradeToFree(sub: Stripe.Subscription): Promise<void> {
 
   await db
     .update(subscriptions)
-    .set({ plan: "free", status: "canceled", seats: null, cancelAtPeriodEnd: null, updatedAt: new Date() })
+    .set({
+      plan: "free",
+      status: "canceled",
+      seats: null,
+      cancelAtPeriodEnd: null,
+      updatedAt: new Date(),
+    })
     .where(eq(subscriptions.workspaceId, workspaceId));
 
   await syncWorkspaceMemberLimit(workspaceId, "free", null);
@@ -62,7 +70,10 @@ async function creditTopUp(session: Stripe.Checkout.Session, eventId: string): P
   const workspaceId = session.metadata?.workspaceId;
   const credits = Number(session.metadata?.credits);
   if (!workspaceId || !Number.isFinite(credits) || credits <= 0) {
-    console.error("[stripe webhook] top-up session missing workspaceId/credits metadata:", session.id);
+    console.error(
+      "[stripe webhook] top-up session missing workspaceId/credits metadata:",
+      session.id,
+    );
     return;
   }
 
@@ -89,7 +100,9 @@ async function creditTopUp(session: Stripe.Checkout.Session, eventId: string): P
     // first insert mirrors getWorkspaceSubscription's "no row = plan's default
     // allowance" fallback, so creating the row here can't regress what the user
     // already had.
-    const sub = await tx.query.subscriptions.findFirst({ where: eq(subscriptions.workspaceId, workspaceId) });
+    const sub = await tx.query.subscriptions.findFirst({
+      where: eq(subscriptions.workspaceId, workspaceId),
+    });
     const plan = sub?.plan ?? "free";
 
     await tx
@@ -102,7 +115,10 @@ async function creditTopUp(session: Stripe.Checkout.Session, eventId: string): P
       })
       .onConflictDoUpdate({
         target: creditBalances.workspaceId,
-        set: { purchasedBalance: sql`${creditBalances.purchasedBalance} + ${credits}`, updatedAt: new Date() },
+        set: {
+          purchasedBalance: sql`${creditBalances.purchasedBalance} + ${credits}`,
+          updatedAt: new Date(),
+        },
       });
   });
 }

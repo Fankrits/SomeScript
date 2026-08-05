@@ -6,9 +6,13 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { UseTemplateDialog } from "@/components/use-template-dialog";
-import { deleteTemplate, toggleBookmark as toggleBookmarkAction } from "@/app/dashboard/templates/actions";
+import {
+  deleteTemplate,
+  toggleBookmark as toggleBookmarkAction,
+} from "@/app/dashboard/templates/actions";
 import { TEMPLATE_CATEGORIES } from "@/lib/template-categories";
 import Link from "next/link";
+import Image from "next/image";
 
 export interface TemplateItem {
   id: string;
@@ -30,12 +34,16 @@ interface TemplateGridProps {
 
 const CATEGORIES = ["All", ...TEMPLATE_CATEGORIES];
 
-export function TemplateGrid({ templates, currentUserId, initialBookmarkedIds = [] }: TemplateGridProps) {
+export function TemplateGrid({
+  templates,
+  currentUserId,
+  initialBookmarkedIds = [],
+}: TemplateGridProps) {
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [activeTab, setActiveTab] = useState<"all" | "saved" | "my">("all");
   const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(
-    () => new Set(initialBookmarkedIds)
+    () => new Set(initialBookmarkedIds),
   );
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateItem | null>(null);
   const [useDialogOpen, setUseDialogOpen] = useState(false);
@@ -85,10 +93,10 @@ export function TemplateGrid({ templates, currentUserId, initialBookmarkedIds = 
         activeTab === "all"
           ? true
           : activeTab === "saved"
-          ? bookmarkedIds.has(tpl.id)
-          : activeTab === "my"
-          ? tpl.authorId === currentUserId
-          : true;
+            ? bookmarkedIds.has(tpl.id)
+            : activeTab === "my"
+              ? tpl.authorId === currentUserId
+              : true;
 
       const matchesSearch =
         search.trim() === "" ||
@@ -96,8 +104,7 @@ export function TemplateGrid({ templates, currentUserId, initialBookmarkedIds = 
         tpl.description.toLowerCase().includes(search.toLowerCase()) ||
         tpl.category.toLowerCase().includes(search.toLowerCase());
 
-      const matchesCategory =
-        selectedCategory === "All" || tpl.category === selectedCategory;
+      const matchesCategory = selectedCategory === "All" || tpl.category === selectedCategory;
 
       return matchesTab && matchesSearch && matchesCategory;
     });
@@ -209,24 +216,24 @@ export function TemplateGrid({ templates, currentUserId, initialBookmarkedIds = 
             {activeTab === "saved"
               ? "No saved templates"
               : activeTab === "my"
-              ? "No published templates"
-              : "No templates found"}
+                ? "No published templates"
+                : "No templates found"}
           </h3>
           <p className="text-xs text-muted-foreground max-w-xs font-light mt-1 mb-4">
             {activeTab === "saved"
               ? "You haven't bookmarked any templates yet. Click the bookmark icon on any template card to save it for quick access."
               : activeTab === "my"
-              ? "You haven't published any LaTeX templates yet. Share your designs with the community!"
-              : search || selectedCategory !== "All"
-              ? "Try adjusting your search criteria or category filter."
-              : "No templates available in this section."}
+                ? "You haven't published any LaTeX templates yet. Share your designs with the community!"
+                : search || selectedCategory !== "All"
+                  ? "Try adjusting your search criteria or category filter."
+                  : "No templates available in this section."}
           </p>
 
           {activeTab === "my" ? (
             <Button asChild size="sm">
               <Link href="/dashboard/templates/new">Publish Template</Link>
             </Button>
-          ) : (search || selectedCategory !== "All" || activeTab !== "all") ? (
+          ) : search || selectedCategory !== "All" || activeTab !== "all" ? (
             <Button
               variant="outline"
               size="sm"
@@ -257,11 +264,12 @@ export function TemplateGrid({ templates, currentUserId, initialBookmarkedIds = 
                   <div className="absolute inset-0 flex items-center justify-center text-muted-foreground/30">
                     <FileText className="h-10 w-10" />
                   </div>
-                  <img
+                  <Image
                     src={`/api/template/thumbnail/${tpl.id}`}
                     alt=""
+                    fill
                     loading="lazy"
-                    className="absolute inset-0 h-full w-full object-cover object-top"
+                    className="object-cover object-top"
                     onError={(e) => {
                       e.currentTarget.style.display = "none";
                     }}
@@ -272,11 +280,15 @@ export function TemplateGrid({ templates, currentUserId, initialBookmarkedIds = 
                 <div className="flex flex-1 flex-col justify-between p-5">
                   <div className="space-y-3">
                     <div className="flex items-start justify-between gap-2">
-                      <Badge variant="secondary" className="text-[10px] uppercase font-semibold px-2 py-0.5 tracking-wider bg-secondary/80">
+                      <Badge
+                        variant="secondary"
+                        className="text-[10px] uppercase font-semibold px-2 py-0.5 tracking-wider bg-secondary/80"
+                      >
                         {tpl.category}
                       </Badge>
                       <span className="text-xs text-muted-foreground font-medium">
-                        Used {tpl.usageCount.toLocaleString()} {tpl.usageCount === 1 ? "time" : "times"}
+                        Used {tpl.usageCount.toLocaleString()}{" "}
+                        {tpl.usageCount === 1 ? "time" : "times"}
                       </span>
                     </div>
 

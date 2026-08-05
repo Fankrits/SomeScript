@@ -82,7 +82,7 @@ export interface EditorSettings {
 export function useCodeMirrorExtensions(
   settings: EditorSettings,
   currentLanguage: string,
-  collaboration?: CollaborationConfig
+  collaboration?: CollaborationConfig,
 ): Extension[] {
   // Hoist to locals so the memo body reads plain variables whose access shape
   // matches the dependency array exactly. Reading `collaboration?.ytext` inside
@@ -92,7 +92,12 @@ export function useCodeMirrorExtensions(
   const ytext = collaboration?.ytext;
   const awareness = collaboration?.awareness;
   return useMemo(() => {
-    const extensions: Extension[] = [EditorView.lineWrapping, searchExtension(), lintGutter(), compactLintGutterTheme];
+    const extensions: Extension[] = [
+      EditorView.lineWrapping,
+      searchExtension(),
+      lintGutter(),
+      compactLintGutterTheme,
+    ];
 
     if (ytext && awareness) {
       extensions.push(yCollab(ytext, awareness));
@@ -144,4 +149,3 @@ export function useCodeMirrorExtensions(
     awareness,
   ]);
 }
-

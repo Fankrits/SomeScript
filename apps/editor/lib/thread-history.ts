@@ -90,10 +90,7 @@ export function saveThreadHistory(
 ): boolean {
   const key = threadKey(threadId);
   const write = (evts: readonly unknown[]) =>
-    storage.setItem(
-      key,
-      JSON.stringify({ version: HISTORY_VERSION, events: evts, sessionState }),
-    );
+    storage.setItem(key, JSON.stringify({ version: HISTORY_VERSION, events: evts, sessionState }));
 
   try {
     write(events);
@@ -127,9 +124,16 @@ export function saveThreadHistory(
 }
 
 /** Reads a thread's current title from the sidebar list page.tsx owns. */
-export function getThreadTitle(projectId: string, threadId: string, storage: Storage = localStorage): string {
+export function getThreadTitle(
+  projectId: string,
+  threadId: string,
+  storage: Storage = localStorage,
+): string {
   try {
-    const list = JSON.parse(storage.getItem(threadsListKey(projectId)) ?? "[]") as { id: string; title: string }[];
+    const list = JSON.parse(storage.getItem(threadsListKey(projectId)) ?? "[]") as {
+      id: string;
+      title: string;
+    }[];
     return list.find((t) => t.id === threadId)?.title ?? "New Chat";
   } catch {
     return "New Chat";

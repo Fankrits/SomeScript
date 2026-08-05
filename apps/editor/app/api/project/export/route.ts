@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
       if (!compileRes.ok || !compileLog.includes("[SUCCESS]")) {
         return Response.json(
           { error: compileLog || "Compilation failed. Please check the project in the editor." },
-          { status: 422 }
+          { status: 422 },
         );
       }
 
@@ -44,7 +44,10 @@ export async function GET(req: NextRequest) {
           },
         });
       } catch {
-        return Response.json({ error: "PDF preview file not found. Please compile the project first in the editor." }, { status: 404 });
+        return Response.json(
+          { error: "PDF preview file not found. Please compile the project first in the editor." },
+          { status: 404 },
+        );
       }
     }
 

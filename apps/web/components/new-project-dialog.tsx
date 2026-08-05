@@ -1,7 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -45,11 +52,15 @@ export function NewProjectDialog() {
       </DialogTrigger>
       <DialogContent className="sm:max-w-[425px] bg-card border-border text-foreground rounded-xl shadow-lg">
         <DialogHeader>
-          <DialogTitle className="text-xl font-bold tracking-tight text-foreground">Create LaTeX Project</DialogTitle>
+          <DialogTitle className="text-xl font-bold tracking-tight text-foreground">
+            Create LaTeX Project
+          </DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-6 pt-4">
           <div className="space-y-2">
-            <Label htmlFor="name" className="text-muted-foreground text-sm font-medium">Project Name</Label>
+            <Label htmlFor="name" className="text-muted-foreground text-sm font-medium">
+              Project Name
+            </Label>
             <Input
               id="name"
               name="name"

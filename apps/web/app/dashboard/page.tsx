@@ -35,8 +35,12 @@ export default async function DashboardPage() {
         {/* Top Header */}
         <header className="border-b border-border py-4 sm:py-6 px-4 sm:px-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4 z-10">
           <div>
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground">Projects</h1>
-            <p className="text-xs sm:text-sm text-muted-foreground font-light mt-0.5">Manage and compile your LaTeX documents.</p>
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground">
+              Projects
+            </h1>
+            <p className="text-xs sm:text-sm text-muted-foreground font-light mt-0.5">
+              Manage and compile your LaTeX documents.
+            </p>
           </div>
           <div className="grid grid-cols-2 gap-2.5 w-full sm:flex sm:w-auto sm:items-center">
             <ImportProjectDialog />
@@ -54,7 +58,8 @@ export default async function DashboardPage() {
               </div>
               <h3 className="text-lg font-semibold text-foreground">No projects yet</h3>
               <p className="text-sm text-muted-foreground max-w-sm font-light mt-2 mb-6">
-                Create a new LaTeX project or drag and drop a .zip file anywhere to generate, edit, and compile scientific documents in real-time with AI.
+                Create a new LaTeX project or drag and drop a .zip file anywhere to generate, edit,
+                and compile scientific documents in real-time with AI.
               </p>
               <div className="flex items-center gap-3">
                 <ImportProjectDialog />

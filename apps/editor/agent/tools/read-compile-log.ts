@@ -2,7 +2,11 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveToolProject } from "../../lib/authz";
 import { compileLogKey, type StoredCompileLog } from "../../lib/compile";
-import { formatCompileForModel, parseCompileErrors, type CompileError } from "../../lib/compile-errors";
+import {
+  formatCompileForModel,
+  parseCompileErrors,
+  type CompileError,
+} from "../../lib/compile-errors";
 import { redisGet } from "../../lib/redis";
 
 export interface ReadCompileLogOutput {

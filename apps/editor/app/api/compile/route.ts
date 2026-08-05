@@ -8,7 +8,8 @@ export async function POST(req: NextRequest) {
     await checkRate("compile", 10, 60_000);
     const { projectId: rawProjectId, path: fileRelativePath } = await req.json();
     if (!fileRelativePath) throw new ApiError(400, "Path parameter is required");
-    if (!fileRelativePath.endsWith(".tex")) throw new ApiError(400, "Only .tex files can be compiled");
+    if (!fileRelativePath.endsWith(".tex"))
+      throw new ApiError(400, "Only .tex files can be compiled");
 
     const projectId = await requireProject(rawProjectId);
 
@@ -30,14 +31,17 @@ export async function POST(req: NextRequest) {
 
       if (!response.ok) {
         const errText = await response.text();
-        return Response.json({ error: errText || "Compiler service error" }, { status: response.status });
+        return Response.json(
+          { error: errText || "Compiler service error" },
+          { status: response.status },
+        );
       }
 
       return new Response(response.body, {
         headers: {
           "Content-Type": "text/plain; charset=utf-8",
           "Cache-Control": "no-cache",
-          "Connection": "keep-alive",
+          Connection: "keep-alive",
         },
       });
     }

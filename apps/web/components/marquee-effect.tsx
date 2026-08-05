@@ -22,7 +22,7 @@ export function MarqueeEffect({
   speedOnHover,
   direction = "horizontal",
   reverse = false,
-  className
+  className,
 }: InfiniteSliderProps) {
   const [currentSpeed, setCurrentSpeed] = React.useState(speed);
   const [ref, { width, height }] = useMeasure();
@@ -50,7 +50,7 @@ export function MarqueeEffect({
         onComplete: () => {
           setIsTransitioning(false);
           setKey((prevKey) => prevKey + 1);
-        }
+        },
       });
     } else {
       controls = animate(translation, [from, to], {
@@ -61,7 +61,7 @@ export function MarqueeEffect({
         repeatDelay: 0,
         onRepeat: () => {
           translation.set(from);
-        }
+        },
       });
     }
 
@@ -77,7 +77,7 @@ export function MarqueeEffect({
         onHoverEnd: () => {
           setIsTransitioning(true);
           setCurrentSpeed(speed);
-        }
+        },
       }
     : {};
 
@@ -88,10 +88,11 @@ export function MarqueeEffect({
         style={{
           ...(direction === "horizontal" ? { x: translation } : { y: translation }),
           gap: `${gap}px`,
-          flexDirection: direction === "horizontal" ? "row" : "column"
+          flexDirection: direction === "horizontal" ? "row" : "column",
         }}
         ref={ref}
-        {...hoverProps}>
+        {...hoverProps}
+      >
         {children}
         {children}
       </motion.div>

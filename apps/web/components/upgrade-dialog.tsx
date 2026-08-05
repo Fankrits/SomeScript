@@ -8,7 +8,6 @@ import {
   SheetDescription,
   SheetHeader,
   SheetTitle,
-  SheetTrigger,
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { CheckoutForm } from "@/components/checkout-form";
@@ -143,7 +142,9 @@ export function UpgradeDialog({ autoOpenLocked = false }: { autoOpenLocked?: boo
           ) : (
             <>
               <SheetTitle className="text-xl">Workspace plans</SheetTitle>
-              <SheetDescription>Pick the plan that fits this workspace. Upgrade anytime.</SheetDescription>
+              <SheetDescription>
+                Pick the plan that fits this workspace. Upgrade anytime.
+              </SheetDescription>
             </>
           )}
         </SheetHeader>
@@ -155,7 +156,8 @@ export function UpgradeDialog({ autoOpenLocked = false }: { autoOpenLocked?: boo
             <>
               {autoOpenLocked && (
                 <p className="mb-4 rounded-lg bg-secondary/60 px-3 py-2 text-sm text-muted-foreground">
-                  Your first workspace is free — additional organizations need a paid plan to unlock.
+                  Your first workspace is free — additional organizations need a paid plan to
+                  unlock.
                 </p>
               )}
 
@@ -174,7 +176,9 @@ export function UpgradeDialog({ autoOpenLocked = false }: { autoOpenLocked?: boo
                       )}
                     </div>
                     <div className="mt-1 flex items-baseline gap-1">
-                      <span className="text-2xl font-semibold tracking-tight text-foreground">{p.price}</span>
+                      <span className="text-2xl font-semibold tracking-tight text-foreground">
+                        {p.price}
+                      </span>
                       <span className="text-xs text-muted-foreground">{p.cadence}</span>
                     </div>
                     <ul className="mt-3 flex flex-col gap-1.5 text-sm text-muted-foreground">
@@ -197,7 +201,11 @@ export function UpgradeDialog({ autoOpenLocked = false }: { autoOpenLocked?: boo
                           variant={p.highlight ? "default" : "outline"}
                           className="h-9 w-full"
                         >
-                          {loadingPlan === p.id ? <Loader2 className="h-4 w-4 animate-spin" /> : `Choose ${p.name}`}
+                          {loadingPlan === p.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            `Choose ${p.name}`
+                          )}
                         </Button>
                       )}
                     </div>
@@ -216,7 +224,9 @@ export function UpgradeDialog({ autoOpenLocked = false }: { autoOpenLocked?: boo
                       key={pack.id}
                       variant="outline"
                       disabled={loadingPack !== null}
-                      onClick={() => handleTopUp(pack.id, `${pack.credits.toLocaleString()} AI credits`)}
+                      onClick={() =>
+                        handleTopUp(pack.id, `${pack.credits.toLocaleString()} AI credits`)
+                      }
                       className="h-9 justify-between font-medium"
                     >
                       <span>{pack.credits.toLocaleString()} credits</span>

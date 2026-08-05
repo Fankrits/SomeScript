@@ -16,7 +16,8 @@ export default async function TemplatesPage() {
   }
 
   const user = await currentUser();
-  const currentUsername = user?.username || user?.firstName || user?.emailAddresses[0]?.emailAddress?.split("@")[0];
+  const currentUsername =
+    user?.username || user?.firstName || user?.emailAddresses[0]?.emailAddress?.split("@")[0];
 
   // Fetch user's saved template bookmarks from Postgres DB
   const userBookmarks = await db.query.templateBookmarks.findMany({
@@ -51,7 +52,8 @@ export default async function TemplatesPage() {
     if (t.authorId === userId && currentUsername) {
       resolvedAuthorName = currentUsername;
     } else if (!resolvedAuthorName || resolvedAuthorName === "User") {
-      resolvedAuthorName = t.userAuthorName && t.userAuthorName !== "User" ? t.userAuthorName : "Community";
+      resolvedAuthorName =
+        t.userAuthorName && t.userAuthorName !== "User" ? t.userAuthorName : "Community";
     }
 
     return {
@@ -61,7 +63,8 @@ export default async function TemplatesPage() {
       category: t.category,
       authorId: t.authorId,
       authorName: resolvedAuthorName,
-      authorAvatarUrl: (t.authorId === userId && user?.imageUrl) || t.userAvatarUrl || t.authorAvatarUrl,
+      authorAvatarUrl:
+        (t.authorId === userId && user?.imageUrl) || t.userAvatarUrl || t.authorAvatarUrl,
       usageCount: t.usageCount,
       createdAt: t.createdAt,
     };
@@ -75,7 +78,9 @@ export default async function TemplatesPage() {
       {/* Top Header */}
       <header className="border-b border-border py-4 sm:py-6 px-4 sm:px-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4 z-10">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground">LaTeX Templates</h1>
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground">
+            LaTeX Templates
+          </h1>
           <p className="text-xs sm:text-sm text-muted-foreground font-light mt-0.5">
             Explore, create, and publish LaTeX templates to kickstart your documents.
           </p>

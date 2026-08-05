@@ -11,8 +11,7 @@ import {
 // (convertEvePart, and the thread-title builder in use-eve-runtime.ts).
 const STRIP_MARKER = /^\[projectId: [^\]]*\]\n?/;
 
-const wrap = (name: string, body: string) =>
-  `<attachment name=${name}>\n${body}\n</attachment>`;
+const wrap = (name: string, body: string) => `<attachment name=${name}>\n${body}\n</attachment>`;
 
 test("plain message passes through untouched", () => {
   const r = extractAttachmentBlocks("just a question");

@@ -40,9 +40,13 @@ test("compare-and-swap writes reject a stale file version", async () => {
     await p.writeFile(projectId, "main.tex", "old content");
     const snapshot = await p.readFileWithVersion(projectId, "main.tex");
 
-    expect(await p.writeFileIfVersion(projectId, "main.tex", snapshot.version, "new content")).toBe(true);
+    expect(await p.writeFileIfVersion(projectId, "main.tex", snapshot.version, "new content")).toBe(
+      true,
+    );
     expect(await p.readFile(projectId, "main.tex")).toBe("new content");
-    expect(await p.writeFileIfVersion(projectId, "main.tex", snapshot.version, "lost content")).toBe(false);
+    expect(
+      await p.writeFileIfVersion(projectId, "main.tex", snapshot.version, "lost content"),
+    ).toBe(false);
     expect(await p.readFile(projectId, "main.tex")).toBe("new content");
   } finally {
     await fs.rm(baseDir, { recursive: true, force: true });
@@ -50,11 +54,15 @@ test("compare-and-swap writes reject a stale file version", async () => {
 });
 
 test("copy rejects traversal in the source path", async () => {
-  await expect(p.copy("abc", "../abc-evil/secret.txt", "dest.txt")).rejects.toThrow("Directory traversal");
+  await expect(p.copy("abc", "../abc-evil/secret.txt", "dest.txt")).rejects.toThrow(
+    "Directory traversal",
+  );
 });
 
 test("copy rejects traversal in the destination path", async () => {
-  await expect(p.copy("abc", "secret.txt", "../abc-evil/dest.txt")).rejects.toThrow("Directory traversal");
+  await expect(p.copy("abc", "secret.txt", "../abc-evil/dest.txt")).rejects.toThrow(
+    "Directory traversal",
+  );
 });
 
 test("copy duplicates a file without removing the original", async () => {

@@ -11,16 +11,16 @@ const MAX_SNAPSHOT_BYTES = 1_000_000;
 function isNotFound(e: unknown): boolean {
   const err = e as { code?: string; message?: string; name?: string };
   return (
-    err?.code === "ENOENT" ||
-    Boolean(err?.message?.includes("ENOENT")) ||
-    err?.name === "NoSuchKey"
+    err?.code === "ENOENT" || Boolean(err?.message?.includes("ENOENT")) || err?.name === "NoSuchKey"
   );
 }
 
 export default defineTool({
   description: "Deletes a file from the workspace.",
   inputSchema: z.object({
-    projectId: z.string().describe("The projectId from the [projectId: ...] context marker in the conversation"),
+    projectId: z
+      .string()
+      .describe("The projectId from the [projectId: ...] context marker in the conversation"),
     path: z.string().describe("Relative path to the file from project root"),
   }),
   async execute({ projectId, path: filePath }) {
@@ -42,7 +42,11 @@ export default defineTool({
       await notifyCollabPathsChanged(pid, [filePath]);
       return { ok: true as const, path: filePath, before, existed };
     } catch (e) {
-      return { ok: false as const, path: filePath, error: e instanceof Error ? e.message : String(e) };
+      return {
+        ok: false as const,
+        path: filePath,
+        error: e instanceof Error ? e.message : String(e),
+      };
     }
   },
   toModelOutput(output) {

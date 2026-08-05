@@ -2,7 +2,11 @@ import { expect, test } from "bun:test";
 import { readTasks, sanitizeTasks } from "./tasks";
 
 test("missing or unreadable file reads back as no tasks", async () => {
-  const s = { readFile: async () => { throw new Error("ENOENT"); } };
+  const s = {
+    readFile: async () => {
+      throw new Error("ENOENT");
+    },
+  };
   expect(await readTasks("proj", s)).toEqual([]);
 });
 
@@ -12,7 +16,15 @@ test("unparseable or non-array file contents read back as no tasks", async () =>
 });
 
 test("sanitizeTasks keeps a well-formed task intact", () => {
-  const task = { id: "1", name: "Fix citation", description: "needs a page number", done: false, status: "todo" as const, createdAt: 123, source: { path: "a.tex", line: 4 } };
+  const task = {
+    id: "1",
+    name: "Fix citation",
+    description: "needs a page number",
+    done: false,
+    status: "todo" as const,
+    createdAt: 123,
+    source: { path: "a.tex", line: 4 },
+  };
   expect(sanitizeTasks([task])).toEqual([task]);
 });
 
@@ -34,7 +46,9 @@ test("sanitizeTasks coerces done and defaults createdAt", () => {
 });
 
 test("sanitizeTasks truncates long name/description and caps the list length", () => {
-  const [task] = sanitizeTasks([{ id: "1", name: "x".repeat(5000), description: "y".repeat(10000) }]);
+  const [task] = sanitizeTasks([
+    { id: "1", name: "x".repeat(5000), description: "y".repeat(10000) },
+  ]);
   expect(task.name.length).toBe(200);
   expect(task.description?.length).toBe(5000);
 

@@ -30,11 +30,10 @@ export default function ContactPage() {
           className="border-border bg-card/80 backdrop-blur-md rounded-xl p-8 space-y-8 text-card-foreground shadow-lg"
         >
           <div className="space-y-6">
-            <h2 className="text-2xl font-medium font-serif text-primary">
-              Get in Touch
-            </h2>
+            <h2 className="text-2xl font-medium font-serif text-primary">Get in Touch</h2>
             <p className="text-foreground/80 font-light text-sm md:text-base leading-relaxed">
-              We look forward to hearing from you. Whether you are a student, professor, or part of an institutional research lab, we are here to support your LaTeX authoring experience.
+              We look forward to hearing from you. Whether you are a student, professor, or part of
+              an institutional research lab, we are here to support your LaTeX authoring experience.
             </p>
           </div>
 
@@ -79,7 +78,8 @@ export default function ContactPage() {
           <div className="flex items-start gap-3 p-4 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-300">
             <ShieldAlert className="h-5 w-5 shrink-0 mt-0.5 text-amber-400" />
             <p className="text-xs font-light leading-relaxed">
-              <strong>Security Notice:</strong> Please do not submit confidential manuscript drafts or sensitive API keys via general support emails. Always keep credentials private.
+              <strong>Security Notice:</strong> Please do not submit confidential manuscript drafts
+              or sensitive API keys via general support emails. Always keep credentials private.
             </p>
           </div>
         </LiquidGlassCard>

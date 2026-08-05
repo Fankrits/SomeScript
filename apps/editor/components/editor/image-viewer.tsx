@@ -13,7 +13,7 @@ interface ImageViewerProps {
 export function ImageViewer({ path }: ImageViewerProps) {
   const projectId =
     typeof window !== "undefined"
-      ? new URLSearchParams(window.location.search).get("projectId") ?? "default"
+      ? (new URLSearchParams(window.location.search).get("projectId") ?? "default")
       : "default";
   // No cache-buster needed: the /api/files image response sets Cache-Control: no-store.
   const src = `/api/files?path=${encodeURIComponent(path)}&projectId=${encodeURIComponent(projectId)}`;

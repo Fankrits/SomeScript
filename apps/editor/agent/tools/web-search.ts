@@ -45,7 +45,7 @@ export default defineTool({
       const formatted = results
         .map(
           (r, i) =>
-            `${i + 1}. ${r.title ?? "(untitled)"}\n   ${r.url ?? ""}\n   ${(r.content ?? "").trim()}`
+            `${i + 1}. ${r.title ?? "(untitled)"}\n   ${r.url ?? ""}\n   ${(r.content ?? "").trim()}`,
         )
         .join("\n\n");
       return `${data.answer ? `Summary: ${data.answer}\n\n` : ""}Web results for "${query}":\n\n${formatted}`;

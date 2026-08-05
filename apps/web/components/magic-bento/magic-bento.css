@@ -279,7 +279,8 @@
 }
 
 @keyframes bento-collab-1 {
-  0%, 100% {
+  0%,
+  100% {
     transform: translate(65px, 85px);
   }
   33% {
@@ -291,7 +292,8 @@
 }
 
 @keyframes bento-collab-2 {
-  0%, 100% {
+  0%,
+  100% {
     transform: translate(160px, 135px);
   }
   40% {
@@ -303,7 +305,8 @@
 }
 
 @keyframes bento-collab-3 {
-  0%, 100% {
+  0%,
+  100% {
     transform: translate(210px, 110px);
   }
   45% {
@@ -325,9 +328,10 @@
 }
 
 @keyframes bento-kanban-drag-card {
-  0%, 100% {
+  0%,
+  100% {
     transform: translate(0px, 0px) rotate(0deg) scale(1);
-    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
     border-left-color: #ef4444;
     opacity: 0.9;
     z-index: 1;
@@ -348,7 +352,7 @@
   }
   68% {
     transform: translate(0px, 52px) rotate(0deg) scale(1);
-    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
     border-left-color: #f97316;
     opacity: 0.95;
     z-index: 30;
@@ -361,7 +365,8 @@
 }
 
 @keyframes bento-kanban-drag-cursor {
-  0%, 100% {
+  0%,
+  100% {
     transform: translate(160px, 160px);
     opacity: 0;
   }
@@ -388,11 +393,15 @@
 }
 
 @keyframes bento-kanban-slot-highlight {
-  0%, 25%, 85%, 100% {
+  0%,
+  25%,
+  85%,
+  100% {
     opacity: 0;
     transform: scale(0.95);
   }
-  35%, 75% {
+  35%,
+  75% {
     opacity: 1;
     transform: scale(1);
   }

@@ -15,7 +15,11 @@ export function OutlinePanel({ outline, isLatex, onSelect }: OutlinePanelProps) 
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
 
   if (!isLatex) {
-    return <p className="px-2 py-1.5 text-xs text-muted-foreground">Open a .tex file to see its outline.</p>;
+    return (
+      <p className="px-2 py-1.5 text-xs text-muted-foreground">
+        Open a .tex file to see its outline.
+      </p>
+    );
   }
   if (outline.length === 0) {
     return <p className="px-2 py-1.5 text-xs text-muted-foreground">No headings found.</p>;
@@ -29,7 +33,15 @@ export function OutlinePanel({ outline, isLatex, onSelect }: OutlinePanelProps) 
       return next;
     });
 
-  return <OutlineList nodes={nestOutline(outline)} collapsed={collapsed} onToggle={toggle} onSelect={onSelect} root />;
+  return (
+    <OutlineList
+      nodes={nestOutline(outline)}
+      collapsed={collapsed}
+      onToggle={toggle}
+      onSelect={onSelect}
+      root
+    />
+  );
 }
 
 function OutlineList({
@@ -58,7 +70,9 @@ function OutlineList({
               aria-label={isOpen ? "Collapse section" : "Expand section"}
               className="shrink-0 p-0.5 text-muted-foreground hover:text-foreground"
             >
-              <ChevronRightIcon className={cn("size-3.5 transition-transform", isOpen && "rotate-90")} />
+              <ChevronRightIcon
+                className={cn("size-3.5 transition-transform", isOpen && "rotate-90")}
+              />
             </button>
           ) : (
             <span className="size-3.5 shrink-0" />
@@ -73,7 +87,12 @@ function OutlineList({
           </button>
         </div>
         {hasChildren && isOpen && (
-          <OutlineList nodes={node.children} collapsed={collapsed} onToggle={onToggle} onSelect={onSelect} />
+          <OutlineList
+            nodes={node.children}
+            collapsed={collapsed}
+            onToggle={onToggle}
+            onSelect={onSelect}
+          />
         )}
       </div>
     );

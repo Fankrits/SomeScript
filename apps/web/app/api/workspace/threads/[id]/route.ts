@@ -11,10 +11,7 @@ import { NextRequest } from "next/server";
  * cleared browser or a localStorage-quota eviction. The client debounces
  * calls here, so this isn't hit per stream event.
  */
-export async function PUT(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { userId, orgId } = await auth();
   if (!userId) return Response.json({ error: "Unauthorized" }, { status: 401 });
   const workspaceId = orgId || userId;

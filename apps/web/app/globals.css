@@ -100,7 +100,7 @@
 
 :root {
   /* Custom Premium White Theme: #FBF6F0 (Cream) and #0f4c5c (Teal) */
-  --background: #FBF6F0;
+  --background: #fbf6f0;
   --foreground: #1c2e36;
 
   --card: #ffffff;
@@ -110,7 +110,7 @@
   --popover-foreground: #1c2e36;
 
   --primary: #0f4c5c;
-  --primary-foreground: #FBF6F0;
+  --primary-foreground: #fbf6f0;
 
   --secondary: #efe7dd;
   --secondary-foreground: #0f4c5c;
@@ -139,7 +139,7 @@
   --sidebar: #f5ece1;
   --sidebar-foreground: #1c2e36;
   --sidebar-primary: #0f4c5c;
-  --sidebar-primary-foreground: #FBF6F0;
+  --sidebar-primary-foreground: #fbf6f0;
   --sidebar-accent: #e5dacd;
   --sidebar-accent-foreground: #0f4c5c;
   --sidebar-border: #e5dacd;

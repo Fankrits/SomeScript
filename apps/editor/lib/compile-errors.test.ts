@@ -2,7 +2,8 @@ import { expect, test } from "bun:test";
 import { formatCompileForModel, parseCompileErrors } from "./compile-errors";
 
 test("parses a single Tectonic error", () => {
-  const log = "some info\nerror: main.tex:3: Undefined control sequence\nerror: halted on potentially-recoverable error as specified\n";
+  const log =
+    "some info\nerror: main.tex:3: Undefined control sequence\nerror: halted on potentially-recoverable error as specified\n";
   expect(parseCompileErrors(log, "main.tex")).toEqual([
     { file: "main.tex", line: 3, message: "Undefined control sequence" },
   ]);
@@ -27,7 +28,8 @@ test("strips ANSI color codes before matching", () => {
 });
 
 test("ignores fatal errors without a file:line, without throwing", () => {
-  const log = "error: !File ended while scanning use of \\textbf\nerror: halted on potentially-recoverable error as specified\n";
+  const log =
+    "error: !File ended while scanning use of \\textbf\nerror: halted on potentially-recoverable error as specified\n";
   expect(parseCompileErrors(log, "main.tex")).toEqual([]);
 });
 

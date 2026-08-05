@@ -48,12 +48,8 @@
           "name": "credit_balances_workspace_id_workspaces_id_fk",
           "tableFrom": "credit_balances",
           "tableTo": "workspaces",
-          "columnsFrom": [
-            "workspace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["workspace_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -136,12 +132,8 @@
           "name": "credit_transactions_workspace_id_workspaces_id_fk",
           "tableFrom": "credit_transactions",
           "tableTo": "workspaces",
-          "columnsFrom": [
-            "workspace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["workspace_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -151,9 +143,7 @@
         "credit_transactions_stripe_event_id_unique": {
           "name": "credit_transactions_stripe_event_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "stripe_event_id"
-          ]
+          "columns": ["stripe_event_id"]
         }
       },
       "policies": {},
@@ -210,12 +200,8 @@
           "name": "documents_project_id_projects_id_fk",
           "tableFrom": "documents",
           "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["project_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -286,12 +272,8 @@
           "name": "projects_workspace_id_workspaces_id_fk",
           "tableFrom": "projects",
           "tableTo": "workspaces",
-          "columnsFrom": [
-            "workspace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["workspace_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -386,12 +368,8 @@
           "name": "subscriptions_workspace_id_workspaces_id_fk",
           "tableFrom": "subscriptions",
           "tableTo": "workspaces",
-          "columnsFrom": [
-            "workspace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["workspace_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -401,16 +379,12 @@
         "subscriptions_workspace_id_unique": {
           "name": "subscriptions_workspace_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "workspace_id"
-          ]
+          "columns": ["workspace_id"]
         },
         "subscriptions_stripe_subscription_id_unique": {
           "name": "subscriptions_stripe_subscription_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "stripe_subscription_id"
-          ]
+          "columns": ["stripe_subscription_id"]
         }
       },
       "policies": {},
@@ -467,9 +441,7 @@
         "users_email_unique": {
           "name": "users_email_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "email"
-          ]
+          "columns": ["email"]
         }
       },
       "policies": {},
@@ -531,12 +503,8 @@
           "name": "workspaces_owner_id_users_id_fk",
           "tableFrom": "workspaces",
           "tableTo": "users",
-          "columnsFrom": [
-            "owner_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["owner_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -552,31 +520,17 @@
     "public.credit_transaction_reason": {
       "name": "credit_transaction_reason",
       "schema": "public",
-      "values": [
-        "monthly_grant",
-        "purchase",
-        "usage",
-        "adjustment"
-      ]
+      "values": ["monthly_grant", "purchase", "usage", "adjustment"]
     },
     "public.subscription_plan": {
       "name": "subscription_plan",
       "schema": "public",
-      "values": [
-        "free",
-        "pro",
-        "team"
-      ]
+      "values": ["free", "pro", "team"]
     },
     "public.subscription_status": {
       "name": "subscription_status",
       "schema": "public",
-      "values": [
-        "active",
-        "trialing",
-        "past_due",
-        "canceled"
-      ]
+      "values": ["active", "trialing", "past_due", "canceled"]
     }
   },
   "schemas": {},

@@ -28,7 +28,11 @@ export const analytics = {
   /**
    * Track user actions (e.g., CTA click, export document, toggle theme).
    */
-  userAction(action: string, category: string, metadata?: Record<string, string | number | boolean>) {
+  userAction(
+    action: string,
+    category: string,
+    metadata?: Record<string, string | number | boolean>,
+  ) {
     this.track("user_action", {
       action,
       category,
