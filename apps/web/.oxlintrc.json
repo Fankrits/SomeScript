@@ -1,0 +1,55 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": [
+    "react",
+    "react-perf",
+    "typescript",
+    "unicorn",
+    "oxc",
+    "import",
+    "jsx-a11y",
+    "nextjs",
+    "promise",
+    "jest"
+  ],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error",
+    "perf": "warn"
+  },
+  "options": {
+    "typeAware": true
+  },
+  "env": {
+    "browser": true,
+    "node": true
+  },
+  "rules": {
+    "typescript/no-explicit-any": "off",
+    "react/react-in-jsx-scope": "off",
+    // Next.js apps use the automatic JSX runtime, and CSS/global side-effect
+    // imports are never meant to be assigned to a variable.
+    "import/no-unassigned-import": "off",
+    // False positive: oxc-resolver doesn't follow @sentry/nextjs's re-export
+    // chain for some named exports (e.g. replayIntegration) that do exist.
+    "import/namespace": "off",
+    // This codebase composes Base UI / Radix headless primitives, which use
+    // role="..." on generic wrapper elements by design (not raw hand markup).
+    "jsx-a11y/prefer-tag-over-role": "off",
+    // Remaining pre-existing debt with no single clean fix — each needs real
+    // per-call-site judgment (a genuine unsafe cast vs. a standard necessary
+    // one like CSS custom properties or globalThis extension; a function that
+    // legitimately never returns a value on some paths). Left visible as
+    // warnings rather than blind-fixed or silenced.
+    "typescript/no-unsafe-type-assertion": "warn",
+    "typescript/consistent-return": "warn",
+    // autoFocus on rename/search/composer inputs is deliberate UX (see
+    // oxlint-fix-suggestions-unreliable memory: a previous auto-fix pass
+    // stripped these and broke it before this was caught and reverted).
+    "jsx-a11y/no-autofocus": "warn",
+    // The 2 remaining cases are Clerk avatar URLs; next/image needs a
+    // next.config.ts remotePatterns entry for Clerk's CDN domain first.
+    "nextjs/no-img-element": "warn"
+  },
+  "ignorePatterns": [".next/**", "out/**", "build/**", "next-env.d.ts"]
+}
