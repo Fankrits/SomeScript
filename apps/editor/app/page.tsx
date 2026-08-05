@@ -1,11 +1,8 @@
 "use client";
 
-import {
-  FileTree,
-} from "@/components/ai-elements/file-tree";
+import { FileTree } from "@/components/ai-elements/file-tree";
 import { TerminalLogViewer } from "@/components/editor/terminal-log-viewer";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,22 +22,42 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { Scissors, Copy, ClipboardPaste, TextCursor, Undo2, Redo2, FileText } from "lucide-react";
-import { ListTodoIcon, FilePlus, FolderPlus, PanelLeft, PanelRight, Sparkles, Loader2, Home, ChevronRight, ArrowLeft, Clock, Trash2, Plus, Settings, Search, Download, Upload, Play } from "lucide-react";
-import { nanoid } from "nanoid";
+import {
+  ListTodoIcon,
+  FilePlus,
+  FolderPlus,
+  Sparkles,
+  Loader2,
+  Home,
+  ChevronRight,
+  ArrowLeft,
+  Clock,
+  Trash2,
+  Plus,
+  Settings,
+  Search,
+  Download,
+  Upload,
+  Play,
+} from "lucide-react";
 import { toast } from "sonner";
-import { useCallback, useEffect, useInsertionEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PanelImperativeHandle } from "react-resizable-panels";
 import { useDefaultLayout } from "react-resizable-panels";
-import { useEveAgent } from "eve/react";
 import { useUser, useAuth } from "@clerk/nextjs";
 import { useCollaboration, type Collaborator } from "@/hooks/use-collaboration";
 import type { Text as YText } from "yjs";
 import { Avatar, AvatarImage, AvatarFallback, AvatarGroup } from "@/components/ui/avatar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { SearchPanel, type SearchPanelHandle, type SearchResult, type SearchState } from "@/components/editor/search-panel";
+import {
+  SearchPanel,
+  type SearchPanelHandle,
+  type SearchResult,
+  type SearchState,
+} from "@/components/editor/search-panel";
 import { TasksPanel, TasksPanelHandle } from "@/components/editor/tasks-panel";
 import type { Task } from "@/lib/tasks";
-import { search as searchExtension, SearchQuery, setSearchQuery } from "@codemirror/search";
+import { SearchQuery, setSearchQuery } from "@codemirror/search";
 import { setDiagnostics, type Diagnostic } from "@codemirror/lint";
 import { parseCompileErrors, type CompileError } from "@/lib/compile-errors";
 import { trackEvent, upgradeSession } from "@/components/analytics/clarity";
@@ -63,31 +80,58 @@ const PdfPreview = nextDynamic(() => import("@/components/editor/pdf-preview"), 
 // "somescript:attach-to-chat" listener is in place before anything can fire it.
 const EveThread = nextDynamic(
   () => import("@/components/chat/eve-thread").then((m) => m.EveThread),
-  { ssr: false }
+  { ssr: false },
 );
 
 // Custom VS Code style Layout Toggle Icons
 const LayoutIconLeft = ({ active }: { active: boolean }) => (
-  <svg width="18" height="18" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" className="size-4.5">
+  <svg
+    width="18"
+    height="18"
+    viewBox="0 0 16 16"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    className="size-4.5"
+  >
     <rect x="1.5" y="1.5" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.5" />
     <path d="M5.5 1.5V14.5" stroke="currentColor" strokeWidth="1.5" />
-    {active && <rect x="2.25" y="2.25" width="2.5" height="11.5" fill="currentColor" opacity="0.8" />}
+    {active && (
+      <rect x="2.25" y="2.25" width="2.5" height="11.5" fill="currentColor" opacity="0.8" />
+    )}
   </svg>
 );
 
 const LayoutIconBottom = ({ active }: { active: boolean }) => (
-  <svg width="18" height="18" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" className="size-4.5">
+  <svg
+    width="18"
+    height="18"
+    viewBox="0 0 16 16"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    className="size-4.5"
+  >
     <rect x="1.5" y="1.5" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.5" />
     <path d="M1.5 10.5H14.5" stroke="currentColor" strokeWidth="1.5" />
-    {active && <rect x="2.25" y="11.25" width="11.5" height="2.5" fill="currentColor" opacity="0.8" />}
+    {active && (
+      <rect x="2.25" y="11.25" width="11.5" height="2.5" fill="currentColor" opacity="0.8" />
+    )}
   </svg>
 );
 
 const LayoutIconRight = ({ active }: { active: boolean }) => (
-  <svg width="18" height="18" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" className="size-4.5">
+  <svg
+    width="18"
+    height="18"
+    viewBox="0 0 16 16"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    className="size-4.5"
+  >
     <rect x="1.5" y="1.5" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.5" />
     <path d="M10.5 1.5V14.5" stroke="currentColor" strokeWidth="1.5" />
-    {active && <rect x="11.25" y="2.25" width="2.5" height="11.5" fill="currentColor" opacity="0.8" />}
+    {active && (
+      <rect x="11.25" y="2.25" width="2.5" height="11.5" fill="currentColor" opacity="0.8" />
+    )}
   </svg>
 );
 import CodeMirror, { EditorView, type ViewUpdate } from "@uiw/react-codemirror";
@@ -99,18 +143,11 @@ import { EditorToolbar } from "@/components/editor/editor-toolbar";
 import { RemoteCursorAvatars } from "@/components/editor/remote-cursor-avatars";
 import { CommandPalette } from "@/components/editor/command-palette";
 import { ImageViewer } from "@/components/editor/image-viewer";
-import { latex } from "codemirror-lang-latex";
 import { useCodeMirrorExtensions } from "@/hooks/use-codemirror-extensions";
 import { useIsMobile } from "@/hooks/use-mobile";
 import Image from "next/image";
 
-
-import type { BundledLanguage } from "shiki";
-import {
-  ResizableHandle,
-  ResizablePanel,
-  ResizablePanelGroup,
-} from "@/components/ui/resizable";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import {
   Select,
   SelectContent,
@@ -127,252 +164,13 @@ import {
   PROJECT_SETTINGS_VERSION_FIELD,
 } from "@/lib/file-tree-sync";
 
-
 // Types
-interface MockFile {
-  path: string;
-  name: string;
-  language: BundledLanguage;
-  content: string;
-}
-
-interface MessageType {
-  key: string;
-  from: "user" | "assistant";
-  content: string;
-}
-
 interface FileNode {
   name: string;
   path: string;
   isDir: boolean;
   children?: FileNode[];
 }
-
-// Mock file contents
-const mockFiles: MockFile[] = [
-  {
-    content: `import { useState } from "react";
-import { Button } from "./components/button";
-import { Input } from "./components/input";
-import { validateForm } from "./utils/helpers";
-
-export function App() {
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [errors, setErrors] = useState<string[]>([]);
-
-  const handleSubmit = () => {
-    const validation = validateForm({ name, email });
-    if (!validation.isValid) {
-      setErrors(validation.errors);
-      return;
-    }
-    console.log("Form submitted:", { name, email });
-  };
-
-  return (
-    <div className="container mx-auto p-4">
-      <h1 className="text-2xl font-bold mb-4">Contact Form</h1>
-      <Input
-        placeholder="Name"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-      />
-      <Input
-        placeholder="Email"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-      />
-      {errors.map((error) => (
-        <p key={error} className="text-red-500">{error}</p>
-      ))}
-      <Button onClick={handleSubmit}>Submit</Button>
-    </div>
-  );
-}`,
-    language: "tsx",
-    name: "app.tsx",
-    path: "src/app.tsx",
-  },
-  {
-    content: `import { forwardRef, type ButtonHTMLAttributes } from "react";
-import { cn } from "../utils/helpers";
-
-interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: "primary" | "secondary" | "ghost";
-  size?: "sm" | "md" | "lg";
-}
-
-export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant = "primary", size = "md", ...props }, ref) => {
-    return (
-      <button
-        ref={ref}
-        className={cn(
-          "inline-flex items-center justify-center rounded-md font-medium",
-          "transition-colors focus-visible:outline-none focus-visible:ring-2",
-          variant === "primary" && "bg-blue-500 text-white hover:bg-blue-600",
-          variant === "secondary" && "bg-gray-200 text-gray-900 hover:bg-gray-300",
-          variant === "ghost" && "hover:bg-gray-100",
-          size === "sm" && "h-8 px-3 text-sm",
-          size === "md" && "h-10 px-4",
-          size === "lg" && "h-12 px-6 text-lg",
-          className
-        )}
-        {...props}
-      />
-    );
-  }
-);
-
-Button.displayName = "Button";`,
-    language: "tsx",
-    name: "button.tsx",
-    path: "src/components/button.tsx",
-  },
-  {
-    content: `import { forwardRef, type InputHTMLAttributes } from "react";
-import { cn } from "../utils/helpers";
-
-interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
-  error?: boolean;
-}
-
-export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ className, error, ...props }, ref) => {
-    return (
-      <input
-        ref={ref}
-        className={cn(
-          "flex h-10 w-full rounded-md border px-3 py-2 text-sm",
-          "focus-visible:outline-none focus-visible:ring-2",
-          error ? "border-red-500" : "border-gray-300",
-          className
-        )}
-        {...props}
-      />
-    );
-  }
-);
-
-Input.displayName = "Input";`,
-    language: "tsx",
-    name: "input.tsx",
-    path: "src/components/input.tsx",
-  },
-  {
-    content: `export function cn(...classes: (string | boolean | undefined)[]) {
-  return classes.filter(Boolean).join(" ");
-}
-
-interface FormData {
-  name: string;
-  email: string;
-}
-
-interface ValidationResult {
-  isValid: boolean;
-  errors: string[];
-}
-
-export function validateForm(data: FormData): ValidationResult {
-  const errors: string[] = [];
-
-  if (!data.name.trim()) {
-    errors.push("Name is required");
-  }
-
-  if (!data.email.trim()) {
-    errors.push("Email is required");
-  } else if (!isValidEmail(data.email)) {
-    errors.push("Invalid email format");
-  }
-
-  return {
-    isValid: errors.length === 0,
-    errors,
-  };
-}
-
-function isValidEmail(email: string): boolean {
-  return /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email);
-}`,
-    language: "typescript",
-    name: "helpers.ts",
-    path: "src/utils/helpers.ts",
-  },
-  {
-    content: `{
-  "name": "my-app",
-  "version": "1.0.0",
-  "private": true,
-  "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
-    "test": "vitest",
-    "lint": "eslint src"
-  },
-  "dependencies": {
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0"
-  },
-  "devDependencies": {
-    "@types/react": "^18.2.0",
-    "typescript": "^5.0.0",
-    "vite": "^5.0.0",
-    "vitest": "^1.0.0"
-  }
-}`,
-    language: "json",
-    name: "package.json",
-    path: "package.json",
-  },
-  {
-    content: `# My App
-
-A simple React application with form validation.
-
-## Getting Started
-
-\`\`\`bash
-npm install
-npm run dev
-\`\`\`
-
-## Features
-
-- Contact form with validation
-- Reusable Button and Input components
-- TypeScript support
-`,
-    language: "markdown",
-    name: "README.md",
-    path: "README.md",
-  },
-];
-
-// Mock chat messages
-const mockMessages: MessageType[] = [
-  {
-    content: "Can you help me add email validation to the form?",
-    from: "user",
-    key: nanoid(),
-  },
-  {
-    content: `I can help you add email validation. Looking at your code in \`src/utils/helpers.ts\`, I see you already have a \`validateForm\` function.
-
-Here's what I'll do:
-
-1. Add an \`isValidEmail\` helper function
-2. Update \`validateForm\` to check email format
-3. Show validation errors in the UI
-
-The email validation uses a regex pattern to check for valid email format. The form will now show "Invalid email format" if the user enters an incorrectly formatted email address.`,
-    from: "assistant",
-    key: nanoid(),
-  },
-];
 
 // Mock terminal output
 const mockTerminalLines = [
@@ -388,7 +186,8 @@ const mockTerminalLines = [
 
 // SSR-safe storage for useDefaultLayout — its getServerSnapshot touches localStorage directly.
 const layoutStorage = {
-  getItem: (key: string) => (typeof window === "undefined" ? null : window.localStorage.getItem(key)),
+  getItem: (key: string) =>
+    typeof window === "undefined" ? null : window.localStorage.getItem(key),
   setItem: (key: string, value: string) => {
     if (typeof window !== "undefined") window.localStorage.setItem(key, value);
   },
@@ -423,7 +222,11 @@ const EditorSkeleton = () => (
         </div>
         <div className="p-3 space-y-2.5">
           {Array.from({ length: 9 }).map((_, i) => (
-            <div key={i} className="flex items-center gap-2" style={{ paddingLeft: `${(i % 3) * 14}px` }}>
+            <div
+              key={i}
+              className="flex items-center gap-2"
+              style={{ paddingLeft: `${(i % 3) * 14}px` }}
+            >
               <div className="size-3.5 rounded-sm bg-muted/70 shrink-0" />
               <SkeletonRow width={`${45 + ((i * 13) % 40)}%`} />
             </div>
@@ -474,6 +277,44 @@ const SIDEBAR_TABS = [
   { id: "settings", label: "Settings", Icon: Settings },
 ] as const;
 
+function getLanguageFromPath(filePath: string): string {
+  const ext = filePath.split(".").pop();
+  switch (ext) {
+    case "ts":
+    case "tsx":
+      return "typescript";
+    case "js":
+    case "jsx":
+      return "javascript";
+    case "json":
+      return "json";
+    case "css":
+      return "css";
+    case "md":
+      return "markdown";
+    case "tex":
+      return "latex";
+    default:
+      return "text";
+  }
+}
+
+function nodeNameExists(name: string, nodes: FileNode[]): boolean {
+  for (const n of nodes) {
+    if (n.name === name) return true;
+    if (n.children && nodeNameExists(name, n.children)) return true;
+  }
+  return false;
+}
+
+function getViewMode(filePath: string): "code" | "image" | "pdf-standalone" {
+  const ext = filePath.includes(".") ? filePath.split(".").pop()!.toLowerCase() : "";
+  const imageExts = ["png", "jpg", "jpeg", "gif", "svg", "webp"];
+  if (imageExts.includes(ext)) return "image";
+  if (ext === "pdf") return "pdf-standalone";
+  return "code";
+}
+
 const Example = () => {
   // File tree state
   const [selectedPath, setSelectedPath] = useState<string>("");
@@ -486,19 +327,23 @@ const Example = () => {
   });
 
   const withProject = useCallback(
-    (url: string) => `${url}${url.includes("?") ? "&" : "?"}projectId=${encodeURIComponent(projectId)}`,
-    [projectId]
+    (url: string) =>
+      `${url}${url.includes("?") ? "&" : "?"}projectId=${encodeURIComponent(projectId)}`,
+    [projectId],
   );
 
   // SyncTeX/compiler-echoed paths can be absolute container paths (e.g. /app/workspaces/<id>/main.tex).
   // Everything sent to /api/files or /api/compile must be project-relative, so normalize at the boundary.
-  const toProjectRelative = useCallback((raw: string): string => {
-    if (!raw) return raw;
-    const marker = `/${projectId}/`;
-    const idx = raw.lastIndexOf(marker);
-    if (idx >= 0) return raw.slice(idx + marker.length);
-    return raw.replace(/^.*\/workspaces\/[^/]+\//, "").replace(/^\.?\/+/, "");
-  }, [projectId]);
+  const toProjectRelative = useCallback(
+    (raw: string): string => {
+      if (!raw) return raw;
+      const marker = `/${projectId}/`;
+      const idx = raw.lastIndexOf(marker);
+      if (idx >= 0) return raw.slice(idx + marker.length);
+      return raw.replace(/^.*\/workspaces\/[^/]+\//, "").replace(/^\.?\/+/, "");
+    },
+    [projectId],
+  );
 
   // Code editor state
   const [currentCode, setCurrentCode] = useState<string>("// Select a file to view content");
@@ -538,28 +383,33 @@ const Example = () => {
   const [compiledPath, setCompiledPath] = useState<string | null>(null);
   // Set only on an explicit editor double-click, or a task's page jump — the PDF scrolls
   // to this line/page then, not on cursor moves.
-  const [pdfSyncRequest, setPdfSyncRequest] = useState<{ line?: number; frac?: number; page?: number; nonce: number } | null>(null);
+  const [pdfSyncRequest, setPdfSyncRequest] = useState<{
+    line?: number;
+    frac?: number;
+    page?: number;
+    nonce: number;
+  } | null>(null);
   const [isCompiling, setIsCompiling] = useState<boolean>(false);
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "unsaved" | "idle">("idle");
   // View mode: "code" for text | "image" for images | "pdf-standalone" for PDFs opened from tree
   // | "unsupported" for binary files with no preview (set once /api/files sniffs the content)
-  const [viewMode, setViewMode] = useState<"code" | "image" | "pdf-standalone" | "unsupported">("code");
+  const [viewMode, setViewMode] = useState<"code" | "image" | "pdf-standalone" | "unsupported">(
+    "code",
+  );
 
   // Terminal state
   const [terminalOutput, setTerminalOutput] = useState<string>("");
-  const [isTerminalStreaming, setIsTerminalStreaming] =
-    useState<boolean>(false);
+  const [isTerminalStreaming, setIsTerminalStreaming] = useState<boolean>(false);
   // Errors from the last failed compile (cleared as soon as a new compile starts).
   // Drives the terminal badge dot and the editor gutter markers.
   const [compileErrors, setCompileErrors] = useState<CompileError[]>([]);
   const [hasCompileError, setHasCompileError] = useState<boolean>(false);
 
-  // Chat state
-  const [chatText, setChatText] = useState<string>("");
-
   // Sidebar states
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState<boolean>(true);
-  const [activeTab, setActiveTab] = useState<"files" | "search" | "chat" | "tasks" | "settings">("files");
+  const [activeTab, setActiveTab] = useState<"files" | "search" | "chat" | "tasks" | "settings">(
+    "files",
+  );
   const [paletteOpen, setPaletteOpen] = useState<boolean>(false);
 
   // Gates the skeleton: false until mounted + layout restored from localStorage (SSR-safe).
@@ -580,7 +430,9 @@ const Example = () => {
   // Search Panel Refs and States
   const searchPanelRef = useRef<SearchPanelHandle>(null);
   const tasksPanelRef = useRef<TasksPanelHandle>(null);
-  const [pendingLineJump, setPendingLineJump] = useState<{ path: string; line: number } | null>(null);
+  const [pendingLineJump, setPendingLineJump] = useState<{ path: string; line: number } | null>(
+    null,
+  );
   const [searchState, setSearchState] = useState<SearchState>({
     query: "",
     options: {
@@ -623,11 +475,14 @@ const Example = () => {
     () =>
       clerkUser
         ? {
-            name: `${clerkUser.firstName || ""} ${clerkUser.lastName || ""}`.trim() || clerkUser.username || "Collaborator",
+            name:
+              `${clerkUser.firstName || ""} ${clerkUser.lastName || ""}`.trim() ||
+              clerkUser.username ||
+              "Collaborator",
             avatar: clerkUser.imageUrl,
           }
         : { name: "Local Editor" },
-    [clerkUser]
+    [clerkUser],
   );
   const collab = useCollaboration({
     roomName: `project:${projectId}`,
@@ -682,8 +537,15 @@ const Example = () => {
     }
     setBound(null);
   }, [
-    collabEnabled, collab.status, collab.synced, selectedPath, viewMode,
-    currentCode, editedCode, bound, collab.seedFile, collab.getYTextForFile,
+    collabEnabled,
+    collab,
+    selectedPath,
+    viewMode,
+    currentCode,
+    editedCode,
+    bound,
+    collab.seedFile,
+    collab.getYTextForFile,
   ]);
 
   const contentBound = !!bound && bound.path === selectedPath;
@@ -695,14 +557,14 @@ const Example = () => {
   const activeFileContent = contentBound && boundYText ? boundYText.toString() : editedCode;
   const outline = useMemo(
     () => (currentLanguage === "latex" ? getLatexOutline(activeFileContent) : []),
-    [activeFileContent, currentLanguage]
+    [activeFileContent, currentLanguage],
   );
 
   // Broadcast which file we're viewing for peer presence (file-tree dots,
   // header avatars, jump target) — independent of whether it's a bound text file.
   useEffect(() => {
     if (collabEnabled && selectedPath) collab.setActiveFile(selectedPath);
-  }, [collabEnabled, selectedPath, collab.status, collab.setActiveFile]);
+  }, [collabEnabled, selectedPath, collab]);
 
   const extensions = useCodeMirrorExtensions(settings, currentLanguage, {
     ytext: boundYText,
@@ -766,7 +628,7 @@ const Example = () => {
               literal: !searchState.options.useRegex,
               regexp: searchState.options.useRegex,
               wholeWord: searchState.options.matchWholeWord,
-            })
+            }),
           ),
         });
       } catch (e) {
@@ -788,11 +650,14 @@ const Example = () => {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- SSR-safe: prefs hydrate from localStorage after mount
       setSettings((prev) => ({
         ...prev,
-        tooltipsEnabled: typeof parsed.tooltipsEnabled === "boolean" ? parsed.tooltipsEnabled : true,
+        tooltipsEnabled:
+          typeof parsed.tooltipsEnabled === "boolean" ? parsed.tooltipsEnabled : true,
         vimModeEnabled: typeof parsed.vimModeEnabled === "boolean" ? parsed.vimModeEnabled : false,
         foldingEnabled: typeof parsed.foldingEnabled === "boolean" ? parsed.foldingEnabled : true,
-        autocompleteEnabled: typeof parsed.autocompleteEnabled === "boolean" ? parsed.autocompleteEnabled : true,
-        bracketMatchingEnabled: typeof parsed.bracketMatchingEnabled === "boolean" ? parsed.bracketMatchingEnabled : true,
+        autocompleteEnabled:
+          typeof parsed.autocompleteEnabled === "boolean" ? parsed.autocompleteEnabled : true,
+        bracketMatchingEnabled:
+          typeof parsed.bracketMatchingEnabled === "boolean" ? parsed.bracketMatchingEnabled : true,
       }));
     } catch (e) {
       console.error("Failed to parse editor preferences", e);
@@ -841,8 +706,8 @@ const Example = () => {
       }
     });
     return () => cancelAnimationFrame(raf);
-  // codePanelRef is a stable ref — safe to omit from deps
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // codePanelRef is a stable ref — safe to omit from deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Persist sidebar open state whenever it changes (post-mount to avoid clobbering the stored value).
@@ -852,46 +717,55 @@ const Example = () => {
 
   // Arrow-key navigation for the sidebar tablist. Roles without this would
   // announce "tab" to a screen reader while not behaving like one.
-  const handleTabKeyDown = useCallback((e: React.KeyboardEvent) => {
-    const dir = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
-    if (!dir) return;
-    e.preventDefault();
-    const i = SIDEBAR_TABS.findIndex((t) => t.id === activeTab);
-    const next = SIDEBAR_TABS[(i + dir + SIDEBAR_TABS.length) % SIDEBAR_TABS.length];
-    setActiveTab(next.id);
-    document.getElementById(`sidebar-tab-${next.id}`)?.focus();
-  }, [activeTab]);
+  const handleTabKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      const dir = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+      if (!dir) return;
+      e.preventDefault();
+      const i = SIDEBAR_TABS.findIndex((t) => t.id === activeTab);
+      const next = SIDEBAR_TABS[(i + dir + SIDEBAR_TABS.length) % SIDEBAR_TABS.length];
+      setActiveTab(next.id);
+      document.getElementById(`sidebar-tab-${next.id}`)?.focus();
+    },
+    [activeTab],
+  );
 
-  const saveSettings = useCallback((newSettings: typeof settings) => {
-    setSettings(newSettings);
+  const saveSettings = useCallback(
+    (newSettings: typeof settings) => {
+      setSettings(newSettings);
 
-    if (typeof window !== "undefined" && projectId) {
-      localStorage.setItem(
-        `somescript-editor-prefs-${projectId}`,
-        JSON.stringify({
-          tooltipsEnabled: newSettings.tooltipsEnabled,
-          vimModeEnabled: newSettings.vimModeEnabled,
-          foldingEnabled: newSettings.foldingEnabled,
-          autocompleteEnabled: newSettings.autocompleteEnabled,
-          bracketMatchingEnabled: newSettings.bracketMatchingEnabled,
-        })
-      );
-    }
+      if (typeof window !== "undefined" && projectId) {
+        localStorage.setItem(
+          `somescript-editor-prefs-${projectId}`,
+          JSON.stringify({
+            tooltipsEnabled: newSettings.tooltipsEnabled,
+            vimModeEnabled: newSettings.vimModeEnabled,
+            foldingEnabled: newSettings.foldingEnabled,
+            autocompleteEnabled: newSettings.autocompleteEnabled,
+            bracketMatchingEnabled: newSettings.bracketMatchingEnabled,
+          }),
+        );
+      }
 
-    fetch("/api/project-settings", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        projectId,
-        settings: { mainFilePath: newSettings.mainFilePath, compilerEngine: newSettings.compilerEngine },
-      }),
-    })
-      .then((r) => {
-        if (r.ok) collab.notifyProjectSettingsChanged();
-        else toast.error("Failed to save project settings");
+      fetch("/api/project-settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId,
+          settings: {
+            mainFilePath: newSettings.mainFilePath,
+            compilerEngine: newSettings.compilerEngine,
+          },
+        }),
       })
-      .catch(() => toast.error("Failed to save project settings"));
-  }, [projectId, collab.notifyProjectSettingsChanged]);
+        .then((r) => {
+          if (r.ok) collab.notifyProjectSettingsChanged();
+          else toast.error("Failed to save project settings");
+        })
+        .catch(() => toast.error("Failed to save project settings"));
+    },
+    [projectId, collab],
+  );
 
   // Recursively collect all .tex files in project
   const getTexFiles = useCallback((nodes: FileNode[]): string[] => {
@@ -912,28 +786,43 @@ const Example = () => {
   // Query the official synctex CLI (via /api/synctex -> compiler) per sync request.
   // type "view": { texRelativePath, line } -> { records }; type "edit": { page, x, y } -> { input, line }.
   // Return shape mirrors SynctexQuery in components/editor/pdf-preview.tsx.
-  const synctexQuery = useCallback(async (query: Record<string, unknown>): Promise<{
-    records?: { page: number; x: number; y: number; h: number; v: number; W: number; H: number }[];
-    input?: string;
-    line?: number;
-  } | null> => {
-    if (!compiledPath) return null;
-    try {
-      const res = await fetch("/api/synctex", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId, path: compiledPath, ...query }),
-      });
-      if (!res.ok) return null;
-      return await res.json();
-    } catch (err) {
-      console.warn("SyncTeX query failed:", err);
-      return null;
-    }
-  }, [projectId, compiledPath]);
+  const synctexQuery = useCallback(
+    async (
+      query: Record<string, unknown>,
+    ): Promise<{
+      records?: {
+        page: number;
+        x: number;
+        y: number;
+        h: number;
+        v: number;
+        W: number;
+        H: number;
+      }[];
+      input?: string;
+      line?: number;
+    } | null> => {
+      if (!compiledPath) return null;
+      try {
+        const res = await fetch("/api/synctex", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ projectId, path: compiledPath, ...query }),
+        });
+        if (!res.ok) return null;
+        return await res.json();
+      } catch (err) {
+        console.warn("SyncTeX query failed:", err);
+        return null;
+      }
+    },
+    [projectId, compiledPath],
+  );
 
   // Chat History / Multi-thread states
-  const [threads, setThreads] = useState<Array<{ id: string; title: string; createdAt: number }>>([]);
+  const [threads, setThreads] = useState<Array<{ id: string; title: string; createdAt: number }>>(
+    [],
+  );
   const [activeThreadId, setActiveThreadId] = useState<string>("");
   const [showHistory, setShowHistory] = useState<boolean>(false);
 
@@ -958,7 +847,10 @@ const Example = () => {
 
       // If no threads exist, generate a default one
       if (currentList.length === 0) {
-        const defaultId = typeof crypto !== "undefined" ? crypto.randomUUID() : Math.random().toString(36).substring(2);
+        const defaultId =
+          typeof crypto !== "undefined"
+            ? crypto.randomUUID()
+            : Math.random().toString(36).substring(2);
         const defaultThread = { id: defaultId, title: "New Chat", createdAt: Date.now() };
         currentList = [defaultThread];
         currentActiveId = defaultId;
@@ -984,7 +876,8 @@ const Example = () => {
   }, [projectId]);
 
   const handleNewChat = useCallback(() => {
-    const newId = typeof crypto !== "undefined" ? crypto.randomUUID() : Math.random().toString(36).substring(2);
+    const newId =
+      typeof crypto !== "undefined" ? crypto.randomUUID() : Math.random().toString(36).substring(2);
     const newThread = { id: newId, title: "New Chat", createdAt: Date.now() };
     const updatedList = [newThread, ...threads];
     localStorage.setItem(threadsListKey(projectId), JSON.stringify(updatedList));
@@ -994,34 +887,43 @@ const Example = () => {
     setShowHistory(false);
   }, [threads, projectId]);
 
-  const handleSwitchChat = useCallback((id: string) => {
-    localStorage.setItem(activeThreadIdKey(projectId), id);
-    setActiveThreadId(id);
-    setShowHistory(false);
-  }, [projectId]);
+  const handleSwitchChat = useCallback(
+    (id: string) => {
+      localStorage.setItem(activeThreadIdKey(projectId), id);
+      setActiveThreadId(id);
+      setShowHistory(false);
+    },
+    [projectId],
+  );
 
-  const handleDeleteChat = useCallback((id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const updatedList = threads.filter((t) => t.id !== id);
-    localStorage.removeItem(`eve-thread-${id}`);
+  const handleDeleteChat = useCallback(
+    (id: string, e: React.MouseEvent) => {
+      e.stopPropagation();
+      const updatedList = threads.filter((t) => t.id !== id);
+      localStorage.removeItem(`eve-thread-${id}`);
 
-    let nextActiveId = activeThreadId;
-    if (activeThreadId === id) {
-      if (updatedList.length > 0) {
-        nextActiveId = updatedList[0].id;
-      } else {
-        const newId = typeof crypto !== "undefined" ? crypto.randomUUID() : Math.random().toString(36).substring(2);
-        const newThread = { id: newId, title: "New Chat", createdAt: Date.now() };
-        updatedList.push(newThread);
-        nextActiveId = newId;
+      let nextActiveId = activeThreadId;
+      if (activeThreadId === id) {
+        if (updatedList.length > 0) {
+          nextActiveId = updatedList[0].id;
+        } else {
+          const newId =
+            typeof crypto !== "undefined"
+              ? crypto.randomUUID()
+              : Math.random().toString(36).substring(2);
+          const newThread = { id: newId, title: "New Chat", createdAt: Date.now() };
+          updatedList.push(newThread);
+          nextActiveId = newId;
+        }
       }
-    }
 
-    localStorage.setItem(threadsListKey(projectId), JSON.stringify(updatedList));
-    localStorage.setItem(activeThreadIdKey(projectId), nextActiveId);
-    setThreads(updatedList);
-    setActiveThreadId(nextActiveId);
-  }, [threads, activeThreadId, projectId]);
+      localStorage.setItem(threadsListKey(projectId), JSON.stringify(updatedList));
+      localStorage.setItem(activeThreadIdKey(projectId), nextActiveId);
+      setThreads(updatedList);
+      setActiveThreadId(nextActiveId);
+    },
+    [threads, activeThreadId, projectId],
+  );
 
   // Resizable Panel Refs & States
   const codePanelRef = useRef<PanelImperativeHandle>(null);
@@ -1049,41 +951,47 @@ const Example = () => {
   // so React skips re-rendering the toolbar when the format context is unchanged.
   const [activeFormatKey, setActiveFormatKey] = useState<string>("");
 
-  const handleUpdate = useCallback((update: ViewUpdate) => {
-    if (update.docChanged || update.selectionSet) {
-      const view = editorViewRef.current;
-      if (view) {
-        setCanUndo(undoDepth(view.state) > 0);
-        setCanRedo(redoDepth(view.state) > 0);
-        setActiveFormatKey(activeFormats(view.state));
-        // Publish our live caret into awareness so peers can jump to it.
-        if (contentBound) {
-          const { anchor, head } = view.state.selection.main;
-          collab.setCursor({ selection: { anchor, head }, cursorLine: view.state.doc.lineAt(head).number });
+  const handleUpdate = useCallback(
+    (update: ViewUpdate) => {
+      if (update.docChanged || update.selectionSet) {
+        const view = editorViewRef.current;
+        if (view) {
+          setCanUndo(undoDepth(view.state) > 0);
+          setCanRedo(redoDepth(view.state) > 0);
+          setActiveFormatKey(activeFormats(view.state));
+          // Publish our live caret into awareness so peers can jump to it.
+          if (contentBound) {
+            const { anchor, head } = view.state.selection.main;
+            collab.setCursor({
+              selection: { anchor, head },
+              cursorLine: view.state.doc.lineAt(head).number,
+            });
+          }
         }
       }
-    }
 
-    // Optimistically drop a gutter error marker the moment its own line gets
-    // edited — a real re-check only happens on the next compile, but this
-    // makes the marker feel responsive to "you're fixing it" instead of
-    // sitting there stale until you hit Compile again.
-    if (update.docChanged) {
-      const relPath = selectedPath ? toProjectRelative(selectedPath) : null;
-      setCompileErrors((prev) => {
-        if (!relPath || prev.length === 0) return prev;
-        const remaining = prev.filter((err) => {
-          if (err.file !== relPath) return true;
-          if (err.line < 1 || err.line > update.startState.doc.lines) return true;
-          const { from, to } = update.startState.doc.line(err.line);
-          return !update.changes.touchesRange(from, to);
+      // Optimistically drop a gutter error marker the moment its own line gets
+      // edited — a real re-check only happens on the next compile, but this
+      // makes the marker feel responsive to "you're fixing it" instead of
+      // sitting there stale until you hit Compile again.
+      if (update.docChanged) {
+        const relPath = selectedPath ? toProjectRelative(selectedPath) : null;
+        setCompileErrors((prev) => {
+          if (!relPath || prev.length === 0) return prev;
+          const remaining = prev.filter((err) => {
+            if (err.file !== relPath) return true;
+            if (err.line < 1 || err.line > update.startState.doc.lines) return true;
+            const { from, to } = update.startState.doc.line(err.line);
+            return !update.changes.touchesRange(from, to);
+          });
+          if (remaining.length === prev.length) return prev;
+          if (remaining.length === 0) setHasCompileError(false);
+          return remaining;
         });
-        if (remaining.length === prev.length) return prev;
-        if (remaining.length === 0) setHasCompileError(false);
-        return remaining;
-      });
-    }
-  }, [selectedPath, toProjectRelative, contentBound, collab.setCursor]);
+      }
+    },
+    [selectedPath, toProjectRelative, contentBound, collab],
+  );
 
   // Pushes the current compileErrors into the CodeMirror gutter (via
   // @codemirror/lint's lintGutter, added in useCodeMirrorExtensions) whenever
@@ -1117,7 +1025,7 @@ const Example = () => {
       const lineObj = view.state.doc.lineAt(head);
       const frac = lineObj.length > 0 ? (head - lineObj.from) / lineObj.length : 0;
       setPdfSyncRequest({ line: lineObj.number, frac, nonce: Date.now() });
-    } catch (e) {
+    } catch {
       // ignore
     }
   }, []);
@@ -1199,9 +1107,7 @@ const Example = () => {
 
     setIsLeftSidebarOpen(true);
     setActiveTab("chat");
-    window.dispatchEvent(
-      new CustomEvent("somescript:attach-to-chat", { detail: { name, text } })
-    );
+    window.dispatchEvent(new CustomEvent("somescript:attach-to-chat", { detail: { name, text } }));
   }, [selectedPath, toProjectRelative]);
 
   // Right-click → "Create task". Unlike handleSendCodeToChat, hands the selection to the
@@ -1268,64 +1174,37 @@ const Example = () => {
     view.focus();
   }, []);
 
-  const handleSendTerminalToChat = useCallback((customText?: string) => {
-    let textToSend: string;
-    let filename: string;
+  const handleSendTerminalToChat = useCallback(
+    (customText?: string) => {
+      let textToSend: string;
+      let filename: string;
 
-    if (typeof customText === "string" && customText.trim()) {
-      textToSend = customText.trim();
-      filename = `error-${new Date().toTimeString().slice(0, 8).replace(/:/g, "-")}.log`;
-    } else {
-      // ponytail: last 300 lines, ANSI stripped — full Tectonic logs are megabytes
-      // of context. Bump/summarize if the agent starts missing earlier errors.
-      const clean = terminalOutput.replace(/\u001B\[[0-9;]*m/g, "");
-      const lines = clean.split("\n");
-      textToSend =
-        lines.length > 300 ? `…(truncated)\n${lines.slice(-300).join("\n")}` : clean;
-      filename = `terminal-${new Date().toTimeString().slice(0, 8).replace(/:/g, "-")}.log`;
-    }
+      if (typeof customText === "string" && customText.trim()) {
+        textToSend = customText.trim();
+        filename = `error-${new Date().toTimeString().slice(0, 8).replace(/:/g, "-")}.log`;
+      } else {
+        // ponytail: last 300 lines, ANSI stripped — full Tectonic logs are megabytes
+        // of context. Bump/summarize if the agent starts missing earlier errors.
+        // oxlint-disable-next-line no-control-regex -- ESC is intentional: this strips ANSI color codes.
+        const clean = terminalOutput.replace(/\u001B\[[0-9;]*m/g, "");
+        const lines = clean.split("\n");
+        textToSend = lines.length > 300 ? `…(truncated)\n${lines.slice(-300).join("\n")}` : clean;
+        filename = `terminal-${new Date().toTimeString().slice(0, 8).replace(/:/g, "-")}.log`;
+      }
 
-    setIsLeftSidebarOpen(true);
-    setActiveTab("chat");
-    window.dispatchEvent(
-      new CustomEvent("somescript:attach-to-chat", {
-        detail: {
-          name: filename,
-          text: textToSend.trim(),
-        },
-      })
-    );
-  }, [terminalOutput]);
-
-  const getLanguageFromPath = (filePath: string): string => {
-    const ext = filePath.split(".").pop();
-    switch (ext) {
-      case "ts":
-      case "tsx":
-        return "typescript";
-      case "js":
-      case "jsx":
-        return "javascript";
-      case "json":
-        return "json";
-      case "css":
-        return "css";
-      case "md":
-        return "markdown";
-      case "tex":
-        return "latex";
-      default:
-        return "text";
-    }
-  };
-
-  const getViewMode = (filePath: string): "code" | "image" | "pdf-standalone" => {
-    const ext = filePath.includes(".") ? filePath.split(".").pop()!.toLowerCase() : "";
-    const imageExts = ["png", "jpg", "jpeg", "gif", "svg", "webp"];
-    if (imageExts.includes(ext)) return "image";
-    if (ext === "pdf") return "pdf-standalone";
-    return "code";
-  };
+      setIsLeftSidebarOpen(true);
+      setActiveTab("chat");
+      window.dispatchEvent(
+        new CustomEvent("somescript:attach-to-chat", {
+          detail: {
+            name: filename,
+            text: textToSend.trim(),
+          },
+        }),
+      );
+    },
+    [terminalOutput],
+  );
 
   /**
    * The one place the editor buffer is written to disk. Returns false without
@@ -1334,18 +1213,22 @@ const Example = () => {
    * from, or the file gets truncated/clobbered.
    */
   const saveCurrentFile = useCallback(async (): Promise<boolean> => {
-    const { selectedPath, editedCode, currentCode } = stateRef.current;
-    if (!selectedPath) return false;
-    if (loadedPathRef.current !== selectedPath) return false;
-    if (editedCode === currentCode) return false;
+    const {
+      selectedPath: savePath,
+      editedCode: saveEditedCode,
+      currentCode: saveCurrentCode,
+    } = stateRef.current;
+    if (!savePath) return false;
+    if (loadedPathRef.current !== savePath) return false;
+    if (saveEditedCode === saveCurrentCode) return false;
 
     // Last line of defense against the collaboration wipe: never let an empty
     // buffer overwrite a file that has content on disk while collab is on. A
     // desynced CRDT bind can blank the editor, and persisting that blanking is
     // what actually destroys the file. Only applies with collab enabled, so
     // clearing a file normally still works.
-    if (collabEnabled && editedCode.length === 0 && currentCode.length > 0) {
-      console.warn(`[collab] refused to overwrite ${selectedPath} with an empty buffer`);
+    if (collabEnabled && saveEditedCode.length === 0 && saveCurrentCode.length > 0) {
+      console.warn(`[collab] refused to overwrite ${savePath} with an empty buffer`);
       return false;
     }
 
@@ -1354,15 +1237,20 @@ const Example = () => {
       const res = await fetch("/api/files", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId, action: "save", path: selectedPath, content: editedCode }),
+        body: JSON.stringify({
+          projectId,
+          action: "save",
+          path: savePath,
+          content: saveEditedCode,
+        }),
       });
       const data = await res.json();
       if (!data.success) {
         setSaveStatus("unsaved");
         return false;
       }
-      setCurrentCode(editedCode);
-      stateRef.current = { ...stateRef.current, currentCode: editedCode };
+      setCurrentCode(saveEditedCode);
+      stateRef.current = { ...stateRef.current, currentCode: saveEditedCode };
       setSaveStatus("saved");
       return true;
     } catch (err) {
@@ -1373,93 +1261,102 @@ const Example = () => {
   }, [projectId, collabEnabled]);
 
   // Handle file selection
-  const handleFileSelect = useCallback(async (path: string) => {
-    path = toProjectRelative(path);
-    // Already open: nothing to load. Re-selecting would reload the PDF (new t= URL),
-    // which unloads/reloads the document — the preview "disappears" and scroll resets —
-    // and the content re-fetch races the pendingLineJump cursor jump.
-    if (path === selectedPath) return;
-    await saveCurrentFile();
+  const handleFileSelect = useCallback(
+    async (path: string) => {
+      path = toProjectRelative(path);
+      // Already open: nothing to load. Re-selecting would reload the PDF (new t= URL),
+      // which unloads/reloads the document — the preview "disappears" and scroll resets —
+      // and the content re-fetch races the pendingLineJump cursor jump.
+      if (path === selectedPath) return;
+      await saveCurrentFile();
 
-    setSelectedPath(path);
-    selectingPathRef.current = path;
-    localStorage.setItem(`somescript-last-file-${projectId}`, path);
+      setSelectedPath(path);
+      selectingPathRef.current = path;
+      localStorage.setItem(`somescript-last-file-${projectId}`, path);
 
-    const mode = getViewMode(path);
-    setViewMode(mode);
+      const mode = getViewMode(path);
+      setViewMode(mode);
 
-    if (mode === "image") {
-      // Image files: no text to load, clear the PDF pane
-      setPdfUrl(null);
-      loadedPathRef.current = path;
-      setCurrentCode("");
-      setEditedCode("");
-      return;
-    }
-
-    if (mode === "pdf-standalone") {
-      // Show the PDF in the right PDF pane (same mechanism as compiled PDFs)
-      const url = withProject(`${window.location.origin}/api/files?path=${encodeURIComponent(path)}&t=${Date.now()}`);
-      setPdfUrl(url);
-      loadedPathRef.current = path;
-      setCurrentCode("");
-      setEditedCode("");
-      // Expand PDF pane if it was collapsed (desktop) / switch to it (mobile)
-      if (pdfPanelRef.current?.isCollapsed()) {
-        pdfPanelRef.current.expand();
-      }
-      setMobileView("pdf");
-      return;
-    }
-
-    if (path.endsWith(".tex")) {
-      const pdfPath = path.replace(/\.tex$/, ".pdf");
-      const previewPath = `.preview-cache/${pdfPath}`;
-      fetch(withProject(`/api/files?path=${encodeURIComponent(previewPath)}`))
-        .then((res) => {
-          if (res.ok) {
-            setPdfUrl(withProject(`${window.location.origin}/api/files?path=${encodeURIComponent(previewPath)}&t=${Date.now()}`));
-          } else {
-            setPdfUrl(null);
-          }
-        })
-        .catch(() => setPdfUrl(null));
-    } else {
-      setPdfUrl(null);
-    }
-
-    try {
-      const res = await fetch(withProject(`/api/files?path=${encodeURIComponent(path)}`));
-      const data = await res.json();
-      // Selection moved again while this was in flight (rapid A→B clicks) —
-      // drop the stale body or B's editor would show A's content.
-      if (stateRef.current.selectedPath !== path) return;
-      if (data.unsupported) {
+      if (mode === "image") {
+        // Image files: no text to load, clear the PDF pane
+        setPdfUrl(null);
         loadedPathRef.current = path;
-        setViewMode("unsupported");
         setCurrentCode("");
         setEditedCode("");
-        setSaveStatus("saved");
         return;
       }
-      if (data.content !== undefined) {
+
+      if (mode === "pdf-standalone") {
+        // Show the PDF in the right PDF pane (same mechanism as compiled PDFs)
+        const url = withProject(
+          `${window.location.origin}/api/files?path=${encodeURIComponent(path)}&t=${Date.now()}`,
+        );
+        setPdfUrl(url);
         loadedPathRef.current = path;
-        setCurrentCode(data.content);
-        setEditedCode(data.content);
-        setCurrentLanguage(getLanguageFromPath(path));
-        setSaveStatus("saved");
+        setCurrentCode("");
+        setEditedCode("");
+        // Expand PDF pane if it was collapsed (desktop) / switch to it (mobile)
+        if (pdfPanelRef.current?.isCollapsed()) {
+          pdfPanelRef.current.expand();
+        }
+        setMobileView("pdf");
+        return;
       }
-    } catch (err) {
-      console.error("Failed to read file", err);
-    }
-  }, [selectedPath, projectId, fileTree, withProject, toProjectRelative, saveCurrentFile]);
+
+      if (path.endsWith(".tex")) {
+        const pdfPath = path.replace(/\.tex$/, ".pdf");
+        const previewPath = `.preview-cache/${pdfPath}`;
+        fetch(withProject(`/api/files?path=${encodeURIComponent(previewPath)}`))
+          .then((res) => {
+            if (res.ok) {
+              setPdfUrl(
+                withProject(
+                  `${window.location.origin}/api/files?path=${encodeURIComponent(previewPath)}&t=${Date.now()}`,
+                ),
+              );
+            } else {
+              setPdfUrl(null);
+            }
+          })
+          .catch(() => setPdfUrl(null));
+      } else {
+        setPdfUrl(null);
+      }
+
+      try {
+        const res = await fetch(withProject(`/api/files?path=${encodeURIComponent(path)}`));
+        const data = await res.json();
+        // Selection moved again while this was in flight (rapid A→B clicks) —
+        // drop the stale body or B's editor would show A's content.
+        if (stateRef.current.selectedPath !== path) return;
+        if (data.unsupported) {
+          loadedPathRef.current = path;
+          setViewMode("unsupported");
+          setCurrentCode("");
+          setEditedCode("");
+          setSaveStatus("saved");
+          return;
+        }
+        if (data.content !== undefined) {
+          loadedPathRef.current = path;
+          setCurrentCode(data.content);
+          setEditedCode(data.content);
+          setCurrentLanguage(getLanguageFromPath(path));
+          setSaveStatus("saved");
+        }
+      } catch (err) {
+        console.error("Failed to read file", err);
+      }
+    },
+    [selectedPath, projectId, withProject, toProjectRelative, saveCurrentFile],
+  );
 
   const handleJumpToCollaborator = useCallback(
     (collaborator: Collaborator) => {
       if (!collaborator.activeFile) return;
 
       if (collaborator.activeFile !== selectedPath) {
-        handleFileSelect(collaborator.activeFile);
+        void handleFileSelect(collaborator.activeFile);
       }
 
       toast.info(`Jumping to ${collaborator.user.name}'s location in ${collaborator.activeFile}`);
@@ -1477,7 +1374,9 @@ const Example = () => {
             });
             view.focus();
           } else if (collaborator.cursorLine !== undefined) {
-            const lineObj = view.state.doc.line(Math.min(collaborator.cursorLine, view.state.doc.lines));
+            const lineObj = view.state.doc.line(
+              Math.min(collaborator.cursorLine, view.state.doc.lines),
+            );
             view.dispatch({
               selection: { anchor: lineObj.from, head: lineObj.to },
               effects: EditorView.scrollIntoView(lineObj.from, { y: "center" }),
@@ -1489,7 +1388,7 @@ const Example = () => {
         }
       }, 150);
     },
-    [selectedPath, handleFileSelect]
+    [selectedPath, handleFileSelect],
   );
 
   // Load file tree
@@ -1507,7 +1406,7 @@ const Example = () => {
 
   const remoteFileTreeVersionKey = useMemo(
     () => versionKey(collab.collaborators, FILE_TREE_VERSION_FIELD),
-    [collab.collaborators]
+    [collab.collaborators],
   );
   const lastRemoteFileTreeVersionKey = useRef("");
 
@@ -1523,7 +1422,7 @@ const Example = () => {
   // so a peer's save can only be surfaced as "go refetch."
   const remoteTaskListVersionKey = useMemo(
     () => versionKey(collab.collaborators, TASK_LIST_VERSION_FIELD),
-    [collab.collaborators]
+    [collab.collaborators],
   );
   const lastRemoteTaskListVersionKey = useRef("");
 
@@ -1537,7 +1436,7 @@ const Example = () => {
   // Same shape again, for mainFilePath/compilerEngine (api/project-settings/route.ts).
   const remoteProjectSettingsVersionKey = useMemo(
     () => versionKey(collab.collaborators, PROJECT_SETTINGS_VERSION_FIELD),
-    [collab.collaborators]
+    [collab.collaborators],
   );
   const lastRemoteProjectSettingsVersionKey = useRef("");
 
@@ -1546,7 +1445,7 @@ const Example = () => {
     lastRemoteProjectSettingsVersionKey.current = remoteProjectSettingsVersionKey;
     if (!remoteProjectSettingsVersionKey || previousKey === remoteProjectSettingsVersionKey) return;
     void loadProjectSettings();
-  }, [remoteProjectSettingsVersionKey]);
+  }, [remoteProjectSettingsVersionKey, loadProjectSettings]);
 
   // Reload current file content (defined before handleReplaceAll, which uses it)
   const refreshCurrentFile = useCallback(async () => {
@@ -1576,14 +1475,17 @@ const Example = () => {
     }
   }, [selectedPath, withProject]);
 
-  const handleSelectMatch = useCallback((filePath: string, line: number) => {
-    // Normalize here too so pendingLineJump.path always matches the (normalized) selectedPath;
-    // a mismatch means the editor jump silently never fires.
-    const rel = toProjectRelative(filePath);
-    setPendingLineJump({ path: rel, line });
-    handleFileSelect(rel);
-    setMobileView("code");
-  }, [handleFileSelect, toProjectRelative]);
+  const handleSelectMatch = useCallback(
+    (filePath: string, line: number) => {
+      // Normalize here too so pendingLineJump.path always matches the (normalized) selectedPath;
+      // a mismatch means the editor jump silently never fires.
+      const rel = toProjectRelative(filePath);
+      setPendingLineJump({ path: rel, line });
+      void handleFileSelect(rel);
+      setMobileView("code");
+    },
+    [handleFileSelect, toProjectRelative],
+  );
 
   const handleSelectPdfPage = useCallback((page: number) => {
     if (pdfPanelRef.current?.isCollapsed()) pdfPanelRef.current.expand();
@@ -1591,286 +1493,328 @@ const Example = () => {
     setPdfSyncRequest({ page, nonce: Date.now() });
   }, []);
 
-  const ensureCurrentFileSavedBeforeExternalWrite = useCallback(async (filePath: string): Promise<boolean> => {
-    const snapshot = stateRef.current;
-    if (
-      snapshot.selectedPath !== filePath ||
-      loadedPathRef.current !== filePath ||
-      snapshot.editedCode === snapshot.currentCode
-    ) {
-      return true;
-    }
-
-    const saved = await saveCurrentFile();
-    if (saved) return true;
-
-    const latest = stateRef.current;
-    if (latest.selectedPath === filePath && latest.editedCode !== latest.currentCode) {
-      toast.error("Save your edits before replacing a search result");
-      return false;
-    }
-    return true;
-  }, [saveCurrentFile]);
-
-  const handleReplace = useCallback(async (match: SearchResult, replaceText: string, searchState: SearchState) => {
-    try {
-      if (!(await ensureCurrentFileSavedBeforeExternalWrite(match.fileId))) return;
-      const res = await fetch("/api/search", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          projectId,
-          query: searchState.query,
-          replaceText,
-          matchCase: searchState.options.matchCase,
-          matchWholeWord: searchState.options.matchWholeWord,
-          useRegex: searchState.options.useRegex,
-          scope: searchState.options.scope,
-          startLine: searchState.options.startLine,
-          endLine: searchState.options.endLine,
-          selectedPath: selectedPath || "",
-          target: {
-            fileId: match.fileId,
-            line: match.line,
-            matchIndex: match.matchIndex,
-            lineText: match.text,
-          },
-        }),
-      });
-      const data = await res.json();
-      if (!data.success) {
-        toast.error(data.error || "Could not replace this match");
-        return;
+  const ensureCurrentFileSavedBeforeExternalWrite = useCallback(
+    async (filePath: string): Promise<boolean> => {
+      const snapshot = stateRef.current;
+      if (
+        snapshot.selectedPath !== filePath ||
+        loadedPathRef.current !== filePath ||
+        snapshot.editedCode === snapshot.currentCode
+      ) {
+        return true;
       }
 
-      void refreshWorkspace();
-      if (selectedPath && Array.isArray(data.modifiedFiles) && data.modifiedFiles.includes(selectedPath)) {
-        void refreshCurrentFile();
-      }
-      searchPanelRef.current?.refresh();
-    } catch (err) {
-      console.error(err);
-      toast.error("Could not replace this match");
-    }
-  }, [projectId, selectedPath, refreshWorkspace, refreshCurrentFile, ensureCurrentFileSavedBeforeExternalWrite]);
+      const saved = await saveCurrentFile();
+      if (saved) return true;
 
-  const handleReplaceAll = useCallback(async (replaceText: string, searchState: SearchState) => {
-    try {
-      if (selectedPath && !(await ensureCurrentFileSavedBeforeExternalWrite(selectedPath))) return;
-      const res = await fetch("/api/search", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          projectId,
-          query: searchState.query,
-          replaceText,
-          matchCase: searchState.options.matchCase,
-          matchWholeWord: searchState.options.matchWholeWord,
-          useRegex: searchState.options.useRegex,
-          scope: searchState.options.scope,
-          startLine: searchState.options.startLine,
-          endLine: searchState.options.endLine,
-          selectedPath: selectedPath || "",
-        }),
-      });
-      const data = await res.json();
-      if (Array.isArray(data.modifiedFiles) && data.modifiedFiles.length > 0) {
-        refreshWorkspace();
-        if (selectedPath && data.modifiedFiles.includes(selectedPath)) {
-          refreshCurrentFile();
-        }
-      }
-      searchPanelRef.current?.refresh();
-      if (!data.success) {
-        toast.error(data.error || "Some files could not be replaced");
-        return;
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  }, [projectId, selectedPath, refreshWorkspace, refreshCurrentFile, ensureCurrentFileSavedBeforeExternalWrite]);
-
-  const handleSearchChange = useCallback((query: string, options: { matchCase: boolean; matchWholeWord: boolean; useRegex: boolean }) => {
-    setSearchState((previous) => ({
-      query,
-      options: { ...previous.options, ...options },
-    }));
-  }, []);
-
-  const handleCreateResourceSubmit = useCallback(async (isDir: boolean) => {
-    let targetPath = newItemName.trim();
-    if (!targetPath) {
-      const baseName = isDir ? "untitled-folder" : "untitled.tex";
-      targetPath = baseName;
-      
-      const exists = (name: string, nodes: FileNode[]): boolean => {
-        for (const n of nodes) {
-          if (n.name === name) return true;
-          if (n.children && exists(name, n.children)) return true;
-        }
+      const latest = stateRef.current;
+      if (latest.selectedPath === filePath && latest.editedCode !== latest.currentCode) {
+        toast.error("Save your edits before replacing a search result");
         return false;
-      };
-      
-      let counter = 1;
-      while (exists(targetPath, fileTree)) {
-        if (isDir) {
-          targetPath = `untitled-folder-${counter}`;
-        } else {
-          targetPath = `untitled-${counter}.tex`;
-        }
-        counter++;
       }
-    }
+      return true;
+    },
+    [saveCurrentFile],
+  );
 
-    try {
-      const res = await fetch("/api/files", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId, action: "create", path: targetPath, isDir }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setNewItemName("");
-        collab.notifyFileTreeChanged();
-        refreshWorkspace();
-      }
-    } catch (err) {
-      console.error("Failed to create resource", err);
-    }
-  }, [projectId, newItemName, fileTree, refreshWorkspace, collab.notifyFileTreeChanged]);
-
-  const handleFileMove = useCallback(async (oldPath: string, newPath: string) => {
-    try {
-      const res = await fetch("/api/files", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId, action: "move", oldPath, newPath }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        if (selectedPath === oldPath) {
-          setSelectedPath(newPath);
+  const handleReplace = useCallback(
+    async (match: SearchResult, replaceText: string, replaceSearchState: SearchState) => {
+      try {
+        if (!(await ensureCurrentFileSavedBeforeExternalWrite(match.fileId))) return;
+        const res = await fetch("/api/search", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            projectId,
+            query: replaceSearchState.query,
+            replaceText,
+            matchCase: replaceSearchState.options.matchCase,
+            matchWholeWord: replaceSearchState.options.matchWholeWord,
+            useRegex: replaceSearchState.options.useRegex,
+            scope: replaceSearchState.options.scope,
+            startLine: replaceSearchState.options.startLine,
+            endLine: replaceSearchState.options.endLine,
+            selectedPath: selectedPath || "",
+            target: {
+              fileId: match.fileId,
+              line: match.line,
+              matchIndex: match.matchIndex,
+              lineText: match.text,
+            },
+          }),
+        });
+        const data = await res.json();
+        if (!data.success) {
+          toast.error(data.error || "Could not replace this match");
+          return;
         }
-        collab.notifyFileTreeChanged();
-        refreshWorkspace();
+
+        void refreshWorkspace();
+        if (
+          selectedPath &&
+          Array.isArray(data.modifiedFiles) &&
+          data.modifiedFiles.includes(selectedPath)
+        ) {
+          void refreshCurrentFile();
+        }
+        searchPanelRef.current?.refresh();
+      } catch (err) {
+        console.error(err);
+        toast.error("Could not replace this match");
       }
-    } catch (err) {
-      console.error("Failed to move file", err);
-    }
-  }, [projectId, selectedPath, refreshWorkspace, collab.notifyFileTreeChanged]);
+    },
+    [
+      projectId,
+      selectedPath,
+      refreshWorkspace,
+      refreshCurrentFile,
+      ensureCurrentFileSavedBeforeExternalWrite,
+    ],
+  );
+
+  const handleReplaceAll = useCallback(
+    async (replaceText: string, replaceSearchState: SearchState) => {
+      try {
+        if (selectedPath && !(await ensureCurrentFileSavedBeforeExternalWrite(selectedPath)))
+          return;
+        const res = await fetch("/api/search", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            projectId,
+            query: replaceSearchState.query,
+            replaceText,
+            matchCase: replaceSearchState.options.matchCase,
+            matchWholeWord: replaceSearchState.options.matchWholeWord,
+            useRegex: replaceSearchState.options.useRegex,
+            scope: replaceSearchState.options.scope,
+            startLine: replaceSearchState.options.startLine,
+            endLine: replaceSearchState.options.endLine,
+            selectedPath: selectedPath || "",
+          }),
+        });
+        const data = await res.json();
+        if (Array.isArray(data.modifiedFiles) && data.modifiedFiles.length > 0) {
+          void refreshWorkspace();
+          if (selectedPath && data.modifiedFiles.includes(selectedPath)) {
+            void refreshCurrentFile();
+          }
+        }
+        searchPanelRef.current?.refresh();
+        if (!data.success) {
+          toast.error(data.error || "Some files could not be replaced");
+          return;
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    },
+    [
+      projectId,
+      selectedPath,
+      refreshWorkspace,
+      refreshCurrentFile,
+      ensureCurrentFileSavedBeforeExternalWrite,
+    ],
+  );
+
+  const handleSearchChange = useCallback(
+    (
+      query: string,
+      options: { matchCase: boolean; matchWholeWord: boolean; useRegex: boolean },
+    ) => {
+      setSearchState((previous) => ({
+        query,
+        options: { ...previous.options, ...options },
+      }));
+    },
+    [],
+  );
+
+  const handleCreateResourceSubmit = useCallback(
+    async (isDir: boolean) => {
+      let targetPath = newItemName.trim();
+      if (!targetPath) {
+        const baseName = isDir ? "untitled-folder" : "untitled.tex";
+        targetPath = baseName;
+
+        let counter = 1;
+        while (nodeNameExists(targetPath, fileTree)) {
+          if (isDir) {
+            targetPath = `untitled-folder-${counter}`;
+          } else {
+            targetPath = `untitled-${counter}.tex`;
+          }
+          counter++;
+        }
+      }
+
+      try {
+        const res = await fetch("/api/files", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ projectId, action: "create", path: targetPath, isDir }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          setNewItemName("");
+          collab.notifyFileTreeChanged();
+          void refreshWorkspace();
+        }
+      } catch (err) {
+        console.error("Failed to create resource", err);
+      }
+    },
+    [projectId, newItemName, fileTree, refreshWorkspace, collab],
+  );
+
+  const handleFileMove = useCallback(
+    async (oldPath: string, newPath: string) => {
+      try {
+        const res = await fetch("/api/files", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ projectId, action: "move", oldPath, newPath }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          if (selectedPath === oldPath) {
+            setSelectedPath(newPath);
+          }
+          collab.notifyFileTreeChanged();
+          void refreshWorkspace();
+        }
+      } catch (err) {
+        console.error("Failed to move file", err);
+      }
+    },
+    [projectId, selectedPath, refreshWorkspace, collab],
+  );
 
   const [deletePath, setDeletePath] = useState<string | null>(null);
 
-  const handleFileDelete = useCallback(async (path: string) => {
-    try {
-      const res = await fetch("/api/files", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId, action: "delete", path }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        if (selectedPath === path) {
-          loadedPathRef.current = null;
-          setSelectedPath("");
-          setCurrentCode("// Select a file to view content");
-          setEditedCode("");
+  const handleFileDelete = useCallback(
+    async (path: string) => {
+      try {
+        const res = await fetch("/api/files", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ projectId, action: "delete", path }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          if (selectedPath === path) {
+            loadedPathRef.current = null;
+            setSelectedPath("");
+            setCurrentCode("// Select a file to view content");
+            setEditedCode("");
+          }
+          collab.notifyFileTreeChanged();
+          void refreshWorkspace();
         }
-        collab.notifyFileTreeChanged();
-        refreshWorkspace();
+      } catch (err) {
+        console.error("Failed to delete file", err);
       }
-    } catch (err) {
-      console.error("Failed to delete file", err);
-    }
-  }, [projectId, selectedPath, refreshWorkspace, collab.notifyFileTreeChanged]);
+    },
+    [projectId, selectedPath, refreshWorkspace, collab],
+  );
 
-  const handleFileDuplicate = useCallback(async (path: string) => {
-    const exists = (candidate: string, nodes: FileNode[]): boolean => {
-      for (const n of nodes) {
-        if (n.path === candidate) return true;
-        if (n.children && exists(candidate, n.children)) return true;
-      }
-      return false;
-    };
-
-    const findNode = (candidate: string, nodes: FileNode[]): FileNode | undefined => {
-      for (const n of nodes) {
-        if (n.path === candidate) return n;
-        if (n.children) {
-          const found = findNode(candidate, n.children);
-          if (found) return found;
+  const handleFileDuplicate = useCallback(
+    async (path: string) => {
+      const exists = (candidate: string, nodes: FileNode[]): boolean => {
+        for (const n of nodes) {
+          if (n.path === candidate) return true;
+          if (n.children && exists(candidate, n.children)) return true;
         }
+        return false;
+      };
+
+      const findNode = (candidate: string, nodes: FileNode[]): FileNode | undefined => {
+        for (const n of nodes) {
+          if (n.path === candidate) return n;
+          if (n.children) {
+            const found = findNode(candidate, n.children);
+            if (found) return found;
+          }
+        }
+        return undefined;
+      };
+
+      const lastSlash = path.lastIndexOf("/");
+      const dir = lastSlash >= 0 ? path.slice(0, lastSlash) : "";
+      const name = lastSlash >= 0 ? path.slice(lastSlash + 1) : path;
+      const isDir = findNode(path, fileTree)?.isDir ?? false;
+      const dotIdx = isDir ? -1 : name.lastIndexOf(".");
+      const base = dotIdx > 0 ? name.slice(0, dotIdx) : name;
+      const ext = dotIdx > 0 ? name.slice(dotIdx) : "";
+
+      let candidateName = `${base} copy${ext}`;
+      let counter = 2;
+      while (exists(dir ? `${dir}/${candidateName}` : candidateName, fileTree)) {
+        candidateName = `${base} copy ${counter}${ext}`;
+        counter++;
       }
-      return undefined;
-    };
+      const newPath = dir ? `${dir}/${candidateName}` : candidateName;
 
-    const lastSlash = path.lastIndexOf("/");
-    const dir = lastSlash >= 0 ? path.slice(0, lastSlash) : "";
-    const name = lastSlash >= 0 ? path.slice(lastSlash + 1) : path;
-    const isDir = findNode(path, fileTree)?.isDir ?? false;
-    const dotIdx = isDir ? -1 : name.lastIndexOf(".");
-    const base = dotIdx > 0 ? name.slice(0, dotIdx) : name;
-    const ext = dotIdx > 0 ? name.slice(dotIdx) : "";
-
-    let candidateName = `${base} copy${ext}`;
-    let counter = 2;
-    while (exists(dir ? `${dir}/${candidateName}` : candidateName, fileTree)) {
-      candidateName = `${base} copy ${counter}${ext}`;
-      counter++;
-    }
-    const newPath = dir ? `${dir}/${candidateName}` : candidateName;
-
-    try {
-      const res = await fetch("/api/files", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId, action: "copy", path, newPath }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        collab.notifyFileTreeChanged();
-        refreshWorkspace();
+      try {
+        const res = await fetch("/api/files", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ projectId, action: "copy", path, newPath }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          collab.notifyFileTreeChanged();
+          void refreshWorkspace();
+        }
+      } catch (err) {
+        console.error("Failed to duplicate file", err);
       }
-    } catch (err) {
-      console.error("Failed to duplicate file", err);
-    }
-  }, [projectId, fileTree, refreshWorkspace, collab.notifyFileTreeChanged]);
+    },
+    [projectId, fileTree, refreshWorkspace, collab],
+  );
 
-  const handleFileDownload = useCallback((path: string) => {
-    const url = withProject(`/api/files?path=${encodeURIComponent(path)}&download=1`);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = path.split("/").pop() || path;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  }, [withProject]);
+  const handleFileDownload = useCallback(
+    (path: string) => {
+      const url = withProject(`/api/files?path=${encodeURIComponent(path)}&download=1`);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = path.split("/").pop() || path;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    },
+    [withProject],
+  );
 
-  const handleUploadFiles = useCallback(async (files: FileList, targetDir: string) => {
-    if (isUploading) return;
-    setIsUploading(true);
+  const handleUploadFiles = useCallback(
+    async (files: FileList, targetDir: string) => {
+      if (isUploading) return;
+      setIsUploading(true);
 
-    const formData = new FormData();
-    formData.append("projectId", projectId);
-    formData.append("path", targetDir);
-    Array.from(files).forEach((file) => formData.append("files", file));
+      const formData = new FormData();
+      formData.append("projectId", projectId);
+      formData.append("path", targetDir);
+      Array.from(files).forEach((file) => formData.append("files", file));
 
-    try {
-      const res = await fetch("/api/files/upload", { method: "POST", body: formData });
-      const data = await res.json();
-      if (data.success) {
-        collab.notifyFileTreeChanged();
-        refreshWorkspace();
-      } else {
-        toast.error(data.error || "Failed to upload files");
+      try {
+        const res = await fetch("/api/files/upload", { method: "POST", body: formData });
+        const data = await res.json();
+        if (data.success) {
+          collab.notifyFileTreeChanged();
+          void refreshWorkspace();
+        } else {
+          toast.error(data.error || "Failed to upload files");
+        }
+      } catch (err) {
+        console.error("Failed to upload files", err);
+        toast.error("Failed to upload files");
+      } finally {
+        setIsUploading(false);
       }
-    } catch (err) {
-      console.error("Failed to upload files", err);
-      toast.error("Failed to upload files");
-    } finally {
-      setIsUploading(false);
-    }
-  }, [projectId, refreshWorkspace, isUploading, collab.notifyFileTreeChanged]);
+    },
+    [projectId, refreshWorkspace, isUploading, collab],
+  );
 
   // Autosave useEffect with debounce
   useEffect(() => {
@@ -1922,7 +1866,9 @@ const Example = () => {
     const texFiles = getTexFiles(fileTree);
     if (texFiles.length < 2) return null;
     try {
-      const res = await fetch(withProject(`/api/search?query=${encodeURIComponent("\\documentclass")}`));
+      const res = await fetch(
+        withProject(`/api/search?query=${encodeURIComponent("\\documentclass")}`),
+      );
       if (!res.ok) return null;
       const data = await res.json();
       const detected = pickDetectedMainFile(texFiles, Object.keys(data.resultsByFile ?? {}));
@@ -1940,7 +1886,7 @@ const Example = () => {
     const mainPath = resolveMainFile() ?? (await detectMainFile());
     if (!mainPath) {
       toast.error(
-        "No main file specified. This project has multiple .tex files and none is named main.tex — set the Main Entry File in the Settings tab."
+        "No main file specified. This project has multiple .tex files and none is named main.tex — set the Main Entry File in the Settings tab.",
       );
     }
     return mainPath;
@@ -1951,100 +1897,108 @@ const Example = () => {
   // guarding re-entrancy (see handleCompileLatex/handleDownloadPdf), since
   // handleCompileLatex below may need to run this twice in one click (current
   // file, then the main-file fallback) without the button re-enabling in between.
-  const runCompile = useCallback(async (compilePath: string): Promise<{ pdfPath: string; compilePath: string } | { pdfPath: null; compilePath: string; log: string }> => {
-    setTerminalOutput("");
-    setIsTerminalStreaming(true);
-    // Clear stale error state as soon as a new attempt starts — including the
-    // first of two attempts in handleCompileLatex's open-file/main-file fallback,
-    // since a real failure gets set again by the caller once all attempts are exhausted.
-    setCompileErrors([]);
-    setHasCompileError(false);
+  const runCompile = useCallback(
+    async (
+      compilePath: string,
+    ): Promise<
+      { pdfPath: string; compilePath: string } | { pdfPath: null; compilePath: string; log: string }
+    > => {
+      setTerminalOutput("");
+      setIsTerminalStreaming(true);
+      // Clear stale error state as soon as a new attempt starts — including the
+      // first of two attempts in handleCompileLatex's open-file/main-file fallback,
+      // since a real failure gets set again by the caller once all attempts are exhausted.
+      setCompileErrors([]);
+      setHasCompileError(false);
 
-    try {
-      // First save the current file content to ensure it compiles current edits
-      await saveCurrentFile();
+      try {
+        // First save the current file content to ensure it compiles current edits
+        await saveCurrentFile();
 
-      const res = await fetch("/api/compile", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId, path: compilePath }),
-      });
+        const res = await fetch("/api/compile", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ projectId, path: compilePath }),
+        });
 
-      if (!res.ok) {
-        const contentType = res.headers.get("content-type");
-        if (contentType && contentType.includes("application/json")) {
-          const errData = await res.json().catch(() => ({}));
-          if (errData.error) {
-            setTerminalOutput(errData.error);
-            return { pdfPath: null, compilePath, log: errData.error };
+        if (!res.ok) {
+          const contentType = res.headers.get("content-type");
+          if (contentType && contentType.includes("application/json")) {
+            const errData = await res.json().catch(() => ({}));
+            if (errData.error) {
+              setTerminalOutput(errData.error);
+              return { pdfPath: null, compilePath, log: errData.error };
+            }
+          }
+          throw new Error("Failed to start compilation");
+        }
+
+        const reader = res.body?.getReader();
+        if (!reader) {
+          throw new Error("No readable stream from compiler");
+        }
+
+        const decoder = new TextDecoder();
+        let logBuffer = "";
+        let pdfPath: string | null = null;
+        // ponytail: fixed 100ms cadence instead of per-chunk. A cold-cache
+        // compile that fetches packages streams megabytes of progress lines —
+        // re-rendering (and re-parsing errors from, see TerminalLogViewer) the
+        // whole growing buffer on every chunk pegs the main thread.
+        let lastFlush = 0;
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+
+          const text = decoder.decode(value, { stream: true });
+          logBuffer += text;
+          const now = Date.now();
+          if (now - lastFlush >= 100) {
+            setTerminalOutput(logBuffer);
+            lastFlush = now;
+          }
+
+          // Check if stream finished with success
+          if (logBuffer.includes("[SUCCESS]") || logBuffer.includes("[CACHE HIT]")) {
+            pdfPath = ".preview-cache/main.pdf";
+            const match = logBuffer.match(/\[SUCCESS\]\s+(.*)/);
+            if (match && match[1]) {
+              // Normalize in case the compiler echoes an absolute container path.
+              const rawPdfPath = toProjectRelative(match[1].trim());
+              pdfPath = rawPdfPath.startsWith(".preview-cache/")
+                ? rawPdfPath
+                : `.preview-cache/${rawPdfPath}`;
+            } else {
+              // Derive PDF filename from the file we actually compiled.
+              pdfPath = `.preview-cache/${compilePath.replace(/\.tex$/, ".pdf")}`;
+            }
           }
         }
-        throw new Error("Failed to start compilation");
-      }
+        setTerminalOutput(logBuffer); // final flush — the throttle above may have skipped the last chunk(s)
 
-
-      const reader = res.body?.getReader();
-      if (!reader) {
-        throw new Error("No readable stream from compiler");
-      }
-
-      const decoder = new TextDecoder();
-      let logBuffer = "";
-      let pdfPath: string | null = null;
-      // ponytail: fixed 100ms cadence instead of per-chunk. A cold-cache
-      // compile that fetches packages streams megabytes of progress lines —
-      // re-rendering (and re-parsing errors from, see TerminalLogViewer) the
-      // whole growing buffer on every chunk pegs the main thread.
-      let lastFlush = 0;
-
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-
-        const text = decoder.decode(value, { stream: true });
-        logBuffer += text;
-        const now = Date.now();
-        if (now - lastFlush >= 100) {
-          setTerminalOutput(logBuffer);
-          lastFlush = now;
+        if (pdfPath) {
+          trackEvent("compile_success");
+        } else {
+          trackEvent("compile_failed");
+          upgradeSession("compile_failed");
         }
-
-        // Check if stream finished with success
-        if (logBuffer.includes("[SUCCESS]") || logBuffer.includes("[CACHE HIT]")) {
-          pdfPath = ".preview-cache/main.pdf";
-          const match = logBuffer.match(/\[SUCCESS\]\s+(.*)/);
-          if (match && match[1]) {
-            // Normalize in case the compiler echoes an absolute container path.
-            const rawPdfPath = toProjectRelative(match[1].trim());
-            pdfPath = rawPdfPath.startsWith(".preview-cache/") ? rawPdfPath : `.preview-cache/${rawPdfPath}`;
-          } else {
-            // Derive PDF filename from the file we actually compiled.
-            pdfPath = `.preview-cache/${compilePath.replace(/\.tex$/, ".pdf")}`;
-          }
-        }
-      }
-      setTerminalOutput(logBuffer); // final flush — the throttle above may have skipped the last chunk(s)
-
-      if (pdfPath) {
-        trackEvent("compile_success");
-      } else {
+        return pdfPath ? { pdfPath, compilePath } : { pdfPath: null, compilePath, log: logBuffer };
+      } catch (err) {
+        console.error("Compilation error", err);
+        const errMessage = err instanceof Error ? err.message : String(err);
+        // Put compilation error into the terminal output
+        const errLog = `\u001B[31mError compiling LaTeX:\u001B[0m ${errMessage}\n`;
+        setTerminalOutput((prev) => `${prev}\n${errLog}`);
         trackEvent("compile_failed");
         upgradeSession("compile_failed");
+        return { pdfPath: null, compilePath, log: errLog };
+      } finally {
+        setIsTerminalStreaming(false);
       }
-      return pdfPath ? { pdfPath, compilePath } : { pdfPath: null, compilePath, log: logBuffer };
-    } catch (err) {
-      console.error("Compilation error", err);
-      const errMessage = err instanceof Error ? err.message : String(err);
-      // Put compilation error into the terminal output
-      const errLog = `\u001B[31mError compiling LaTeX:\u001B[0m ${errMessage}\n`;
-      setTerminalOutput((prev) => `${prev}\n${errLog}`);
-      trackEvent("compile_failed");
-      upgradeSession("compile_failed");
-      return { pdfPath: null, compilePath, log: errLog };
-    } finally {
-      setIsTerminalStreaming(false);
-    }
-  }, [projectId, toProjectRelative, saveCurrentFile]);
+    },
+    [projectId, toProjectRelative, saveCurrentFile],
+  );
 
   // Final-failure handler: parses the failed compile's log for `error: file:line:
   // message` entries (Tectonic's own format) and surfaces them as a toast, a
@@ -2060,7 +2014,7 @@ const Example = () => {
     toast.error(
       errs[0]
         ? `Compile failed \u2014 line ${errs[0].line}: ${errs[0].message}`
-        : "Compile failed \u2014 see terminal for details"
+        : "Compile failed \u2014 see terminal for details",
     );
   }, []);
 
@@ -2074,7 +2028,8 @@ const Example = () => {
     if (isCompiling) return;
     setIsCompiling(true);
     try {
-      const currentPath = selectedPath && selectedPath.endsWith(".tex") ? toProjectRelative(selectedPath) : null;
+      const currentPath =
+        selectedPath && selectedPath.endsWith(".tex") ? toProjectRelative(selectedPath) : null;
 
       let result = currentPath ? await runCompile(currentPath) : null;
 
@@ -2089,12 +2044,24 @@ const Example = () => {
         if (result) surfaceCompileFailure(result);
         return;
       }
-      setPdfUrl(withProject(`${window.location.origin}/api/files?path=${encodeURIComponent(result.pdfPath)}&t=${Date.now()}`));
+      setPdfUrl(
+        withProject(
+          `${window.location.origin}/api/files?path=${encodeURIComponent(result.pdfPath)}&t=${Date.now()}`,
+        ),
+      );
       setCompiledPath(result.compilePath);
     } finally {
       setIsCompiling(false);
     }
-  }, [isCompiling, selectedPath, toProjectRelative, runCompile, resolveOrToastMainFile, withProject, surfaceCompileFailure]);
+  }, [
+    isCompiling,
+    selectedPath,
+    toProjectRelative,
+    runCompile,
+    resolveOrToastMainFile,
+    withProject,
+    surfaceCompileFailure,
+  ]);
 
   // Always the project's main file, never "whatever's open" — a download is
   // the finished project, not whichever chapter happens to be open.
@@ -2109,7 +2076,9 @@ const Example = () => {
         surfaceCompileFailure(result);
         return;
       }
-      const url = withProject(`${window.location.origin}/api/files?path=${encodeURIComponent(result.pdfPath)}&t=${Date.now()}`);
+      const url = withProject(
+        `${window.location.origin}/api/files?path=${encodeURIComponent(result.pdfPath)}&t=${Date.now()}`,
+      );
       const link = document.createElement("a");
       link.href = url;
       link.download = "document.pdf";
@@ -2124,7 +2093,7 @@ const Example = () => {
   // Load tree on mount
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- data load: fetches the workspace tree on mount
-    refreshWorkspace();
+    void refreshWorkspace();
   }, [refreshWorkspace]);
 
   // Reopen the file the user last had open in this project (persisted like the layout).
@@ -2134,7 +2103,7 @@ const Example = () => {
     didRestoreFile.current = true;
     const last = localStorage.getItem(`somescript-last-file-${projectId}`);
     // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot mount restore; ref-guarded, cannot cascade
-    if (last) handleFileSelect(last);
+    if (last) void handleFileSelect(last);
   }, [projectId, handleFileSelect]);
 
   // Reload current file when selectedPath changes — but not when handleFileSelect
@@ -2144,7 +2113,7 @@ const Example = () => {
   useEffect(() => {
     if (selectingPathRef.current === selectedPath) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- data load: fetches file content when the selection changes
-    refreshCurrentFile();
+    void refreshCurrentFile();
   }, [selectedPath, refreshCurrentFile]);
 
   // Listen for custom events to coordinate real-time saves and refreshes with the AI agent
@@ -2155,8 +2124,8 @@ const Example = () => {
     };
 
     const handleRefreshWorkspace = () => {
-      refreshWorkspace();
-      refreshCurrentFile();
+      void refreshWorkspace();
+      void refreshCurrentFile();
       collab.notifyFileTreeChanged();
     };
 
@@ -2164,7 +2133,7 @@ const Example = () => {
     // up by refreshCurrentFile above instead.
     const handleOpenFile = (e: Event) => {
       const path = (e as CustomEvent<string>).detail;
-      if (path) handleFileSelect(path);
+      if (path) void handleFileSelect(path);
     };
 
     // Eve started a compile — same terminal reset the Compile button does
@@ -2182,12 +2151,14 @@ const Example = () => {
     // Deliberately does NOT call surfaceCompileFailure: its toast would fire
     // underneath Eve's own explanation of the error it's about to fix.
     const handleCompiled = (e: Event) => {
-      const { ok, path, pdfPath, log } = (e as CustomEvent<{
-        ok: boolean;
-        path: string;
-        pdfPath: string | null;
-        log: string | null;
-      }>).detail;
+      const { ok, path, pdfPath, log } = (
+        e as CustomEvent<{
+          ok: boolean;
+          path: string;
+          pdfPath: string | null;
+          log: string | null;
+        }>
+      ).detail;
 
       setIsTerminalStreaming(false);
       if (log === null) return; // compile never ran; leave the terminal alone
@@ -2196,8 +2167,8 @@ const Example = () => {
       if (ok && pdfPath) {
         setPdfUrl(
           withProject(
-            `${window.location.origin}/api/files?path=${encodeURIComponent(pdfPath)}&t=${Date.now()}`
-          )
+            `${window.location.origin}/api/files?path=${encodeURIComponent(pdfPath)}&t=${Date.now()}`,
+          ),
         );
         setCompiledPath(path);
       } else {
@@ -2219,7 +2190,15 @@ const Example = () => {
       window.removeEventListener("somescript:compiling", handleCompiling);
       window.removeEventListener("somescript:compiled", handleCompiled);
     };
-  }, [refreshWorkspace, refreshCurrentFile, handleFileSelect, projectId, withProject, collab.notifyFileTreeChanged]);
+  }, [
+    refreshWorkspace,
+    refreshCurrentFile,
+    handleFileSelect,
+    projectId,
+    withProject,
+    collab,
+    saveCurrentFile,
+  ]);
 
   // Static boot banner. This used to be typed out a line at a time over 800ms, which
   // re-rendered the whole editor eight times during the slowest part of startup — for
@@ -2229,15 +2208,8 @@ const Example = () => {
     setTerminalOutput(`${mockTerminalLines.join("\n")}\n`);
   }, []);
 
-  const handleChatTextChange = useCallback(
-    (e: React.ChangeEvent<HTMLTextAreaElement>) => setChatText(e.target.value),
-    []
-  );
-
-
-
   const [dashboardUrl, setDashboardUrl] = useState<string>(
-    process.env.NEXT_PUBLIC_WEB_URL ? `${process.env.NEXT_PUBLIC_WEB_URL}/dashboard` : "/dashboard"
+    process.env.NEXT_PUBLIC_WEB_URL ? `${process.env.NEXT_PUBLIC_WEB_URL}/dashboard` : "/dashboard",
   );
   const [projectName, setProjectName] = useState<string>("my-new-project");
 
@@ -2305,9 +2277,7 @@ const Example = () => {
           <ContextMenu
             onOpenChange={(open) => {
               if (open) {
-                setHasEditorSelection(
-                  !editorViewRef.current?.state.selection.main.empty
-                );
+                setHasEditorSelection(!editorViewRef.current?.state.selection.main.empty);
               }
             }}
           >
@@ -2353,10 +2323,7 @@ const Example = () => {
             </ContextMenuTrigger>
             {/* Focus is handed back to CodeMirror by each action, so
                 don't let the menu pull it onto the trigger on close. */}
-            <ContextMenuContent
-              className="w-56"
-              onCloseAutoFocus={(e) => e.preventDefault()}
-            >
+            <ContextMenuContent className="w-56" onCloseAutoFocus={(e) => e.preventDefault()}>
               <ContextMenuItem onClick={handleSendCodeToChat}>
                 <Sparkles className="size-3.5" />
                 {hasEditorSelection ? "Add selection to chat" : "Add file to chat"}
@@ -2373,10 +2340,7 @@ const Example = () => {
                 Show in PDF
               </ContextMenuItem>
               <ContextMenuSeparator />
-              <ContextMenuItem
-                disabled={!hasEditorSelection}
-                onClick={() => handleClipboard(true)}
-              >
+              <ContextMenuItem disabled={!hasEditorSelection} onClick={() => handleClipboard(true)}>
                 <Scissors className="size-3.5" />
                 Cut
                 <ContextMenuShortcut>⌘X</ContextMenuShortcut>
@@ -2453,7 +2417,9 @@ const Example = () => {
       isStreaming={isTerminalStreaming}
       compilePath={compilePath}
       onSelectError={(file, line) => {
-        const fullPath = file.startsWith("/") ? file : `${projectPath}/${file.replace(/^\.\//, "")}`;
+        const fullPath = file.startsWith("/")
+          ? file
+          : `${projectPath}/${file.replace(/^\.\//, "")}`;
         handleSelectMatch(fullPath, line);
       }}
       onSendToChat={handleSendTerminalToChat}
@@ -2467,17 +2433,14 @@ const Example = () => {
       <header className="flex items-center justify-between gap-2 border-b px-2 sm:px-4 h-14 bg-background z-30">
         <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
           <div className="flex items-center gap-2.5 shrink-0" aria-label="SomeScript Editor">
-            <Image
-              src="/icon.svg"
-              alt=""
-              width={28}
-              height={28}
-              className="size-7"
-              priority
-            />
+            <Image src="/icon.svg" alt="" width={28} height={28} className="size-7" priority />
             <div className="hidden sm:flex items-baseline gap-1.5 leading-none">
-              <span className="text-sm font-semibold tracking-tight text-foreground">SomeScript</span>
-              <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Editor</span>
+              <span className="text-sm font-semibold tracking-tight text-foreground">
+                SomeScript
+              </span>
+              <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                Editor
+              </span>
             </div>
           </div>
           <div className="h-4 w-px bg-border shrink-0" />
@@ -2515,7 +2478,12 @@ const Example = () => {
               <AvatarGroup data-size="sm">
                 {collab.collaborators.map((c) => {
                   const initials = c.user.name
-                    ? c.user.name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
+                    ? c.user.name
+                        .split(" ")
+                        .map((n) => n[0])
+                        .join("")
+                        .toUpperCase()
+                        .slice(0, 2)
                     : "U";
                   return (
                     <Tooltip key={c.clientId}>
@@ -2537,7 +2505,11 @@ const Example = () => {
                       </TooltipTrigger>
                       <TooltipContent side="bottom" className="text-xs font-mono">
                         <p className="font-semibold">{c.user.name}</p>
-                        {c.activeFile && <p className="text-[10px] text-muted-foreground">Editing: {c.activeFile}</p>}
+                        {c.activeFile && (
+                          <p className="text-[10px] text-muted-foreground">
+                            Editing: {c.activeFile}
+                          </p>
+                        )}
                       </TooltipContent>
                     </Tooltip>
                   );
@@ -2586,13 +2558,15 @@ const Example = () => {
               onClick={() => setIsLeftSidebarOpen((prev) => !prev)}
               className={cn(
                 "p-1.5 rounded-sm hover:bg-muted cursor-pointer transition-colors",
-                isLeftSidebarOpen ? "text-foreground bg-muted/50" : "text-muted-foreground/60 hover:text-foreground"
+                isLeftSidebarOpen
+                  ? "text-foreground bg-muted/50"
+                  : "text-muted-foreground/60 hover:text-foreground",
               )}
               title="Toggle Primary Side Bar (Left Sidebar)"
             >
               <LayoutIconLeft active={isLeftSidebarOpen} />
             </button>
-             <button
+            <button
               onClick={() => {
                 if (isMobile) {
                   setMobileView((v) => (v === "terminal" ? "code" : "terminal"));
@@ -2611,11 +2585,19 @@ const Example = () => {
               }}
               className={cn(
                 "relative p-1.5 rounded-sm hover:bg-muted cursor-pointer transition-colors",
-                (isMobile ? mobileView === "terminal" : !isTerminalCollapsed) ? "text-foreground bg-muted/50" : "text-muted-foreground/60 hover:text-foreground"
+                (isMobile ? mobileView === "terminal" : !isTerminalCollapsed)
+                  ? "text-foreground bg-muted/50"
+                  : "text-muted-foreground/60 hover:text-foreground",
               )}
-              title={hasCompileError ? "Toggle Panel (Bottom Terminal) — last compile failed" : "Toggle Panel (Bottom Terminal)"}
+              title={
+                hasCompileError
+                  ? "Toggle Panel (Bottom Terminal) — last compile failed"
+                  : "Toggle Panel (Bottom Terminal)"
+              }
             >
-              <LayoutIconBottom active={isMobile ? mobileView === "terminal" : !isTerminalCollapsed} />
+              <LayoutIconBottom
+                active={isMobile ? mobileView === "terminal" : !isTerminalCollapsed}
+              />
               {hasCompileError && (isMobile ? mobileView !== "terminal" : isTerminalCollapsed) && (
                 <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-red-500" />
               )}
@@ -2639,7 +2621,9 @@ const Example = () => {
               }}
               className={cn(
                 "p-1.5 rounded-sm hover:bg-muted cursor-pointer transition-colors",
-                (isMobile ? mobileView === "pdf" : !isPdfCollapsed) ? "text-foreground bg-muted/50" : "text-muted-foreground/60 hover:text-foreground"
+                (isMobile ? mobileView === "pdf" : !isPdfCollapsed)
+                  ? "text-foreground bg-muted/50"
+                  : "text-muted-foreground/60 hover:text-foreground",
               )}
               title="Toggle PDF Preview (Right Sidebar)"
             >
@@ -2659,517 +2643,572 @@ const Example = () => {
       <div className="relative flex flex-1 w-full overflow-hidden">
         {/* Backdrops for mobile view */}
         {isLeftSidebarOpen && (
-        <div
-          onClick={() => setIsLeftSidebarOpen(false)}
-          className="lg:hidden absolute inset-0 z-30 bg-background/80 backdrop-blur-sm"
-        />
-      )}
-
-      {/* Left Sidebar - File Tree & AI Chat Tabs */}
-      <div
-        className={cn(
-          "flex flex-col border-r transition-all duration-300 ease-in-out overflow-hidden z-40 bg-background lg:static absolute top-0 bottom-0 left-0 shadow-lg lg:shadow-none",
-          isLeftSidebarOpen ? "w-80" : "w-0 border-r-0"
+          // Dismiss-on-click scrim, not a control — the sidebar's own toggle button
+          // stays the keyboard/screen-reader way to close it.
+          // oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
+          <div
+            onClick={() => setIsLeftSidebarOpen(false)}
+            className="lg:hidden absolute inset-0 z-30 bg-background/80 backdrop-blur-sm"
+          />
         )}
-      >
-        {/* Tabs header — WAI-ARIA tabs: roving tabIndex, arrow-key navigation,
+
+        {/* Left Sidebar - File Tree & AI Chat Tabs */}
+        <div
+          className={cn(
+            "flex flex-col border-r transition-all duration-300 ease-in-out overflow-hidden z-40 bg-background lg:static absolute top-0 bottom-0 left-0 shadow-lg lg:shadow-none",
+            isLeftSidebarOpen ? "w-80" : "w-0 border-r-0",
+          )}
+        >
+          {/* Tabs header — WAI-ARIA tabs: roving tabIndex, arrow-key navigation,
             and each panel below wired up via aria-controls/aria-labelledby. */}
-        <div
-          role="tablist"
-          aria-label="Sidebar panels"
-          aria-orientation="horizontal"
-          onKeyDown={handleTabKeyDown}
-          className="border-b px-2 bg-muted/10 flex items-center justify-around gap-1 h-11"
-        >
-          {SIDEBAR_TABS.map(({ id, label, Icon }) => {
-            const selected = activeTab === id;
-            return (
-              <button
-                key={id}
-                id={`sidebar-tab-${id}`}
-                role="tab"
-                aria-selected={selected}
-                aria-controls={`sidebar-panel-${id}`}
-                aria-label={label}
-                tabIndex={selected ? 0 : -1}
-                onClick={() => setActiveTab(id)}
-                className={cn(
-                  "flex-1 flex justify-center items-center gap-1.5 py-1.5 px-2 rounded text-[11px] font-semibold cursor-pointer transition-colors",
-                  selected
-                    ? "bg-muted text-foreground"
-                    : "text-muted-foreground hover:bg-muted/5 hover:text-foreground"
-                )}
-              >
-                <Icon className="size-3.5" />
-                {selected && <span>{label}</span>}
-              </button>
-            );
-          })}
-        </div>
-
-        <div
-          id="sidebar-panel-files"
-          role="tabpanel"
-          aria-labelledby="sidebar-tab-files"
-          className={cn("flex-1 flex flex-col overflow-hidden", activeTab !== "files" && "hidden")}
-        >
-          <div className="border-b px-3 py-2 bg-muted/10 flex items-center justify-between shrink-0">
-            <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-              Project Files
-            </span>
-            <div className="flex gap-1.5 items-center">
-              <button
-                type="button"
-                onClick={() => handleCreateResourceSubmit(false)}
-                className="p-1 rounded border hover:bg-muted cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
-                title="New File"
-              >
-                <FilePlus className="size-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={() => handleCreateResourceSubmit(true)}
-                className="p-1 rounded border hover:bg-muted cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
-                title="New Folder"
-              >
-                <FolderPlus className="size-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={() => uploadInputRef.current?.click()}
-                disabled={isUploading}
-                className={cn(
-                  "p-1 rounded border hover:bg-muted cursor-pointer text-muted-foreground hover:text-foreground transition-colors",
-                  isUploading && "opacity-50 cursor-not-allowed hover:bg-transparent"
-                )}
-                title="Upload Files"
-              >
-                <Upload className="size-3.5" />
-              </button>
-              <input
-                ref={uploadInputRef}
-                type="file"
-                multiple
-                className="hidden"
-                onChange={(e) => {
-                  if (e.target.files && e.target.files.length > 0) {
-                    handleUploadFiles(e.target.files, "");
-                  }
-                  e.target.value = "";
-                }}
-              />
-            </div>
-          </div>
-          <div className="flex-1 overflow-auto p-1">
-            <FileTree
-              className="border-none"
-              data={fileTree}
-              onSelect={handleFileSelect}
-              selectedPath={selectedPath}
-              activeCollaborators={collab.collaborators}
-              onMove={handleFileMove}
-              onDelete={setDeletePath}
-              onDuplicate={handleFileDuplicate}
-              onDownload={handleFileDownload}
-              onUploadFiles={handleUploadFiles}
-            />
-          </div>
-          <div className="border-b border-t px-3 py-2 bg-muted/10 flex items-center justify-between shrink-0">
-            <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-              Outline
-            </span>
-          </div>
-          <div className="flex-1 overflow-auto p-1">
-            <OutlinePanel
-              outline={outline}
-              isLatex={currentLanguage === "latex"}
-              onSelect={(line) => setPendingLineJump({ path: selectedPath, line })}
-            />
-          </div>
-        </div>
-
-        <div
-          id="sidebar-panel-search"
-          role="tabpanel"
-          aria-labelledby="sidebar-tab-search"
-          className={cn("flex-1 flex flex-col overflow-hidden bg-background", activeTab !== "search" && "hidden")}
-        >
-          <SearchPanel
-            ref={searchPanelRef}
-            selectedPath={selectedPath}
-            onSelectMatch={handleSelectMatch}
-            onReplace={handleReplace}
-            onReplaceAll={handleReplaceAll}
-            onSearchChange={handleSearchChange}
-          />
-        </div>
-
-        <div
-          id="sidebar-panel-chat"
-          role="tabpanel"
-          aria-labelledby="sidebar-tab-chat"
-          className={cn("flex-1 flex flex-col overflow-hidden bg-background", activeTab !== "chat" && "hidden")}
-        >
-          {/* Header Bar */}
-          <div className="border-b px-3 h-10 flex items-center justify-between bg-muted/5 select-none shrink-0">
-            <button
-              onClick={handleNewChat}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md hover:bg-muted text-xs font-semibold cursor-pointer text-muted-foreground hover:text-foreground transition-all duration-150 border border-transparent hover:border-border"
-              title="Start a fresh conversation"
-            >
-              <Plus className="size-3.5 text-primary" />
-              <span>New Chat</span>
-            </button>
-
-            <button
-              onClick={() => setShowHistory((prev) => !prev)}
-              className={cn(
-                "flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-semibold cursor-pointer transition-all duration-150 border border-transparent",
-                showHistory
-                  ? "bg-primary/10 text-primary border-primary/20"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground hover:border-border"
-              )}
-              title="View saved conversations"
-            >
-              <Clock className="size-3.5" />
-              <span>History</span>
-            </button>
-          </div>
-
-          <div className="flex-1 relative flex flex-col overflow-hidden">
-            {/* Sliding History Drawer */}
-            <div
-              className={cn(
-                "absolute inset-x-0 top-0 z-30 bg-background/95 border-b backdrop-blur-md flex flex-col transition-all duration-200 ease-in-out overflow-hidden shadow-md max-h-[250px]",
-                showHistory ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-2 pointer-events-none max-h-0"
-              )}
-            >
-              <div className="p-2 border-b bg-muted/5 flex items-center justify-between">
-                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider pl-1">Saved Conversations</span>
-                <span className="text-[10px] text-muted-foreground pr-1">{threads.length} chats</span>
-              </div>
-              <div className="flex-1 overflow-y-auto p-1.5 space-y-1">
-                {threads.map((t) => (
-                  <div
-                    key={t.id}
-                    onClick={() => handleSwitchChat(t.id)}
-                    className={cn(
-                      "flex items-center justify-between px-2.5 py-2 rounded-md text-xs cursor-pointer transition-all duration-150 group border",
-                      t.id === activeThreadId
-                        ? "bg-primary/5 border-primary/20 text-primary font-medium"
-                        : "border-transparent hover:bg-muted/40 hover:text-foreground text-muted-foreground"
-                    )}
-                  >
-                    <div className="flex items-center gap-2 truncate pr-2">
-                      <Sparkles className={cn("size-3.5 shrink-0", t.id === activeThreadId ? "text-primary" : "text-muted-foreground/50")} />
-                      <span className="truncate">{t.title}</span>
-                    </div>
-                    <button
-                      onClick={(e) => handleDeleteChat(t.id, e)}
-                      className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-destructive/10 hover:text-destructive transition-all duration-150 cursor-pointer"
-                      title="Delete chat history"
-                    >
-                      <Trash2 className="size-3.5" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Chat thread itself */}
-            {activeThreadId && (
-              <div className="flex-1 flex flex-col overflow-hidden">
-                <EveThread
-                  key={activeThreadId}
-                  threadId={activeThreadId}
-                  projectId={projectId}
-                  openFile={selectedPath ? toProjectRelative(selectedPath) : null}
-                />
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div
-          id="sidebar-panel-settings"
-          role="tabpanel"
-          aria-labelledby="sidebar-tab-settings"
-          className={cn("flex-1 flex flex-col overflow-hidden bg-background", activeTab !== "settings" && "hidden")}
-        >
-          <div className="border-b px-3 h-10 flex items-center justify-between bg-muted/5 select-none shrink-0">
-            <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-              Project Settings
-            </span>
-          </div>
-
-          <div className="flex-1 overflow-auto p-4 space-y-4.5">
-            {/* Main File Selector */}
-            <div className="space-y-1.5 flex flex-col">
-              <label className="text-xs font-semibold text-muted-foreground">
-                Main Entry File
-              </label>
-              <div className="text-[11px] text-muted-foreground leading-relaxed">
-                Choose the main LaTeX document to run when compiling.
-              </div>
-              <Select
-                value={settings.mainFilePath}
-                onValueChange={(val) => saveSettings({ ...settings, mainFilePath: val })}
-              >
-                <SelectTrigger className="w-full text-xs h-8 justify-between bg-background border border-border">
-                  <SelectValue placeholder="Select main file" />
-                </SelectTrigger>
-                <SelectContent className="z-[999]">
-                  {getTexFiles(fileTree).length === 0 ? (
-                    <SelectItem value="none" disabled>No .tex files found</SelectItem>
-                  ) : (
-                    getTexFiles(fileTree).map((path) => (
-                      <SelectItem key={path} value={path}>
-                        {path}
-                      </SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <hr className="border-border/60" />
-
-            {/* Compiler Engine */}
-            <div className="space-y-1.5 flex flex-col">
-              <label className="text-xs font-semibold text-muted-foreground">
-                LaTeX Compiler Engine
-              </label>
-              <div className="text-[11px] text-muted-foreground leading-relaxed">
-                Select the build engine used to compile your documents.
-              </div>
-              <Select
-                value={settings.compilerEngine}
-                onValueChange={(val) => saveSettings({ ...settings, compilerEngine: val })}
-              >
-                <SelectTrigger className="w-full text-xs h-8 justify-between bg-background border border-border">
-                  <SelectValue placeholder="Select compiler engine" />
-                </SelectTrigger>
-                <SelectContent className="z-[999]">
-                  <SelectItem value="tectonic">Tectonic (Auto-selects Engine)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <hr className="border-border/60" />
-
-            {/* Tooltip feature toggle */}
-            <div className="flex items-start justify-between gap-3">
-              <div className="space-y-0.5">
-                <label className="text-xs font-semibold text-muted-foreground">
-                  Editor Tooltips
-                </label>
-                <div className="text-[11px] text-muted-foreground leading-relaxed">
-                  Toggle hover assistance tooltips for LaTeX commands in the code editor.
-                </div>
-              </div>
-              <input
-                type="checkbox"
-                checked={settings.tooltipsEnabled}
-                onChange={(e) => saveSettings({ ...settings, tooltipsEnabled: e.target.checked })}
-                className="mt-0.5 size-4 rounded border-border text-primary focus:ring-primary cursor-pointer"
-              />
-            </div>
-
-            <hr className="border-border/60" />
-
-            <div className="flex items-start justify-between gap-3">
-              <div className="space-y-0.5">
-                <label htmlFor="vim-mode-toggle" className="text-xs font-semibold text-muted-foreground">
-                  Vim Keybindings
-                </label>
-                <div className="text-[11px] text-muted-foreground leading-relaxed">
-                  Enable Vim keybindings and modal editing in the code editor.
-                </div>
-              </div>
-              <input
-                id="vim-mode-toggle"
-                type="checkbox"
-                checked={settings.vimModeEnabled}
-                onChange={(e) => saveSettings({ ...settings, vimModeEnabled: e.target.checked })}
-                className="mt-0.5 size-4 rounded border-border text-primary focus:ring-primary cursor-pointer"
-              />
-            </div>
-
-            <hr className="border-border/60" />
-
-            <div className="flex items-start justify-between gap-3">
-              <div className="space-y-0.5">
-                <label htmlFor="folding-toggle" className="text-xs font-semibold text-muted-foreground">
-                  Code Folding
-                </label>
-                <div className="text-[11px] text-muted-foreground leading-relaxed">
-                  Enable code folding gutters to collapse sections and blocks.
-                </div>
-              </div>
-              <input
-                id="folding-toggle"
-                type="checkbox"
-                checked={settings.foldingEnabled}
-                onChange={(e) => saveSettings({ ...settings, foldingEnabled: e.target.checked })}
-                className="mt-0.5 size-4 rounded border-border text-primary focus:ring-primary cursor-pointer"
-              />
-            </div>
-
-            <hr className="border-border/60" />
-
-            <div className="flex items-start justify-between gap-3">
-              <div className="space-y-0.5">
-                <label htmlFor="autocomplete-toggle" className="text-xs font-semibold text-muted-foreground">
-                  Autocompletion
-                </label>
-                <div className="text-[11px] text-muted-foreground leading-relaxed">
-                  Enable automatic code completion and suggestions.
-                </div>
-              </div>
-              <input
-                id="autocomplete-toggle"
-                type="checkbox"
-                checked={settings.autocompleteEnabled}
-                onChange={(e) => saveSettings({ ...settings, autocompleteEnabled: e.target.checked })}
-                className="mt-0.5 size-4 rounded border-border text-primary focus:ring-primary cursor-pointer"
-              />
-            </div>
-
-            <hr className="border-border/60" />
-
-            <div className="flex items-start justify-between gap-3">
-              <div className="space-y-0.5">
-                <label htmlFor="bracket-matching-toggle" className="text-xs font-semibold text-muted-foreground">
-                  Bracket Matching
-                </label>
-                <div className="text-[11px] text-muted-foreground leading-relaxed">
-                  Enable highlighting of matching brackets, parentheses, and braces.
-                </div>
-              </div>
-              <input
-                id="bracket-matching-toggle"
-                type="checkbox"
-                checked={settings.bracketMatchingEnabled}
-                onChange={(e) => saveSettings({ ...settings, bracketMatchingEnabled: e.target.checked })}
-                className="mt-0.5 size-4 rounded border-border text-primary focus:ring-primary cursor-pointer"
-              />
-            </div>
-          </div>
-        </div>
-
-        <div
-          id="sidebar-panel-tasks"
-          role="tabpanel"
-          aria-labelledby="sidebar-tab-tasks"
-          className={cn("flex-1 flex flex-col overflow-hidden bg-background", activeTab !== "tasks" && "hidden")}
-        >
-          <TasksPanel
-            ref={tasksPanelRef}
-            projectId={projectId}
-            onSelectMatch={handleSelectMatch}
-            onSelectPdfPage={handleSelectPdfPage}
-            notifyTasksChanged={collab.notifyTasksChanged}
-          />
-        </div>
-      </div>
-
-      {/* Center Panel - Code + Terminal */}
-      {isMobile ? (
-        // Mobile: no room for a resizable split — exactly one pane fills the screen,
-        // switched via the header's terminal/PDF toggle buttons (see mobileView).
-        // The desktop layout's useDefaultLayout persistence never mounts here, so
-        // nothing is read from or written to its localStorage-backed layout.
-        <div className="flex flex-1 flex-col overflow-hidden">
-          <div className="flex-1 overflow-hidden">
-            {mobileView === "code" && codeEditorPane}
-            {mobileView === "pdf" && pdfPreviewPane}
-            {mobileView === "terminal" && terminalPane}
-          </div>
-        </div>
-      ) : (
-        <div className="flex flex-1 flex-col overflow-hidden">
-          <ResizablePanelGroup
-            orientation="vertical"
-            defaultLayout={verticalLayout.defaultLayout}
-            onLayoutChanged={verticalLayout.onLayoutChanged}
+          {/* oxlint-disable-next-line jsx-a11y/interactive-supports-focus -- the WAI-ARIA APG tabs pattern keeps the tablist container itself out of tab order; each child tab already has tabIndex={selected ? 0 : -1} (roving tabindex) below. */}
+          <div
+            role="tablist"
+            aria-label="Sidebar panels"
+            aria-orientation="horizontal"
+            onKeyDown={handleTabKeyDown}
+            className="border-b px-2 bg-muted/10 flex items-center justify-around gap-1 h-11"
           >
-            <ResizablePanel
-              id="editor-main"
-              defaultSize={75}
-              minSize={30}
-              className={cn(isAnimatingTerminal && "panel-transition")}
-            >
-              {/* Editor + PDF Split Pane */}
-              <ResizablePanelGroup
-                orientation="horizontal"
-                defaultLayout={horizontalLayout.defaultLayout}
-                onLayoutChanged={horizontalLayout.onLayoutChanged}
-              >
-                {/* Left: CodeMirror Editor */}
-                <ResizablePanel
-                  id="code"
-                  panelRef={codePanelRef}
-                  collapsible
-                  collapsedSize={0}
-                  defaultSize={50}
-                  minSize={25}
-                  onResize={(size) => {
-                    setIsCodeCollapsed(size.asPercentage <= 1);
-                  }}
-                  className={cn(isAnimatingPdf && "panel-transition")}
-                >
-                  {codeEditorPane}
-                </ResizablePanel>
-
-                <ResizableHandle
-                  onDoubleClick={handlePdfDoubleClick}
+            {SIDEBAR_TABS.map(({ id, label, Icon }) => {
+              const selected = activeTab === id;
+              return (
+                <button
+                  key={id}
+                  id={`sidebar-tab-${id}`}
+                  role="tab"
+                  aria-selected={selected}
+                  aria-controls={`sidebar-panel-${id}`}
+                  aria-label={label}
+                  tabIndex={selected ? 0 : -1}
+                  onClick={() => setActiveTab(id)}
                   className={cn(
-                    (isPdfCollapsed || isCodeCollapsed) && "cursor-pointer"
+                    "flex-1 flex justify-center items-center gap-1.5 py-1.5 px-2 rounded text-[11px] font-semibold cursor-pointer transition-colors",
+                    selected
+                      ? "bg-muted text-foreground"
+                      : "text-muted-foreground hover:bg-muted/5 hover:text-foreground",
                   )}
-                />
-
-                {/* Right: PDF Preview */}
-                <ResizablePanel
-                  id="pdf"
-                  panelRef={pdfPanelRef}
-                  collapsible
-                  collapsedSize={0}
-                  defaultSize={50}
-                  minSize={25}
-                  onResize={(size) => {
-                    setIsPdfCollapsed(size.asPercentage <= 1);
-                  }}
-                  className={cn(isAnimatingPdf && "panel-transition")}
                 >
-                  {pdfPreviewPane}
-                </ResizablePanel>
-              </ResizablePanelGroup>
-            </ResizablePanel>
+                  <Icon className="size-3.5" />
+                  {selected && <span>{label}</span>}
+                </button>
+              );
+            })}
+          </div>
 
-            <ResizableHandle
-              onDoubleClick={handleTerminalDoubleClick}
-              className={cn(
-                isTerminalCollapsed && "cursor-pointer"
-              )}
+          <div
+            id="sidebar-panel-files"
+            role="tabpanel"
+            aria-labelledby="sidebar-tab-files"
+            className={cn(
+              "flex-1 flex flex-col overflow-hidden",
+              activeTab !== "files" && "hidden",
+            )}
+          >
+            <div className="border-b px-3 py-2 bg-muted/10 flex items-center justify-between shrink-0">
+              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                Project Files
+              </span>
+              <div className="flex gap-1.5 items-center">
+                <button
+                  type="button"
+                  onClick={() => handleCreateResourceSubmit(false)}
+                  className="p-1 rounded border hover:bg-muted cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
+                  title="New File"
+                >
+                  <FilePlus className="size-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleCreateResourceSubmit(true)}
+                  className="p-1 rounded border hover:bg-muted cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
+                  title="New Folder"
+                >
+                  <FolderPlus className="size-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => uploadInputRef.current?.click()}
+                  disabled={isUploading}
+                  className={cn(
+                    "p-1 rounded border hover:bg-muted cursor-pointer text-muted-foreground hover:text-foreground transition-colors",
+                    isUploading && "opacity-50 cursor-not-allowed hover:bg-transparent",
+                  )}
+                  title="Upload Files"
+                >
+                  <Upload className="size-3.5" />
+                </button>
+                <input
+                  ref={uploadInputRef}
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files.length > 0) {
+                      void handleUploadFiles(e.target.files, "");
+                    }
+                    e.target.value = "";
+                  }}
+                />
+              </div>
+            </div>
+            <div className="flex-1 overflow-auto p-1">
+              <FileTree
+                className="border-none"
+                data={fileTree}
+                onSelect={handleFileSelect}
+                selectedPath={selectedPath}
+                activeCollaborators={collab.collaborators}
+                onMove={handleFileMove}
+                onDelete={setDeletePath}
+                onDuplicate={handleFileDuplicate}
+                onDownload={handleFileDownload}
+                onUploadFiles={handleUploadFiles}
+              />
+            </div>
+            <div className="border-b border-t px-3 py-2 bg-muted/10 flex items-center justify-between shrink-0">
+              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                Outline
+              </span>
+            </div>
+            <div className="flex-1 overflow-auto p-1">
+              <OutlinePanel
+                outline={outline}
+                isLatex={currentLanguage === "latex"}
+                onSelect={(line) => setPendingLineJump({ path: selectedPath, line })}
+              />
+            </div>
+          </div>
+
+          <div
+            id="sidebar-panel-search"
+            role="tabpanel"
+            aria-labelledby="sidebar-tab-search"
+            className={cn(
+              "flex-1 flex flex-col overflow-hidden bg-background",
+              activeTab !== "search" && "hidden",
+            )}
+          >
+            <SearchPanel
+              ref={searchPanelRef}
+              selectedPath={selectedPath}
+              onSelectMatch={handleSelectMatch}
+              onReplace={handleReplace}
+              onReplaceAll={handleReplaceAll}
+              onSearchChange={handleSearchChange}
             />
+          </div>
 
-            <ResizablePanel
-              id="terminal"
-              panelRef={terminalPanelRef}
-              collapsible
-              collapsedSize={0}
-              defaultSize={25}
-              minSize={10}
-              onResize={(size) => {
-                setIsTerminalCollapsed(size.asPercentage <= 2);
-              }}
-              className={cn(isAnimatingTerminal && "panel-transition")}
-            >
-              {terminalPane}
-            </ResizablePanel>
-          </ResizablePanelGroup>
+          <div
+            id="sidebar-panel-chat"
+            role="tabpanel"
+            aria-labelledby="sidebar-tab-chat"
+            className={cn(
+              "flex-1 flex flex-col overflow-hidden bg-background",
+              activeTab !== "chat" && "hidden",
+            )}
+          >
+            {/* Header Bar */}
+            <div className="border-b px-3 h-10 flex items-center justify-between bg-muted/5 select-none shrink-0">
+              <button
+                onClick={handleNewChat}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md hover:bg-muted text-xs font-semibold cursor-pointer text-muted-foreground hover:text-foreground transition-all duration-150 border border-transparent hover:border-border"
+                title="Start a fresh conversation"
+              >
+                <Plus className="size-3.5 text-primary" />
+                <span>New Chat</span>
+              </button>
+
+              <button
+                onClick={() => setShowHistory((prev) => !prev)}
+                className={cn(
+                  "flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-semibold cursor-pointer transition-all duration-150 border border-transparent",
+                  showHistory
+                    ? "bg-primary/10 text-primary border-primary/20"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground hover:border-border",
+                )}
+                title="View saved conversations"
+              >
+                <Clock className="size-3.5" />
+                <span>History</span>
+              </button>
+            </div>
+
+            <div className="flex-1 relative flex flex-col overflow-hidden">
+              {/* Sliding History Drawer */}
+              <div
+                className={cn(
+                  "absolute inset-x-0 top-0 z-30 bg-background/95 border-b backdrop-blur-md flex flex-col transition-all duration-200 ease-in-out overflow-hidden shadow-md max-h-[250px]",
+                  showHistory
+                    ? "opacity-100 translate-y-0"
+                    : "opacity-0 -translate-y-2 pointer-events-none max-h-0",
+                )}
+              >
+                <div className="p-2 border-b bg-muted/5 flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider pl-1">
+                    Saved Conversations
+                  </span>
+                  <span className="text-[10px] text-muted-foreground pr-1">
+                    {threads.length} chats
+                  </span>
+                </div>
+                <div className="flex-1 overflow-y-auto p-1.5 space-y-1">
+                  {threads.map((t) => (
+                    <div
+                      key={t.id}
+                      role="button"
+                      tabIndex={0}
+                      aria-current={t.id === activeThreadId ? "true" : undefined}
+                      onClick={() => handleSwitchChat(t.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          handleSwitchChat(t.id);
+                        }
+                      }}
+                      className={cn(
+                        "flex items-center justify-between px-2.5 py-2 rounded-md text-xs cursor-pointer transition-all duration-150 group border",
+                        t.id === activeThreadId
+                          ? "bg-primary/5 border-primary/20 text-primary font-medium"
+                          : "border-transparent hover:bg-muted/40 hover:text-foreground text-muted-foreground",
+                      )}
+                    >
+                      <div className="flex items-center gap-2 truncate pr-2">
+                        <Sparkles
+                          className={cn(
+                            "size-3.5 shrink-0",
+                            t.id === activeThreadId ? "text-primary" : "text-muted-foreground/50",
+                          )}
+                        />
+                        <span className="truncate">{t.title}</span>
+                      </div>
+                      <button
+                        onClick={(e) => handleDeleteChat(t.id, e)}
+                        className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-destructive/10 hover:text-destructive transition-all duration-150 cursor-pointer"
+                        title="Delete chat history"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Chat thread itself */}
+              {activeThreadId && (
+                <div className="flex-1 flex flex-col overflow-hidden">
+                  <EveThread
+                    key={activeThreadId}
+                    threadId={activeThreadId}
+                    projectId={projectId}
+                    openFile={selectedPath ? toProjectRelative(selectedPath) : null}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div
+            id="sidebar-panel-settings"
+            role="tabpanel"
+            aria-labelledby="sidebar-tab-settings"
+            className={cn(
+              "flex-1 flex flex-col overflow-hidden bg-background",
+              activeTab !== "settings" && "hidden",
+            )}
+          >
+            <div className="border-b px-3 h-10 flex items-center justify-between bg-muted/5 select-none shrink-0">
+              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                Project Settings
+              </span>
+            </div>
+
+            <div className="flex-1 overflow-auto p-4 space-y-4.5">
+              {/* Main File Selector */}
+              <div className="space-y-1.5 flex flex-col">
+                <div className="text-xs font-semibold text-muted-foreground">Main Entry File</div>
+                <div className="text-[11px] text-muted-foreground leading-relaxed">
+                  Choose the main LaTeX document to run when compiling.
+                </div>
+                <Select
+                  value={settings.mainFilePath}
+                  onValueChange={(val) => saveSettings({ ...settings, mainFilePath: val })}
+                >
+                  <SelectTrigger className="w-full text-xs h-8 justify-between bg-background border border-border">
+                    <SelectValue placeholder="Select main file" />
+                  </SelectTrigger>
+                  <SelectContent className="z-[999]">
+                    {getTexFiles(fileTree).length === 0 ? (
+                      <SelectItem value="none" disabled>
+                        No .tex files found
+                      </SelectItem>
+                    ) : (
+                      getTexFiles(fileTree).map((path) => (
+                        <SelectItem key={path} value={path}>
+                          {path}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <hr className="border-border/60" />
+
+              {/* Compiler Engine */}
+              <div className="space-y-1.5 flex flex-col">
+                <div className="text-xs font-semibold text-muted-foreground">
+                  LaTeX Compiler Engine
+                </div>
+                <div className="text-[11px] text-muted-foreground leading-relaxed">
+                  Select the build engine used to compile your documents.
+                </div>
+                <Select
+                  value={settings.compilerEngine}
+                  onValueChange={(val) => saveSettings({ ...settings, compilerEngine: val })}
+                >
+                  <SelectTrigger className="w-full text-xs h-8 justify-between bg-background border border-border">
+                    <SelectValue placeholder="Select compiler engine" />
+                  </SelectTrigger>
+                  <SelectContent className="z-[999]">
+                    <SelectItem value="tectonic">Tectonic (Auto-selects Engine)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <hr className="border-border/60" />
+
+              {/* Tooltip feature toggle */}
+              <div className="flex items-start justify-between gap-3">
+                <div className="space-y-0.5">
+                  <label
+                    htmlFor="tooltips-enabled"
+                    className="text-xs font-semibold text-muted-foreground"
+                  >
+                    Editor Tooltips
+                  </label>
+                  <div className="text-[11px] text-muted-foreground leading-relaxed">
+                    Toggle hover assistance tooltips for LaTeX commands in the code editor.
+                  </div>
+                </div>
+                <input
+                  id="tooltips-enabled"
+                  type="checkbox"
+                  checked={settings.tooltipsEnabled}
+                  onChange={(e) => saveSettings({ ...settings, tooltipsEnabled: e.target.checked })}
+                  className="mt-0.5 size-4 rounded border-border text-primary focus:ring-primary cursor-pointer"
+                />
+              </div>
+
+              <hr className="border-border/60" />
+
+              <div className="flex items-start justify-between gap-3">
+                <div className="space-y-0.5">
+                  <label
+                    htmlFor="vim-mode-toggle"
+                    className="text-xs font-semibold text-muted-foreground"
+                  >
+                    Vim Keybindings
+                  </label>
+                  <div className="text-[11px] text-muted-foreground leading-relaxed">
+                    Enable Vim keybindings and modal editing in the code editor.
+                  </div>
+                </div>
+                <input
+                  id="vim-mode-toggle"
+                  type="checkbox"
+                  checked={settings.vimModeEnabled}
+                  onChange={(e) => saveSettings({ ...settings, vimModeEnabled: e.target.checked })}
+                  className="mt-0.5 size-4 rounded border-border text-primary focus:ring-primary cursor-pointer"
+                />
+              </div>
+
+              <hr className="border-border/60" />
+
+              <div className="flex items-start justify-between gap-3">
+                <div className="space-y-0.5">
+                  <label
+                    htmlFor="folding-toggle"
+                    className="text-xs font-semibold text-muted-foreground"
+                  >
+                    Code Folding
+                  </label>
+                  <div className="text-[11px] text-muted-foreground leading-relaxed">
+                    Enable code folding gutters to collapse sections and blocks.
+                  </div>
+                </div>
+                <input
+                  id="folding-toggle"
+                  type="checkbox"
+                  checked={settings.foldingEnabled}
+                  onChange={(e) => saveSettings({ ...settings, foldingEnabled: e.target.checked })}
+                  className="mt-0.5 size-4 rounded border-border text-primary focus:ring-primary cursor-pointer"
+                />
+              </div>
+
+              <hr className="border-border/60" />
+
+              <div className="flex items-start justify-between gap-3">
+                <div className="space-y-0.5">
+                  <label
+                    htmlFor="autocomplete-toggle"
+                    className="text-xs font-semibold text-muted-foreground"
+                  >
+                    Autocompletion
+                  </label>
+                  <div className="text-[11px] text-muted-foreground leading-relaxed">
+                    Enable automatic code completion and suggestions.
+                  </div>
+                </div>
+                <input
+                  id="autocomplete-toggle"
+                  type="checkbox"
+                  checked={settings.autocompleteEnabled}
+                  onChange={(e) =>
+                    saveSettings({ ...settings, autocompleteEnabled: e.target.checked })
+                  }
+                  className="mt-0.5 size-4 rounded border-border text-primary focus:ring-primary cursor-pointer"
+                />
+              </div>
+
+              <hr className="border-border/60" />
+
+              <div className="flex items-start justify-between gap-3">
+                <div className="space-y-0.5">
+                  <label
+                    htmlFor="bracket-matching-toggle"
+                    className="text-xs font-semibold text-muted-foreground"
+                  >
+                    Bracket Matching
+                  </label>
+                  <div className="text-[11px] text-muted-foreground leading-relaxed">
+                    Enable highlighting of matching brackets, parentheses, and braces.
+                  </div>
+                </div>
+                <input
+                  id="bracket-matching-toggle"
+                  type="checkbox"
+                  checked={settings.bracketMatchingEnabled}
+                  onChange={(e) =>
+                    saveSettings({ ...settings, bracketMatchingEnabled: e.target.checked })
+                  }
+                  className="mt-0.5 size-4 rounded border-border text-primary focus:ring-primary cursor-pointer"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div
+            id="sidebar-panel-tasks"
+            role="tabpanel"
+            aria-labelledby="sidebar-tab-tasks"
+            className={cn(
+              "flex-1 flex flex-col overflow-hidden bg-background",
+              activeTab !== "tasks" && "hidden",
+            )}
+          >
+            <TasksPanel
+              ref={tasksPanelRef}
+              projectId={projectId}
+              onSelectMatch={handleSelectMatch}
+              onSelectPdfPage={handleSelectPdfPage}
+              notifyTasksChanged={collab.notifyTasksChanged}
+            />
+          </div>
         </div>
-      )}
+
+        {/* Center Panel - Code + Terminal */}
+        {isMobile ? (
+          // Mobile: no room for a resizable split — exactly one pane fills the screen,
+          // switched via the header's terminal/PDF toggle buttons (see mobileView).
+          // The desktop layout's useDefaultLayout persistence never mounts here, so
+          // nothing is read from or written to its localStorage-backed layout.
+          <div className="flex flex-1 flex-col overflow-hidden">
+            <div className="flex-1 overflow-hidden">
+              {mobileView === "code" && codeEditorPane}
+              {mobileView === "pdf" && pdfPreviewPane}
+              {mobileView === "terminal" && terminalPane}
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-1 flex-col overflow-hidden">
+            <ResizablePanelGroup
+              orientation="vertical"
+              defaultLayout={verticalLayout.defaultLayout}
+              onLayoutChanged={verticalLayout.onLayoutChanged}
+            >
+              <ResizablePanel
+                id="editor-main"
+                defaultSize={75}
+                minSize={30}
+                className={cn(isAnimatingTerminal && "panel-transition")}
+              >
+                {/* Editor + PDF Split Pane */}
+                <ResizablePanelGroup
+                  orientation="horizontal"
+                  defaultLayout={horizontalLayout.defaultLayout}
+                  onLayoutChanged={horizontalLayout.onLayoutChanged}
+                >
+                  {/* Left: CodeMirror Editor */}
+                  <ResizablePanel
+                    id="code"
+                    panelRef={codePanelRef}
+                    collapsible
+                    collapsedSize={0}
+                    defaultSize={50}
+                    minSize={25}
+                    onResize={(size) => {
+                      setIsCodeCollapsed(size.asPercentage <= 1);
+                    }}
+                    className={cn(isAnimatingPdf && "panel-transition")}
+                  >
+                    {codeEditorPane}
+                  </ResizablePanel>
+
+                  <ResizableHandle
+                    onDoubleClick={handlePdfDoubleClick}
+                    className={cn((isPdfCollapsed || isCodeCollapsed) && "cursor-pointer")}
+                  />
+
+                  {/* Right: PDF Preview */}
+                  <ResizablePanel
+                    id="pdf"
+                    panelRef={pdfPanelRef}
+                    collapsible
+                    collapsedSize={0}
+                    defaultSize={50}
+                    minSize={25}
+                    onResize={(size) => {
+                      setIsPdfCollapsed(size.asPercentage <= 1);
+                    }}
+                    className={cn(isAnimatingPdf && "panel-transition")}
+                  >
+                    {pdfPreviewPane}
+                  </ResizablePanel>
+                </ResizablePanelGroup>
+              </ResizablePanel>
+
+              <ResizableHandle
+                onDoubleClick={handleTerminalDoubleClick}
+                className={cn(isTerminalCollapsed && "cursor-pointer")}
+              />
+
+              <ResizablePanel
+                id="terminal"
+                panelRef={terminalPanelRef}
+                collapsible
+                collapsedSize={0}
+                defaultSize={25}
+                minSize={10}
+                onResize={(size) => {
+                  setIsTerminalCollapsed(size.asPercentage <= 2);
+                }}
+                className={cn(isAnimatingTerminal && "panel-transition")}
+              >
+                {terminalPane}
+              </ResizablePanel>
+            </ResizablePanelGroup>
+          </div>
+        )}
       </div>
 
       <AlertDialog open={deletePath !== null} onOpenChange={(open) => !open && setDeletePath(null)}>
@@ -3185,7 +3224,7 @@ const Example = () => {
             <AlertDialogAction
               variant="destructive"
               onClick={() => {
-                if (deletePath) handleFileDelete(deletePath);
+                if (deletePath) void handleFileDelete(deletePath);
                 setDeletePath(null);
               }}
             >

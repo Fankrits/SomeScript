@@ -111,7 +111,10 @@ class SimplePdfAttachmentAdapter implements AttachmentAdapter {
   public async send(attachment: PendingAttachment): Promise<CompleteAttachment> {
     const data = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
+      // FileReader uses callback-based API, wrapping in Promise is necessary
+      // oxlint-disable-next-line unicorn/prefer-add-event-listener
       reader.onload = () => resolve(reader.result as string);
+      // oxlint-disable-next-line unicorn/prefer-add-event-listener
       reader.onerror = () => reject(reader.error);
       reader.readAsDataURL(attachment.file);
     });
@@ -233,10 +236,7 @@ export function useEveRuntime(
   const [initialData] = useState(() =>
     typeof window === "undefined"
       ? null
-      : loadThreadHistory<HandleMessageStreamEvent, SessionState>(
-          threadId,
-          localStorage,
-        ),
+      : loadThreadHistory<HandleMessageStreamEvent, SessionState>(threadId, localStorage),
   );
 
   const agent = useEveAgent({
@@ -244,92 +244,78 @@ export function useEveRuntime(
     initialSession: initialData?.sessionState,
   });
 
-  const convertEvePart = useCallback(
-    (part: EveMessagePart, messageId: string, index: number) => {
-      // 1. Plain text — assistant-ui TextMessagePart.
-      //    Hide the leading [mode: …]/[projectId: …] markers we inject in onNew:
-      //    the model still receives them, but users shouldn't see them.
-      if (part.type === "text") {
-        const text = part.text.replace(MARKER_PREFIX, "");
-        return { type: "text" as const, text };
-      }
+  const convertEvePart = useCallback((part: EveMessagePart, messageId: string, index: number) => {
+    // 1. Plain text — assistant-ui TextMessagePart.
+    //    Hide the leading [mode: …]/[projectId: …] markers we inject in onNew:
+    //    the model still receives them, but users shouldn't see them.
+    if (part.type === "text") {
+      const text = part.text.replace(MARKER_PREFIX, "");
+      return { type: "text" as const, text };
+    }
 
-      // 2. Reasoning/thinking — assistant-ui native ReasoningMessagePart (renders
-      //    via the built-in <ReasoningRoot> collapsible in thread.tsx)
-      if (part.type === "reasoning") {
-        return { type: "reasoning" as const, text: part.text };
-      }
+    // 2. Reasoning/thinking — assistant-ui native ReasoningMessagePart (renders
+    //    via the built-in <ReasoningRoot> collapsible in thread.tsx)
+    if (part.type === "reasoning") {
+      return { type: "reasoning" as const, text: part.text };
+    }
 
-      // 3. Dynamic tool calls — covers all Eve harness tools, HITL, subagents.
-      //    The toolName is overridden so EveToolCalls can dispatch to the right card.
-      if (part.type === "dynamic-tool") {
-        // HITL: either explicit approval states, or the tool itself is ask_question,
-        // or an inputRequest object has already been populated by Eve.
-        const isApproval =
-          part.state === "approval-requested" ||
-          part.state === "approval-responded" ||
-          part.toolName === "ask_question" ||
-          Boolean(part.toolMetadata?.eve?.inputRequest);
-        const isSubagent =
-          part.toolMetadata?.eve?.kind === "subagent-call";
+    // 3. Dynamic tool calls — covers all Eve harness tools, HITL, subagents.
+    //    The toolName is overridden so EveToolCalls can dispatch to the right card.
+    if (part.type === "dynamic-tool") {
+      // HITL: either explicit approval states, or the tool itself is ask_question,
+      // or an inputRequest object has already been populated by Eve.
+      const isApproval =
+        part.state === "approval-requested" ||
+        part.state === "approval-responded" ||
+        part.toolName === "ask_question" ||
+        Boolean(part.toolMetadata?.eve?.inputRequest);
+      const isSubagent = part.toolMetadata?.eve?.kind === "subagent-call";
 
-        // Resolved display toolName for our custom card registry
-        const displayToolName = isApproval
-          ? "__hitl__"
-          : isSubagent
-          ? "__subagent__"
-          : part.toolName;
+      // Resolved display toolName for our custom card registry
+      const displayToolName = isApproval ? "__hitl__" : isSubagent ? "__subagent__" : part.toolName;
 
-        return {
-          type: "tool-call" as const,
-          toolCallId: part.toolCallId,
-          toolName: displayToolName,
-          args: {
-            // Raw input for display
-            input: part.input,
-            // Keep original tool name available inside the card
-            toolName: part.toolName,
-            toolMetadata: part.toolMetadata,
-            state: part.state,
-            // HITL input request — carries requestId, prompt, options
-            inputRequest:
-              isApproval
-                ? part.toolMetadata?.eve?.inputRequest
-                : undefined,
-            errorText:
-              "errorText" in part ? part.errorText : undefined,
-          },
-          result: "output" in part ? part.output : undefined,
-          isError: part.state === "output-error",
-        } as unknown as ThreadMessageLike["content"][number];
-      }
+      return {
+        type: "tool-call" as const,
+        toolCallId: part.toolCallId,
+        toolName: displayToolName,
+        args: {
+          // Raw input for display
+          input: part.input,
+          // Keep original tool name available inside the card
+          toolName: part.toolName,
+          toolMetadata: part.toolMetadata,
+          state: part.state,
+          // HITL input request — carries requestId, prompt, options
+          inputRequest: isApproval ? part.toolMetadata?.eve?.inputRequest : undefined,
+          errorText: "errorText" in part ? part.errorText : undefined,
+        },
+        result: "output" in part ? part.output : undefined,
+        isError: part.state === "output-error",
+      } as unknown as ThreadMessageLike["content"][number];
+    }
 
-      // 4. OAuth/connection authorization
-      if (part.type === "authorization") {
-        return {
-          type: "tool-call" as const,
-          toolCallId: `auth-${messageId}-${index}`,
-          toolName: "__oauth__",
-          args: {
-            name: part.name,
-            displayName: part.displayName,
-            description: part.description,
-            authorization: part.authorization,
-            state: part.state,
-            outcome: "outcome" in part ? part.outcome : undefined,
-          },
-          result: "outcome" in part ? part.outcome : undefined,
-          isError:
-            "outcome" in part &&
-            (part.outcome === "failed" || part.outcome === "timed-out"),
-        } as unknown as ThreadMessageLike["content"][number];
-      }
+    // 4. OAuth/connection authorization
+    if (part.type === "authorization") {
+      return {
+        type: "tool-call" as const,
+        toolCallId: `auth-${messageId}-${index}`,
+        toolName: "__oauth__",
+        args: {
+          name: part.name,
+          displayName: part.displayName,
+          description: part.description,
+          authorization: part.authorization,
+          state: part.state,
+          outcome: "outcome" in part ? part.outcome : undefined,
+        },
+        result: "outcome" in part ? part.outcome : undefined,
+        isError: "outcome" in part && (part.outcome === "failed" || part.outcome === "timed-out"),
+      } as unknown as ThreadMessageLike["content"][number];
+    }
 
-      // step-start and unknown part types: skip
-      return null;
-    },
-    [],
-  );
+    // step-start and unknown part types: skip
+    return null;
+  }, []);
 
   const convertEveMessage = useCallback(
     (msg: EveMessage): ThreadMessageLike => {
@@ -389,7 +375,7 @@ export function useEveRuntime(
       return {
         id: msg.id,
         role: msg.role,
-        content: content as unknown as ThreadMessageLike["content"],
+        content: content,
         attachments,
       };
     },
@@ -417,11 +403,15 @@ export function useEveRuntime(
               allowedModes: EveMode[];
             } = await res.json();
             if (!status.allowedModes.includes(modeRef.current)) {
-              setSendError(`${modeRef.current} mode isn't available on your plan. Upgrade to unlock it.`);
+              setSendError(
+                `${modeRef.current} mode isn't available on your plan. Upgrade to unlock it.`,
+              );
               return;
             }
             if (status.includedBalance + status.purchasedBalance <= 0) {
-              setSendError("Out of AI credits for this workspace this month. Upgrade or buy a top-up to continue.");
+              setSendError(
+                "Out of AI credits for this workspace this month. Upgrade or buy a top-up to continue.",
+              );
               return;
             }
           }
@@ -431,9 +421,7 @@ export function useEveRuntime(
 
         // Force save any unsaved changes in the editor before sending
         const promises: Promise<unknown>[] = [];
-        window.dispatchEvent(
-          new CustomEvent("somescript:force-save", { detail: { promises } })
-        );
+        window.dispatchEvent(new CustomEvent("somescript:force-save", { detail: { promises } }));
         if (promises.length > 0) {
           try {
             await Promise.all(promises);
@@ -471,7 +459,7 @@ export function useEveRuntime(
             openFile: openFileRef.current,
           });
           const textPart = parts.find(
-            (p): p is Extract<OutgoingPart, { type: "text" }> => p.type === "text"
+            (p): p is Extract<OutgoingPart, { type: "text" }> => p.type === "text",
           );
           if (textPart) {
             textPart.text = `${marker}\n${textPart.text}`;
@@ -484,7 +472,7 @@ export function useEveRuntime(
             parts.length === 1 && firstPart.type === "text"
               ? { message: firstPart.text }
               : {
-                  message: parts as unknown as Parameters<typeof agent.send>[0]["message"],
+                  message: parts,
                 };
           try {
             setSendError(null);
@@ -508,8 +496,7 @@ export function useEveRuntime(
     [agent, projectId],
   );
 
-  const isBusy =
-    agent.status === "submitted" || agent.status === "streaming";
+  const isBusy = agent.status === "submitted" || agent.status === "streaming";
   // agent.status only turns busy once eve accepts the turn, so the pre-send
   // async work in onNew has to be folded in here — otherwise the composer is
   // both cleared and idle-looking while that runs. Also gates isDisabled, so a
@@ -647,7 +634,7 @@ export function useEveRuntime(
           if (needsTitle) {
             const firstUserMessage = agent.data?.messages?.find((m) => m.role === "user");
             const firstPart = firstUserMessage?.parts?.find(
-              (p: { type: string; text?: string }) => p.type === "text"
+              (p: { type: string; text?: string }) => p.type === "text",
             );
             if (firstPart && "text" in firstPart && firstPart.text) {
               // Strip the injected "[mode: …]"/"[projectId: …]" context markers
@@ -671,7 +658,7 @@ export function useEveRuntime(
       // same debounce pattern as the stall watchdog earlier in this file.
       if (cloudSyncTimerRef.current) clearTimeout(cloudSyncTimerRef.current);
       cloudSyncTimerRef.current = setTimeout(() => {
-        syncThreadToCloud(
+        void syncThreadToCloud(
           threadId,
           projectId,
           getThreadTitle(projectId, threadId),
@@ -686,22 +673,28 @@ export function useEveRuntime(
   // (key={mode} in eve-thread.tsx) mid-debounce, but the next turn's autosave
   // re-arms the same debounce and catches up — this is a backup copy, not
   // something a few seconds of lag can corrupt.
-  useEffect(() => () => {
-    if (cloudSyncTimerRef.current) clearTimeout(cloudSyncTimerRef.current);
-  }, []);
+  useEffect(
+    () => () => {
+      if (cloudSyncTimerRef.current) clearTimeout(cloudSyncTimerRef.current);
+    },
+    [],
+  );
 
   // Unlike the cloud backup above, localStorage is the primary read path
   // (loadThreadHistory replays it on the next mount) — a mode switch right
   // after Eve's reply finishes but before this timer fires would otherwise
   // drop that reply from history. Flush synchronously instead of just
   // clearing the timer.
-  useEffect(() => () => {
-    if (localSaveTimerRef.current) {
-      clearTimeout(localSaveTimerRef.current);
-      const pending = pendingLocalSaveRef.current;
-      if (pending) saveThreadHistory(threadId, projectId, pending.events, pending.session);
-    }
-  }, [threadId, projectId]);
+  useEffect(
+    () => () => {
+      if (localSaveTimerRef.current) {
+        clearTimeout(localSaveTimerRef.current);
+        const pending = pendingLocalSaveRef.current;
+        if (pending) saveThreadHistory(threadId, projectId, pending.events, pending.session);
+      }
+    },
+    [threadId, projectId],
+  );
 
   // Watch agent messages/events for completed tool calls
   useEffect(() => {
@@ -737,9 +730,7 @@ export function useEveRuntime(
               }
               if (name === "write_file" || name === "write-file") {
                 const input = part.input as { path?: string } | undefined;
-                const output = part.output as
-                  | { ok?: boolean; path?: string }
-                  | undefined;
+                const output = part.output as { ok?: boolean; path?: string } | undefined;
                 const path = input?.path ?? output?.path;
                 if (path && output?.ok !== false) wrotePath = path;
               }
@@ -798,16 +789,14 @@ export function useEveRuntime(
       window.dispatchEvent(new CustomEvent("somescript:refresh-workspace"));
     }
     if (wrotePath) {
-      window.dispatchEvent(
-        new CustomEvent("somescript:open-file", { detail: wrotePath })
-      );
+      window.dispatchEvent(new CustomEvent("somescript:open-file", { detail: wrotePath }));
     }
     if (compileStarted) {
       window.dispatchEvent(new CustomEvent("somescript:compiling"));
     }
     if (compiled) {
       window.dispatchEvent(
-        new CustomEvent<CompiledEventDetail>("somescript:compiled", { detail: compiled })
+        new CustomEvent<CompiledEventDetail>("somescript:compiled", { detail: compiled }),
       );
     }
   }, [agent.data?.messages]);

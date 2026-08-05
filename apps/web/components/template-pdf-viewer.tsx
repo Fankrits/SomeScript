@@ -7,27 +7,36 @@ import {
   Download,
   Hand,
   Loader2,
-  Maximize2,
   Minus,
   MousePointer,
   Plus,
-  Scan,
   Search,
-  ZoomIn,
-  ZoomOut,
 } from "lucide-react";
 import { createPluginRegistration } from "@embedpdf/core";
 import { EmbedPDF } from "@embedpdf/core/react";
 import { usePdfiumEngine } from "@embedpdf/engines/react";
-import { DocumentManagerPluginPackage, useActiveDocument, useDocumentManagerCapability } from "@embedpdf/plugin-document-manager/react";
+import {
+  DocumentManagerPluginPackage,
+  useActiveDocument,
+  useDocumentManagerCapability,
+} from "@embedpdf/plugin-document-manager/react";
 import { Viewport, ViewportPluginPackage } from "@embedpdf/plugin-viewport/react";
 import { Scroller, ScrollPluginPackage, useScroll } from "@embedpdf/plugin-scroll/react";
 import { RenderLayer, RenderPluginPackage } from "@embedpdf/plugin-render/react";
-import { ZoomGestureWrapper, ZoomMode, ZoomPluginPackage, useZoom } from "@embedpdf/plugin-zoom/react";
+import {
+  ZoomGestureWrapper,
+  ZoomMode,
+  ZoomPluginPackage,
+  useZoom,
+} from "@embedpdf/plugin-zoom/react";
 import { PanPluginPackage, usePan } from "@embedpdf/plugin-pan/react";
 import { SearchLayer, SearchPluginPackage, useSearch } from "@embedpdf/plugin-search/react";
 import { SelectionLayer, SelectionPluginPackage } from "@embedpdf/plugin-selection/react";
-import { GlobalPointerProvider, InteractionManagerPluginPackage, PagePointerProvider } from "@embedpdf/plugin-interaction-manager/react";
+import {
+  GlobalPointerProvider,
+  InteractionManagerPluginPackage,
+  PagePointerProvider,
+} from "@embedpdf/plugin-interaction-manager/react";
 import { Button } from "@/components/ui/button";
 
 const pdfPlugins = [
@@ -68,9 +77,7 @@ function TemplatePdfViewerContent({ pdfUrl, templateName }: TemplatePdfViewerPro
 
       // embedpdf's WASM worker requires an absolute URL — relative URLs have no
       // base in a Worker context and will silently fail to fetch.
-      const absoluteUrl = pdfUrl.startsWith("http")
-        ? pdfUrl
-        : `${window.location.origin}${pdfUrl}`;
+      const absoluteUrl = pdfUrl.startsWith("http") ? pdfUrl : `${window.location.origin}${pdfUrl}`;
 
       currentDocIdRef.current = newDocId;
       setCurrentDocId(newDocId);
@@ -96,6 +103,10 @@ function TemplatePdfViewerContent({ pdfUrl, templateName }: TemplatePdfViewerPro
       }
     }, 10000);
     return () => clearTimeout(timer);
+    // Tracks activeDocument?.status deliberately, not the whole object: embedpdf's
+    // useActiveDocument() isn't confirmed stable across renders, and depending on
+    // the whole object risks resetting this 10s timeout on unrelated re-renders.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pdfUrl, activeDocument?.status]);
 
   if (activeDocument && activeDocument.status === "error") {
@@ -115,7 +126,9 @@ function TemplatePdfViewerContent({ pdfUrl, templateName }: TemplatePdfViewerPro
               const newDocId = `doc-${Date.now()}`;
               currentDocIdRef.current = newDocId;
               setCurrentDocId(newDocId);
-              const base = pdfUrl.startsWith("http") ? pdfUrl : `${window.location.origin}${pdfUrl}`;
+              const base = pdfUrl.startsWith("http")
+                ? pdfUrl
+                : `${window.location.origin}${pdfUrl}`;
               docManagerCap.provides.openDocumentUrl({
                 url: `${base}?t=${Date.now()}`,
                 autoActivate: true,
@@ -130,7 +143,12 @@ function TemplatePdfViewerContent({ pdfUrl, templateName }: TemplatePdfViewerPro
     );
   }
 
-  if (!activeDocumentId || activeDocumentId !== currentDocId || !activeDocument || activeDocument.status !== "loaded") {
+  if (
+    !activeDocumentId ||
+    activeDocumentId !== currentDocId ||
+    !activeDocument ||
+    activeDocument.status !== "loaded"
+  ) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-card">
         <Loader2 className="h-8 w-8 animate-spin text-primary mb-3" />
@@ -149,7 +167,9 @@ function TemplatePdfViewerContent({ pdfUrl, templateName }: TemplatePdfViewerPro
                 const newDocId = `doc-${Date.now()}`;
                 currentDocIdRef.current = newDocId;
                 setCurrentDocId(newDocId);
-                const base = pdfUrl.startsWith("http") ? pdfUrl : `${window.location.origin}${pdfUrl}`;
+                const base = pdfUrl.startsWith("http")
+                  ? pdfUrl
+                  : `${window.location.origin}${pdfUrl}`;
                 docManagerCap.provides.openDocumentUrl({
                   url: `${base}?t=${Date.now()}`,
                   autoActivate: true,
@@ -165,7 +185,13 @@ function TemplatePdfViewerContent({ pdfUrl, templateName }: TemplatePdfViewerPro
     );
   }
 
-  return <TemplatePdfViewerInner documentId={activeDocumentId} pdfUrl={pdfUrl} templateName={templateName} />;
+  return (
+    <TemplatePdfViewerInner
+      documentId={activeDocumentId}
+      pdfUrl={pdfUrl}
+      templateName={templateName}
+    />
+  );
 }
 
 function TemplatePdfViewerInner({
@@ -182,7 +208,6 @@ function TemplatePdfViewerInner({
   const panHook = usePan(documentId);
   const searchHook = useSearch(documentId);
 
-  const [activeTool, setActiveTool] = useState<"select" | "pan">("select");
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -216,11 +241,12 @@ function TemplatePdfViewerInner({
             variant="ghost"
             size="icon"
             className={`h-7 w-7 rounded-md transition-all duration-150 ${
-              !isPanning ? "bg-background text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground"
+              !isPanning
+                ? "bg-background text-foreground shadow-xs"
+                : "text-muted-foreground hover:text-foreground"
             }`}
             onClick={() => {
               if (isPanning) panHook?.provides?.disablePan();
-              setActiveTool("select");
             }}
             title="Text Select Pointer"
           >
@@ -231,11 +257,12 @@ function TemplatePdfViewerInner({
             variant="ghost"
             size="icon"
             className={`h-7 w-7 rounded-md transition-all duration-150 ${
-              isPanning ? "bg-background text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground"
+              isPanning
+                ? "bg-background text-foreground shadow-xs"
+                : "text-muted-foreground hover:text-foreground"
             }`}
             onClick={() => {
               if (!isPanning) panHook?.provides?.enablePan();
-              setActiveTool("pan");
             }}
             title="Pan Hand Tool"
           >
@@ -381,12 +408,22 @@ function TemplatePdfViewerInner({
                     <PagePointerProvider
                       documentId={documentId}
                       pageIndex={pageIndex}
-                      style={{ width: "100%", height: "100%", position: "relative", display: "block" }}
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        position: "relative",
+                        display: "block",
+                      }}
                     >
                       <RenderLayer
                         documentId={documentId}
                         pageIndex={pageIndex}
-                        style={{ width: "100%", height: "100%", display: "block", userSelect: "none" }}
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          display: "block",
+                          userSelect: "none",
+                        }}
                       />
                       <SearchLayer
                         documentId={documentId}
@@ -430,7 +467,9 @@ export default function TemplatePdfViewer(props: TemplatePdfViewerProps) {
             <p className="text-sm font-medium text-foreground">Loading EmbedPDF Engine...</p>
           </>
         ) : (
-          <p className="text-sm font-medium text-destructive">Failed to initialize EmbedPDF Engine</p>
+          <p className="text-sm font-medium text-destructive">
+            Failed to initialize EmbedPDF Engine
+          </p>
         )}
       </div>
     );

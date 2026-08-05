@@ -1,8 +1,8 @@
 import React, {
   forwardRef,
+  useCallback,
   useEffect,
   useImperativeHandle,
-  useMemo,
   useRef,
   useState,
 } from "react";
@@ -82,7 +82,9 @@ export const SearchPanel = forwardRef<SearchPanelHandle, SearchPanelProps>(
 
     // Results from server
     const [results, setResults] = useState<SearchResult[]>([]);
-    const [resultsByFile, setResultsByFile] = useState<Record<string, { name: string; matches: SearchResult[] }>>({});
+    const [resultsByFile, setResultsByFile] = useState<
+      Record<string, { name: string; matches: SearchResult[] }>
+    >({});
     const [resultsKey, setResultsKey] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const [expandedFiles, setExpandedFiles] = useState<Record<string, boolean>>({});
@@ -117,7 +119,7 @@ export const SearchPanel = forwardRef<SearchPanelHandle, SearchPanelProps>(
     const displayedResults = resultsKey === searchKey ? results : [];
     const displayedResultsByFile = resultsKey === searchKey ? resultsByFile : {};
 
-    const fetchResults = async () => {
+    const fetchResults = useCallback(async () => {
       const requestSearchKey = searchKey;
       if (!query) {
         setResults([]);
@@ -140,7 +142,7 @@ export const SearchPanel = forwardRef<SearchPanelHandle, SearchPanelProps>(
         });
         const projectId =
           typeof window !== "undefined"
-            ? new URLSearchParams(window.location.search).get("projectId") ?? "default"
+            ? (new URLSearchParams(window.location.search).get("projectId") ?? "default")
             : "default";
         params.set("projectId", projectId);
         const res = await fetch(`/api/search?${params.toString()}`);
@@ -161,15 +163,25 @@ export const SearchPanel = forwardRef<SearchPanelHandle, SearchPanelProps>(
           setIsLoading(false);
         }
       }
-    };
+    }, [
+      searchKey,
+      query,
+      matchCase,
+      matchWholeWord,
+      useRegex,
+      searchScope,
+      selectedPath,
+      startLine,
+      endLine,
+    ]);
 
     // Debounce/Trigger search on option change or typing
     useEffect(() => {
       const timer = setTimeout(() => {
-        fetchResults();
+        void fetchResults();
       }, 300);
       return () => clearTimeout(timer);
-    }, [searchKey]);
+    }, [fetchResults]);
 
     useEffect(() => {
       onSearchChange?.(query, { matchCase, matchWholeWord, useRegex });
@@ -230,7 +242,7 @@ export const SearchPanel = forwardRef<SearchPanelHandle, SearchPanelProps>(
                 "flex-1 flex items-center justify-center gap-1.5 py-1 px-2 rounded text-[10px] uppercase tracking-wider font-semibold transition-colors cursor-pointer border",
                 searchScope === "current"
                   ? "bg-primary/20 text-primary border-primary/30"
-                  : "text-muted-foreground hover:bg-muted border-transparent"
+                  : "text-muted-foreground hover:bg-muted border-transparent",
               )}
             >
               <FileText className="w-3 h-3" />
@@ -243,7 +255,7 @@ export const SearchPanel = forwardRef<SearchPanelHandle, SearchPanelProps>(
                 "flex-1 flex items-center justify-center gap-1.5 py-1 px-2 rounded text-[10px] uppercase tracking-wider font-semibold transition-colors cursor-pointer border",
                 searchScope === "all"
                   ? "bg-primary/20 text-primary border-primary/30"
-                  : "text-muted-foreground hover:bg-muted border-transparent"
+                  : "text-muted-foreground hover:bg-muted border-transparent",
               )}
             >
               <Files className="w-3 h-3" />
@@ -266,9 +278,7 @@ export const SearchPanel = forwardRef<SearchPanelHandle, SearchPanelProps>(
                 onClick={() => setMatchCase(!matchCase)}
                 className={cn(
                   "p-1 rounded text-xs transition-colors cursor-pointer",
-                  matchCase
-                    ? "bg-primary/20 text-primary"
-                    : "text-muted-foreground hover:bg-muted"
+                  matchCase ? "bg-primary/20 text-primary" : "text-muted-foreground hover:bg-muted",
                 )}
                 title="Match Case"
               >
@@ -281,7 +291,7 @@ export const SearchPanel = forwardRef<SearchPanelHandle, SearchPanelProps>(
                   "p-1 rounded text-xs transition-colors cursor-pointer",
                   matchWholeWord
                     ? "bg-primary/20 text-primary"
-                    : "text-muted-foreground hover:bg-muted"
+                    : "text-muted-foreground hover:bg-muted",
                 )}
                 title="Match Whole Word"
               >
@@ -292,9 +302,7 @@ export const SearchPanel = forwardRef<SearchPanelHandle, SearchPanelProps>(
                 onClick={() => setUseRegex(!useRegex)}
                 className={cn(
                   "p-1 rounded text-xs transition-colors cursor-pointer",
-                  useRegex
-                    ? "bg-primary/20 text-primary"
-                    : "text-muted-foreground hover:bg-muted"
+                  useRegex ? "bg-primary/20 text-primary" : "text-muted-foreground hover:bg-muted",
                 )}
                 title="Use Regular Expression"
               >
@@ -386,8 +394,7 @@ export const SearchPanel = forwardRef<SearchPanelHandle, SearchPanelProps>(
             {query && displayedResults.length > 0 && (
               <>
                 <span>
-                  {displayedResults.length} results in{" "}
-                  {Object.keys(displayedResultsByFile).length}{" "}
+                  {displayedResults.length} results in {Object.keys(displayedResultsByFile).length}{" "}
                   {Object.keys(displayedResultsByFile).length === 1 ? "file" : "files"}
                 </span>
                 <div className="flex items-center gap-0.5 opacity-60 hover:opacity-100 transition-opacity">
@@ -427,9 +434,7 @@ export const SearchPanel = forwardRef<SearchPanelHandle, SearchPanelProps>(
                 ) : (
                   <ChevronDown className="w-3.5 h-3.5" />
                 )}
-                <span className="text-xs font-medium truncate flex-1 text-foreground">
-                  {name}
-                </span>
+                <span className="text-xs font-medium truncate flex-1 text-foreground">{name}</span>
                 <span className="text-[10px] bg-muted px-1.5 rounded-full text-muted-foreground group-hover/file:bg-primary/20 group-hover/file:text-primary transition-colors">
                   {matches.length}
                 </span>
@@ -509,7 +514,7 @@ export const SearchPanel = forwardRef<SearchPanelHandle, SearchPanelProps>(
         </div>
       </div>
     );
-  }
+  },
 );
 
 SearchPanel.displayName = "SearchPanel";

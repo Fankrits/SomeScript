@@ -1,7 +1,20 @@
 "use client";
 
 import { useState } from "react";
-import { FileText, Calendar, ArrowUpRight, Download, FileDown, Trash2, Loader2, Pencil, ArrowUpDown, ArrowUp, ArrowDown, MoreVertical } from "lucide-react";
+import {
+  FileText,
+  Calendar,
+  ArrowUpRight,
+  Download,
+  FileDown,
+  Trash2,
+  Loader2,
+  Pencil,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  MoreVertical,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -9,7 +22,7 @@ import {
   TableCell,
   TableHead,
   TableHeader,
-  TableRow
+  TableRow,
 } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
@@ -55,6 +68,20 @@ interface ProjectsTableProps {
   editorUrl: string;
 }
 
+const handleRename = async (projectId: string, newName: string) => {
+  if (!newName || newName.trim() === "") return;
+  try {
+    const result = await renameProject(projectId, newName);
+    if (result?.error) {
+      toast.error(result.error);
+    } else {
+      toast.success("Project renamed successfully");
+    }
+  } catch (error: any) {
+    toast.error(error.message || "Failed to rename project");
+  }
+};
+
 export default function ProjectsTable({ projects, editorUrl }: ProjectsTableProps) {
   const [pendingAction, setPendingAction] = useState<{
     id: string;
@@ -66,7 +93,6 @@ export default function ProjectsTable({ projects, editorUrl }: ProjectsTableProp
   const [renameInput, setRenameInput] = useState<string>("");
   const [isRenaming, setIsRenaming] = useState<boolean>(false);
   const [openingId, setOpeningId] = useState<string | null>(null);
-  const [editingMobileId, setEditingMobileId] = useState<string | null>(null);
 
   const [sortConfig, setSortConfig] = useState<{
     key: "name" | "createdAt" | "updatedAt";
@@ -83,7 +109,9 @@ export default function ProjectsTable({ projects, editorUrl }: ProjectsTableProp
 
   const getSortIcon = (key: "name" | "createdAt" | "updatedAt") => {
     if (sortConfig.key !== key) {
-      return <ArrowUpDown className="ml-1.5 h-3.5 w-3.5 opacity-40 group-hover:opacity-100 transition-opacity" />;
+      return (
+        <ArrowUpDown className="ml-1.5 h-3.5 w-3.5 opacity-40 group-hover:opacity-100 transition-opacity" />
+      );
     }
     return sortConfig.direction === "asc" ? (
       <ArrowUp className="ml-1.5 h-3.5 w-3.5 text-primary shrink-0" />
@@ -92,37 +120,20 @@ export default function ProjectsTable({ projects, editorUrl }: ProjectsTableProp
     );
   };
 
-  const sortedProjects = [...projects].sort((a, b) => {
-    const aVal = a[sortConfig.key];
-    const bVal = b[sortConfig.key];
-
+  const sortedProjects = [...projects].toSorted((a, b) => {
     if (sortConfig.key === "name") {
-      const aStr = (aVal as string).toLowerCase();
-      const bStr = (bVal as string).toLowerCase();
+      const aStr = a.name.toLowerCase();
+      const bStr = b.name.toLowerCase();
       if (aStr < bStr) return sortConfig.direction === "asc" ? -1 : 1;
       if (aStr > bStr) return sortConfig.direction === "asc" ? 1 : -1;
     } else {
-      const aTime = new Date(aVal).getTime();
-      const bTime = new Date(bVal).getTime();
+      const aTime = a[sortConfig.key].getTime();
+      const bTime = b[sortConfig.key].getTime();
       if (aTime < bTime) return sortConfig.direction === "asc" ? -1 : 1;
       if (aTime > bTime) return sortConfig.direction === "asc" ? 1 : -1;
     }
     return 0;
   });
-
-  const handleRename = async (projectId: string, newName: string) => {
-    if (!newName || newName.trim() === "") return;
-    try {
-      const result = await renameProject(projectId, newName);
-      if (result?.error) {
-        toast.error(result.error);
-      } else {
-        toast.success("Project renamed successfully");
-      }
-    } catch (error: any) {
-      toast.error(error.message || "Failed to rename project");
-    }
-  };
 
   const handleDelete = async (projectId: string) => {
     setPendingAction({ id: projectId, type: "delete" });
@@ -154,7 +165,7 @@ export default function ProjectsTable({ projects, editorUrl }: ProjectsTableProp
       link.click();
       document.body.removeChild(link);
       toast.success(`Started downloading ${type.toUpperCase()}`);
-    } catch (error) {
+    } catch {
       toast.error(`Failed to download ${type.toUpperCase()}`);
     } finally {
       setTimeout(() => {
@@ -179,18 +190,27 @@ export default function ProjectsTable({ projects, editorUrl }: ProjectsTableProp
           </div>
 
           {sortedProjects.map((project) => {
-            const isDeletePending = pendingAction?.id === project.id && pendingAction.type === "delete";
+            const isDeletePending =
+              pendingAction?.id === project.id && pendingAction.type === "delete";
             const isPdfPending = pendingAction?.id === project.id && pendingAction.type === "pdf";
             const isZipPending = pendingAction?.id === project.id && pendingAction.type === "zip";
             const isBusy = !!pendingAction && pendingAction.id === project.id;
-            const isEditingThisMobile = editingMobileId === project.id;
 
             return (
               <div
                 key={project.id}
+                role="button"
+                tabIndex={0}
                 onClick={() => {
                   setOpeningId(project.id);
                   window.location.href = `${editorUrl}/?projectId=${project.id}`;
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setOpeningId(project.id);
+                    window.location.href = `${editorUrl}/?projectId=${project.id}`;
+                  }
                 }}
                 className="border border-border rounded-xl bg-card p-3 shadow-xs flex items-center justify-between gap-3 cursor-pointer hover:border-primary/40 transition-all group"
               >
@@ -221,7 +241,12 @@ export default function ProjectsTable({ projects, editorUrl }: ProjectsTableProp
                 </div>
 
                 {/* Right: Primary "Open" button + 3-Dot Dropdown */}
-                <div onClick={(e) => e.stopPropagation()} className="flex items-center gap-1.5 shrink-0">
+                {/* Only stops the click from bubbling to the card's own open handler — the button/dropdown inside stay independently keyboard-accessible. */}
+                {/* oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  className="flex items-center gap-1.5 shrink-0"
+                >
                   <Link
                     href={`${editorUrl}/?projectId=${project.id}`}
                     onClick={() => setOpeningId(project.id)}
@@ -234,7 +259,11 @@ export default function ProjectsTable({ projects, editorUrl }: ProjectsTableProp
                   {/* 3-Dot Dropdown Menu */}
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                      >
                         <MoreVertical className="h-4 w-4" />
                         <span className="sr-only">Project options</span>
                       </Button>
@@ -250,17 +279,39 @@ export default function ProjectsTable({ projects, editorUrl }: ProjectsTableProp
                         <span>Rename Project</span>
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={() => handleDownload(project.id, project.name, "pdf")} disabled={isBusy}>
-                        {isPdfPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileDown className="mr-2 h-4 w-4 text-primary" />}
+                      <DropdownMenuItem
+                        onClick={() => handleDownload(project.id, project.name, "pdf")}
+                        disabled={isBusy}
+                      >
+                        {isPdfPending ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <FileDown className="mr-2 h-4 w-4 text-primary" />
+                        )}
                         <span>Download PDF</span>
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleDownload(project.id, project.name, "zip")} disabled={isBusy}>
-                        {isZipPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4 text-emerald-500" />}
+                      <DropdownMenuItem
+                        onClick={() => handleDownload(project.id, project.name, "zip")}
+                        disabled={isBusy}
+                      >
+                        {isZipPending ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <Download className="mr-2 h-4 w-4 text-emerald-500" />
+                        )}
                         <span>Download Source</span>
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={() => setDeleteId(project.id)} disabled={isBusy} variant="destructive">
-                        {isDeletePending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+                      <DropdownMenuItem
+                        onClick={() => setDeleteId(project.id)}
+                        disabled={isBusy}
+                        variant="destructive"
+                      >
+                        {isDeletePending ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="mr-2 h-4 w-4" />
+                        )}
                         <span>Delete Project</span>
                       </DropdownMenuItem>
                     </DropdownMenuContent>
@@ -306,9 +357,12 @@ export default function ProjectsTable({ projects, editorUrl }: ProjectsTableProp
               </TableHeader>
               <TableBody className="divide-y divide-border text-sm text-foreground">
                 {sortedProjects.map((project) => {
-                  const isDeletePending = pendingAction?.id === project.id && pendingAction.type === "delete";
-                  const isPdfPending = pendingAction?.id === project.id && pendingAction.type === "pdf";
-                  const isZipPending = pendingAction?.id === project.id && pendingAction.type === "zip";
+                  const isDeletePending =
+                    pendingAction?.id === project.id && pendingAction.type === "delete";
+                  const isPdfPending =
+                    pendingAction?.id === project.id && pendingAction.type === "pdf";
+                  const isZipPending =
+                    pendingAction?.id === project.id && pendingAction.type === "zip";
                   const isBusy = !!pendingAction && pendingAction.id === project.id;
 
                   return (
@@ -320,9 +374,7 @@ export default function ProjectsTable({ projects, editorUrl }: ProjectsTableProp
                       }}
                       className="hover:bg-secondary/20 transition-colors group cursor-pointer"
                     >
-                      <TableCell
-                        className="px-6 py-4 font-medium text-foreground flex items-center justify-start gap-3 text-left"
-                      >
+                      <TableCell className="px-6 py-4 font-medium text-foreground flex items-center justify-start gap-3 text-left">
                         <div className="h-8 w-8 rounded-lg bg-secondary border border-border flex items-center justify-center text-primary group-hover:text-primary-foreground group-hover:bg-primary transition-all shrink-0">
                           {openingId === project.id ? (
                             <Loader2 className="h-4 w-4 animate-spin" />
@@ -365,7 +417,10 @@ export default function ProjectsTable({ projects, editorUrl }: ProjectsTableProp
                           year: "numeric",
                         })}
                       </TableCell>
-                      <TableCell onClick={(e) => e.stopPropagation()} className="px-6 py-4 text-right">
+                      <TableCell
+                        onClick={(e) => e.stopPropagation()}
+                        className="px-6 py-4 text-right"
+                      >
                         <div className="flex items-center justify-end gap-1.5">
                           <Tooltip>
                             <TooltipTrigger asChild>
@@ -460,7 +515,7 @@ export default function ProjectsTable({ projects, editorUrl }: ProjectsTableProp
             <AlertDialogAction
               variant="destructive"
               onClick={() => {
-                if (deleteId) handleDelete(deleteId);
+                if (deleteId) void handleDelete(deleteId);
                 setDeleteId(null);
               }}
             >
@@ -480,9 +535,7 @@ export default function ProjectsTable({ projects, editorUrl }: ProjectsTableProp
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Rename Project</DialogTitle>
-            <DialogDescription>
-              Enter a new name for your LaTeX document.
-            </DialogDescription>
+            <DialogDescription>Enter a new name for your LaTeX document.</DialogDescription>
           </DialogHeader>
 
           <form

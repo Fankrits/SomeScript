@@ -118,7 +118,16 @@ interface UseCollaborationOptions {
 // Stable per-tab caret color so a peer keeps the same color across renders and
 // file switches (regenerating it would make remote carets flicker between hues).
 function randomColor(): string {
-  const hues = ["#ef4444", "#f97316", "#eab308", "#22c55e", "#06b6d4", "#3b82f6", "#8b5cf6", "#ec4899"];
+  const hues = [
+    "#ef4444",
+    "#f97316",
+    "#eab308",
+    "#22c55e",
+    "#06b6d4",
+    "#3b82f6",
+    "#8b5cf6",
+    "#ec4899",
+  ];
   return hues[Math.floor(Math.random() * hues.length)];
 }
 
@@ -133,7 +142,8 @@ export function useCollaboration({
   const [collaborators, setCollaborators] = useState<Collaborator[]>([]);
 
   // One Y.Doc per room (project). getText(`file:<path>`) yields a Y.Text per file.
-  const ydoc = useMemo(() => new Y.Doc(), [roomName]);
+  // roomName isn't read inside the callback — it's a deliberate recompute key.
+  const ydoc = useMemo(() => new Y.Doc(), [roomName]); // eslint-disable-line react-hooks/exhaustive-deps
   const color = useMemo(() => user?.color || randomColor(), []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Ref (not state) so the setActiveFile/setCursor callbacks stay referentially
@@ -167,7 +177,7 @@ export function useCollaboration({
       // user or a transient getToken() failure must still trigger — and fail — the
       // real server-side check, not silently bypass it.
       token: async () => (getToken ? (await getToken()) || "no-session" : "no-session"),
-      onStatus: ({ status }) => setStatus(status as CollabStatus),
+      onStatus: ({ status: newStatus }) => setStatus(newStatus),
       onSynced: () => setSynced(true),
       onAuthenticationFailed: () => setStatus("unauthorized"),
       onDisconnect: () => setSynced(false),
@@ -201,9 +211,15 @@ export function useCollaboration({
             selection: normalizeSelection(record ? record.selection : undefined),
             cursor: normalizeCursor(record ? record.cursor : undefined),
             cursorLine: normalizeCursorLine(record ? record.cursorLine : undefined),
-            fileTreeVersion: normalizeVersionToken(record ? record[FILE_TREE_VERSION_FIELD] : undefined),
-            taskListVersion: normalizeVersionToken(record ? record[TASK_LIST_VERSION_FIELD] : undefined),
-            projectSettingsVersion: normalizeVersionToken(record ? record[PROJECT_SETTINGS_VERSION_FIELD] : undefined),
+            fileTreeVersion: normalizeVersionToken(
+              record ? record[FILE_TREE_VERSION_FIELD] : undefined,
+            ),
+            taskListVersion: normalizeVersionToken(
+              record ? record[TASK_LIST_VERSION_FIELD] : undefined,
+            ),
+            projectSettingsVersion: normalizeVersionToken(
+              record ? record[PROJECT_SETTINGS_VERSION_FIELD] : undefined,
+            ),
           });
         }
       });
@@ -219,11 +235,15 @@ export function useCollaboration({
       setProvider(null);
       setSynced(false);
     };
+    // Tracks user?.name/user?.avatar deliberately instead of the whole `user`
+    // object — Clerk's useUser() returns a new object reference most renders,
+    // and depending on `user` itself would reconnect the socket on every one.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomName, enabled, ydoc, getToken, color, user?.name, user?.avatar]);
 
   const getYTextForFile = useCallback(
     (filePath: string): Y.Text => ydoc.getText(`file:${filePath}`),
-    [ydoc]
+    [ydoc],
   );
 
   // Fallback seeding for a file created AFTER the room was loaded (upload, new
@@ -241,7 +261,7 @@ export function useCollaboration({
         if (ytext.length === 0) ytext.insert(0, content);
       });
     },
-    [ydoc]
+    [ydoc],
   );
 
   const setActiveFile = useCallback((filePath: string) => {
@@ -255,13 +275,13 @@ export function useCollaboration({
       awareness.setLocalStateField("selection", data.selection ?? null);
       awareness.setLocalStateField("cursorLine", data.cursorLine);
     },
-    []
+    [],
   );
 
   const notifyFileTreeChanged = useCallback(() => {
     providerRef.current?.awareness?.setLocalStateField(
       FILE_TREE_VERSION_FIELD,
-      createVersionToken()
+      createVersionToken(),
     );
   }, []);
 
@@ -273,7 +293,7 @@ export function useCollaboration({
   const notifyTasksChanged = useCallback(() => {
     providerRef.current?.awareness?.setLocalStateField(
       TASK_LIST_VERSION_FIELD,
-      createVersionToken()
+      createVersionToken(),
     );
   }, []);
 
@@ -282,7 +302,7 @@ export function useCollaboration({
   const notifyProjectSettingsChanged = useCallback(() => {
     providerRef.current?.awareness?.setLocalStateField(
       PROJECT_SETTINGS_VERSION_FIELD,
-      createVersionToken()
+      createVersionToken(),
     );
   }, []);
 
@@ -314,6 +334,6 @@ export function useCollaboration({
       notifyFileTreeChanged,
       notifyTasksChanged,
       notifyProjectSettingsChanged,
-    ]
+    ],
   );
 }
