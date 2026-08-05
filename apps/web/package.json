@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "lsof -ti:3000 | xargs kill 2>/dev/null; bun --bun next dev -p 3000",
-    "build": "bun --bun next build",
+    "build": "next build",
     "start": "bun --bun next start",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",

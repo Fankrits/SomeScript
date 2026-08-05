@@ -17,7 +17,6 @@ const cspHeader = `
 `;
 
 const nextConfig: NextConfig = {
-  output: "standalone",
   serverExternalPackages: ["@aws-sdk/client-s3"],
   async headers() {
     return [
