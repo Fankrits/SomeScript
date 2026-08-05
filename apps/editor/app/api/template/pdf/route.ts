@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { storage, type FileNode } from "@/lib/storage";
+import { storage, findFileByExtension } from "@/lib/storage";
 import { apiError, ApiError } from "@/lib/authz";
 import { compileUpload } from "@/lib/compile";
 
@@ -17,10 +17,7 @@ export async function GET(req: NextRequest) {
       : `templates/${templateId}`;
 
     // 1. Try reading pre-existing cached PDF
-    const cachedPaths = [
-      ".preview-cache/main.pdf",
-      "main.pdf",
-    ];
+    const cachedPaths = [".preview-cache/main.pdf", "main.pdf"];
 
     for (const p of cachedPaths) {
       try {
@@ -41,18 +38,7 @@ export async function GET(req: NextRequest) {
 
     // 2. Search if any PDF file already exists in storage before attempting re-compilation
     const files = await storage.listProjectFiles(storageId);
-    const findPdf = (nodes: FileNode[]): string | null => {
-      for (const node of nodes) {
-        if (node.isDir && node.children) {
-          const res = findPdf(node.children);
-          if (res) return res;
-        } else if (node.name.endsWith(".pdf")) {
-          return node.path;
-        }
-      }
-      return null;
-    };
-    const existingPdfPath = findPdf(files);
+    const existingPdfPath = findFileByExtension(files, ".pdf");
     if (existingPdfPath) {
       try {
         const buffer = await storage.readBinaryFile(storageId, existingPdfPath);
@@ -70,18 +56,7 @@ export async function GET(req: NextRequest) {
 
     // 3. Find primary .tex file
     let texFile = "main.tex";
-    const findTex = (nodes: FileNode[]): string | null => {
-      for (const node of nodes) {
-        if (node.isDir && node.children) {
-          const res = findTex(node.children);
-          if (res) return res;
-        } else if (node.name.endsWith(".tex")) {
-          return node.path;
-        }
-      }
-      return null;
-    };
-    const foundTex = findTex(files);
+    const foundTex = findFileByExtension(files, ".tex");
     if (foundTex) texFile = foundTex;
 
     // 4. Compile on-demand using compileUpload only if no PDF was found

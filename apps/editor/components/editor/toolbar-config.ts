@@ -20,7 +20,7 @@ import {
   Heading2,
   Heading3,
   Image as ImageIcon,
-  Infinity,
+  Infinity as InfinityIcon,
   Italic,
   Link,
   List,
@@ -42,34 +42,34 @@ import {
   Table,
   Terminal,
   Underline,
-} from "lucide-react"
+} from "lucide-react";
 
 export interface ToolItem {
-  icon?: LucideIcon
-  label: string
-  text: string
-  cursorOffset?: number
+  icon?: LucideIcon;
+  label: string;
+  text: string;
+  cursorOffset?: number;
   /** Display-only shortcut hint, e.g. "⌘B". Wiring lives in use-codemirror-extensions.ts. */
-  shortcut?: string
+  shortcut?: string;
   /** When set, the button lights up while the caret sits inside this construct (see activeFormats). */
-  activeId?: string
+  activeId?: string;
 }
 
 export interface ToolGroup {
-  id: string
+  id: string;
   /** Human title used as the command-palette section heading. */
-  title: string
+  title: string;
   /** Fold into the "More" overflow menu when the toolbar is cramped. */
-  low?: boolean
+  low?: boolean;
   /** Always-visible icon buttons (highest-frequency actions). */
-  primary?: ToolItem[]
+  primary?: ToolItem[];
   /** Items behind the caret dropdown. */
-  menu?: ToolItem[]
+  menu?: ToolItem[];
   /** Tooltip / a11y label for the caret trigger. */
-  menuLabel?: string
+  menuLabel?: string;
   /** When set, the trigger shows this text (e.g. "Insert") instead of caret-only. */
-  menuTriggerLabel?: string
-  menuTriggerIcon?: LucideIcon
+  menuTriggerLabel?: string;
+  menuTriggerIcon?: LucideIcon;
 }
 
 // Ordered left→right by how often LaTeX authors reach for them. Primary actions
@@ -81,12 +81,32 @@ export const GROUPS: ToolGroup[] = [
     id: "format",
     title: "Format",
     primary: [
-      { icon: Bold, label: "Bold", text: "\\textbf{}", cursorOffset: -1, shortcut: "⌘B", activeId: "bold" },
-      { icon: Italic, label: "Italic", text: "\\textit{}", cursorOffset: -1, shortcut: "⌘I", activeId: "italic" },
+      {
+        icon: Bold,
+        label: "Bold",
+        text: "\\textbf{}",
+        cursorOffset: -1,
+        shortcut: "⌘B",
+        activeId: "bold",
+      },
+      {
+        icon: Italic,
+        label: "Italic",
+        text: "\\textit{}",
+        cursorOffset: -1,
+        shortcut: "⌘I",
+        activeId: "italic",
+      },
     ],
     menuLabel: "More formatting",
     menu: [
-      { icon: Underline, label: "Underline", text: "\\underline{}", cursorOffset: -1, shortcut: "⌘U" },
+      {
+        icon: Underline,
+        label: "Underline",
+        text: "\\underline{}",
+        cursorOffset: -1,
+        shortcut: "⌘U",
+      },
       { icon: Asterisk, label: "Emphasis", text: "\\emph{}", cursorOffset: -1 },
       { icon: Code, label: "Typewriter", text: "\\texttt{}", cursorOffset: -1 },
       { icon: ALargeSmall, label: "Small caps", text: "\\textsc{}", cursorOffset: -1 },
@@ -108,20 +128,45 @@ export const GROUPS: ToolGroup[] = [
   {
     id: "math",
     title: "Math",
-    primary: [{ icon: Sigma, label: "Inline math", text: "$ $", cursorOffset: -1, shortcut: "⌘M", activeId: "math" }],
+    primary: [
+      {
+        icon: Sigma,
+        label: "Inline math",
+        text: "$ $",
+        cursorOffset: -1,
+        shortcut: "⌘M",
+        activeId: "math",
+      },
+    ],
     menuLabel: "Math",
     menuTriggerIcon: Pi,
     menu: [
-      { icon: SquareFunction, label: "Display math", text: "\\[\n  \n\\]", cursorOffset: -3, shortcut: "⌘⇧M" },
-      { icon: Equal, label: "Equation", text: "\\begin{equation}\n  \n\\end{equation}", cursorOffset: -15 },
-      { icon: AlignLeft, label: "Align", text: "\\begin{align}\n  \n\\end{align}", cursorOffset: -12 },
+      {
+        icon: SquareFunction,
+        label: "Display math",
+        text: "\\[\n  \n\\]",
+        cursorOffset: -3,
+        shortcut: "⌘⇧M",
+      },
+      {
+        icon: Equal,
+        label: "Equation",
+        text: "\\begin{equation}\n  \n\\end{equation}",
+        cursorOffset: -15,
+      },
+      {
+        icon: AlignLeft,
+        label: "Align",
+        text: "\\begin{align}\n  \n\\end{align}",
+        cursorOffset: -12,
+      },
       { icon: Divide, label: "Fraction", text: "\\frac{}{}", cursorOffset: -3 },
       { icon: Radical, label: "Square root", text: "\\sqrt{}", cursorOffset: -1 },
       { icon: Subscript, label: "Subscript", text: "_{}", cursorOffset: -1 },
       { icon: Superscript, label: "Superscript", text: "^{}", cursorOffset: -1 },
       { icon: Sigma, label: "Sum", text: "\\sum_{i=1}^{n}", cursorOffset: 0 },
       { icon: Spline, label: "Integral", text: "\\int_{a}^{b}", cursorOffset: 0 },
-      { icon: Infinity, label: "Limit", text: "\\lim_{x \\to \\infty}", cursorOffset: 0 },
+      { icon: InfinityIcon, label: "Limit", text: "\\lim_{x \\to \\infty}", cursorOffset: 0 },
     ],
   },
   {
@@ -151,11 +196,36 @@ export const GROUPS: ToolGroup[] = [
         cursorOffset: -18,
       },
       { icon: Quote, label: "Quote", text: "\\begin{quote}\n\n\\end{quote}", cursorOffset: -12 },
-      { icon: Terminal, label: "Verbatim", text: "\\begin{verbatim}\n\n\\end{verbatim}", cursorOffset: -14 },
-      { icon: AlignCenter, label: "Center", text: "\\begin{center}\n\n\\end{center}", cursorOffset: -13 },
-      { icon: GraduationCap, label: "Theorem", text: "\\begin{theorem}\n\n\\end{theorem}", cursorOffset: -14 },
-      { icon: CheckCircle, label: "Proof", text: "\\begin{proof}\n\n\\end{proof}", cursorOffset: -12 },
-      { icon: NotebookText, label: "Abstract", text: "\\begin{abstract}\n\n\\end{abstract}", cursorOffset: -15 },
+      {
+        icon: Terminal,
+        label: "Verbatim",
+        text: "\\begin{verbatim}\n\n\\end{verbatim}",
+        cursorOffset: -14,
+      },
+      {
+        icon: AlignCenter,
+        label: "Center",
+        text: "\\begin{center}\n\n\\end{center}",
+        cursorOffset: -13,
+      },
+      {
+        icon: GraduationCap,
+        label: "Theorem",
+        text: "\\begin{theorem}\n\n\\end{theorem}",
+        cursorOffset: -14,
+      },
+      {
+        icon: CheckCircle,
+        label: "Proof",
+        text: "\\begin{proof}\n\n\\end{proof}",
+        cursorOffset: -12,
+      },
+      {
+        icon: NotebookText,
+        label: "Abstract",
+        text: "\\begin{abstract}\n\n\\end{abstract}",
+        cursorOffset: -15,
+      },
     ],
   },
   {
@@ -172,7 +242,12 @@ export const GROUPS: ToolGroup[] = [
         text: "\\begin{figure}[htbp]\n  \\centering\n  \\includegraphics{}\n  \\caption{}\n  \\label{fig:}\n\\end{figure}",
         cursorOffset: -38,
       },
-      { icon: FileImage, label: "Image", text: "\\includegraphics[width=\\textwidth]{}", cursorOffset: -1 },
+      {
+        icon: FileImage,
+        label: "Image",
+        text: "\\includegraphics[width=\\textwidth]{}",
+        cursorOffset: -1,
+      },
       {
         icon: Table,
         label: "Table",
@@ -198,17 +273,17 @@ export const GROUPS: ToolGroup[] = [
       { icon: Hash, label: "Label", text: "\\label{}", cursorOffset: -1 },
     ],
   },
-]
+];
 
 export interface LatexSymbol {
-  label: string
+  label: string;
   /** LaTeX inserted at the cursor. */
-  text: string
+  text: string;
   /** Unicode glyph shown in the palette. */
-  preview: string
-  cursorOffset?: number
+  preview: string;
+  cursorOffset?: number;
   /** Extra search terms so e.g. "≤" is found by "less than". */
-  keywords?: string
+  keywords?: string;
 }
 
 // Curated common-symbol table for the ⌘K palette — the long tail a fixed toolbar
@@ -281,4 +356,4 @@ export const LATEX_SYMBOLS: LatexSymbol[] = [
   { label: "bar", text: "\\bar{}", preview: "x̄", cursorOffset: -1, keywords: "accent overline" },
   { label: "vec", text: "\\vec{}", preview: "x⃗", cursorOffset: -1, keywords: "vector accent" },
   { label: "dots", text: "\\dots", preview: "…", keywords: "ellipsis ldots" },
-]
+];

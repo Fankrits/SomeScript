@@ -12,6 +12,13 @@ import * as Y from "yjs";
 
 const FILE = "\\documentclass{article}\n\\begin{document}\nImportant work.\n\\end{document}\n";
 
+/** Mirrors useCollaboration.seedFile's guards. */
+function seed(ytext: Y.Text, content: string) {
+  if (content.length === 0) return;
+  if (ytext.length > 0) return;
+  ytext.insert(0, content);
+}
+
 /** @uiw/react-codemirror's prop default: cjs/index.js -> `value === void 0 ? '' : value`. */
 function uiwResolveValueProp(propValue: string | undefined): string {
   return propValue === undefined ? "" : propValue;
@@ -74,13 +81,6 @@ test("binding only when editor and Y.Text agree keeps content safe", () => {
 });
 
 test("seedFile fills an empty Y.Text but never doubles existing content", () => {
-  // Mirrors useCollaboration.seedFile's guards.
-  const seed = (ytext: Y.Text, content: string) => {
-    if (content.length === 0) return;
-    if (ytext.length > 0) return;
-    ytext.insert(0, content);
-  };
-
   const ydoc = new Y.Doc();
   const ytext = ydoc.getText("file:main.tex");
 

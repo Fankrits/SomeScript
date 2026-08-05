@@ -1,5 +1,20 @@
-import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { Eye, EyeOff, ListTodoIcon, Plus, Trash2, Pencil, GripVertical, ChevronDown, ChevronRight } from "lucide-react";
+import React, {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
+import {
+  ListTodoIcon,
+  Plus,
+  Trash2,
+  Pencil,
+  GripVertical,
+  ChevronDown,
+  ChevronRight,
+} from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import type { Task } from "@/lib/tasks";
@@ -107,7 +122,12 @@ function TaskItem({
           <Button variant="ghost" size="sm" className="h-7 px-3 text-[10px]" onClick={handleCancel}>
             Cancel
           </Button>
-          <Button size="sm" className="h-7 px-3 text-[10px]" onClick={handleSave} disabled={!editName.trim()}>
+          <Button
+            size="sm"
+            className="h-7 px-3 text-[10px]"
+            onClick={handleSave}
+            disabled={!editName.trim()}
+          >
             Save
           </Button>
         </div>
@@ -115,10 +135,20 @@ function TaskItem({
     );
   }
 
-  const statusColor = task.status === 'finished' ? "border-l-green-500" : task.status === 'ongoing' ? "border-l-orange-500" : "border-l-red-500";
+  const statusColor =
+    task.status === "finished"
+      ? "border-l-green-500"
+      : task.status === "ongoing"
+        ? "border-l-orange-500"
+        : "border-l-red-500";
 
   return (
-    <div className={cn("flex items-start gap-2.5 p-2.5 rounded-lg text-xs transition-all duration-200 group border border-border/40 hover:border-border/60 hover:bg-muted/30 shadow-sm bg-background border-l-4", statusColor)}>
+    <div
+      className={cn(
+        "flex items-start gap-2.5 p-2.5 rounded-lg text-xs transition-all duration-200 group border border-border/40 hover:border-border/60 hover:bg-muted/30 shadow-sm bg-background border-l-4",
+        statusColor,
+      )}
+    >
       <div
         {...dragHandleProps}
         className="mt-0.5 cursor-grab active:cursor-grabbing text-muted-foreground/30 hover:text-muted-foreground shrink-0 transition-colors"
@@ -135,7 +165,7 @@ function TaskItem({
         <div
           className={cn(
             "font-medium truncate transition-colors text-sm",
-            task.done ? "line-through text-muted-foreground/60" : "text-foreground"
+            task.done ? "line-through text-muted-foreground/60" : "text-foreground",
           )}
         >
           {task.name}
@@ -144,7 +174,7 @@ function TaskItem({
           <div
             className={cn(
               "text-[11px] leading-relaxed line-clamp-3 transition-colors",
-              task.done ? "line-through text-muted-foreground/50" : "text-muted-foreground"
+              task.done ? "line-through text-muted-foreground/50" : "text-muted-foreground",
             )}
           >
             {task.description}
@@ -292,7 +322,7 @@ export const TasksPanel = forwardRef<TasksPanelHandle, TasksPanelProps>(
           if (t.id !== id) return t;
           const done = !t.done;
           return { ...t, done, status: done ? "finished" : "todo" };
-        })
+        }),
       );
     };
 
@@ -302,16 +332,15 @@ export const TasksPanel = forwardRef<TasksPanelHandle, TasksPanelProps>(
 
     const updateTask = (id: string, name: string, description: string) => {
       save(
-        tasks.map((t) =>
-          t.id === id ? { ...t, name, description: description || undefined } : t
-        )
+        tasks.map((t) => (t.id === id ? { ...t, name, description: description || undefined } : t)),
       );
     };
 
     const goToSource = (source: Task["source"]) => {
       if (!source) return;
       if (source.page !== undefined) onSelectPdfPage(source.page);
-      else if (source.path !== undefined && source.line !== undefined) onSelectMatch(source.path, source.line);
+      else if (source.path !== undefined && source.line !== undefined)
+        onSelectMatch(source.path, source.line);
     };
 
     const onDragEnd = (result: DropResult) => {
@@ -332,7 +361,13 @@ export const TasksPanel = forwardRef<TasksPanelHandle, TasksPanelProps>(
       const destList = lists[destination.droppableId];
 
       const [movedTask] = sourceList.splice(source.index, 1);
-      movedTask.status = destination.droppableId as Task["status"];
+      if (
+        destination.droppableId === "todo" ||
+        destination.droppableId === "ongoing" ||
+        destination.droppableId === "finished"
+      ) {
+        movedTask.status = destination.droppableId;
+      }
       movedTask.done = destination.droppableId === "finished";
 
       if (source.droppableId === destination.droppableId) {
@@ -349,81 +384,97 @@ export const TasksPanel = forwardRef<TasksPanelHandle, TasksPanelProps>(
     const ongoingTasks = tasks.filter((t) => t.status === "ongoing");
     const finishedTasks = tasks.filter((t) => t.status === "finished");
 
-    const renderSection = (id: string, title: string, list: Task[], isOpen: boolean) => {
-      const badgeColor = {
-        todo: "bg-red-500/10 text-red-600 dark:text-red-400 group-hover:bg-red-500/20",
-        ongoing: "bg-orange-500/10 text-orange-600 dark:text-orange-400 group-hover:bg-orange-500/20",
-        finished: "bg-green-500/10 text-green-600 dark:text-green-400 group-hover:bg-green-500/20",
-      }[id as 'todo' | 'ongoing' | 'finished'] || "bg-muted/50 text-muted-foreground";
+    const renderSection = (
+      id: "todo" | "ongoing" | "finished",
+      title: string,
+      list: Task[],
+      isOpen: boolean,
+    ) => {
+      const badgeColor =
+        {
+          todo: "bg-red-500/10 text-red-600 dark:text-red-400 group-hover:bg-red-500/20",
+          ongoing:
+            "bg-orange-500/10 text-orange-600 dark:text-orange-400 group-hover:bg-orange-500/20",
+          finished:
+            "bg-green-500/10 text-green-600 dark:text-green-400 group-hover:bg-green-500/20",
+        }[id] || "bg-muted/50 text-muted-foreground";
 
       return (
-      <div className="mb-4 last:mb-0">
-        <button
-          type="button"
-          onClick={() => toggleSection(id as keyof typeof sections)}
-          className="flex items-center w-full text-left gap-1.5 px-2 py-1.5 text-xs font-semibold uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors group cursor-pointer"
-        >
-          {isOpen ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
-          <span>{title}</span>
-          <span className={cn("ml-auto text-[10px] px-2 py-0.5 rounded-full transition-colors font-bold", badgeColor)}>
-            {list.length}
-          </span>
-        </button>
+        <div className="mb-4 last:mb-0">
+          <button
+            type="button"
+            onClick={() => toggleSection(id)}
+            className="flex items-center w-full text-left gap-1.5 px-2 py-1.5 text-xs font-semibold uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors group cursor-pointer"
+          >
+            {isOpen ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
+            <span>{title}</span>
+            <span
+              className={cn(
+                "ml-auto text-[10px] px-2 py-0.5 rounded-full transition-colors font-bold",
+                badgeColor,
+              )}
+            >
+              {list.length}
+            </span>
+          </button>
 
-        {isOpen && (
-          <Droppable droppableId={id}>
-            {(provided, snapshot) => (
-              <div
-                {...provided.droppableProps}
-                ref={provided.innerRef}
-                className={cn(
-                  "min-h-[60px] p-1.5 mt-1 rounded-md transition-colors space-y-1.5",
-                  snapshot.isDraggingOver ? "bg-muted/30" : "bg-transparent"
-                )}
-              >
-                {list.map((task, index) => (
-                  <Draggable key={task.id} draggableId={task.id} index={index}>
-                    {(provided, snapshot) => (
-                      <div
-                        ref={provided.innerRef}
-                        {...provided.draggableProps}
-                        style={provided.draggableProps.style}
-                        className={cn(
-                          "transition-shadow rounded-lg",
-                          snapshot.isDragging && "shadow-lg ring-1 ring-[#0f4c5c]/20"
-                        )}
-                      >
-                        <TaskItem
-                          task={task}
-                          label={sourceLabel(task.source)}
-                          toggleDone={toggleDone}
-                          deleteTask={deleteTask}
-                          updateTask={updateTask}
-                          goToSource={goToSource}
-                          dragHandleProps={provided.dragHandleProps}
-                        />
-                      </div>
-                    )}
-                  </Draggable>
-                ))}
-                {provided.placeholder}
-                {list.length === 0 && !snapshot.isDraggingOver && (
-                  <div className="flex items-center justify-center h-14 border border-dashed border-border/50 rounded-lg text-[10px] text-muted-foreground/50 uppercase tracking-widest italic select-none">
-                    Empty
-                  </div>
-                )}
-              </div>
-            )}
-          </Droppable>
-        )}
-      </div>
+          {isOpen && (
+            <Droppable droppableId={id}>
+              {(provided, snapshot) => (
+                <div
+                  {...provided.droppableProps}
+                  ref={provided.innerRef}
+                  className={cn(
+                    "min-h-[60px] p-1.5 mt-1 rounded-md transition-colors space-y-1.5",
+                    snapshot.isDraggingOver ? "bg-muted/30" : "bg-transparent",
+                  )}
+                >
+                  {list.map((task, index) => (
+                    <Draggable key={task.id} draggableId={task.id} index={index}>
+                      {/* oxlint-disable-next-line no-shadow -- @hello-pangea/dnd's own render-prop names for the nested Draggable, distinct from the outer Droppable's. */}
+                      {(provided, snapshot) => (
+                        <div
+                          ref={provided.innerRef}
+                          {...provided.draggableProps}
+                          style={provided.draggableProps.style}
+                          className={cn(
+                            "transition-shadow rounded-lg",
+                            snapshot.isDragging && "shadow-lg ring-1 ring-[#0f4c5c]/20",
+                          )}
+                        >
+                          <TaskItem
+                            task={task}
+                            label={sourceLabel(task.source)}
+                            toggleDone={toggleDone}
+                            deleteTask={deleteTask}
+                            updateTask={updateTask}
+                            goToSource={goToSource}
+                            dragHandleProps={provided.dragHandleProps}
+                          />
+                        </div>
+                      )}
+                    </Draggable>
+                  ))}
+                  {provided.placeholder}
+                  {list.length === 0 && !snapshot.isDraggingOver && (
+                    <div className="flex items-center justify-center h-14 border border-dashed border-border/50 rounded-lg text-[10px] text-muted-foreground/50 uppercase tracking-widest italic select-none">
+                      Empty
+                    </div>
+                  )}
+                </div>
+              )}
+            </Droppable>
+          )}
+        </div>
       );
     };
 
     return (
       <div className="flex flex-col h-full bg-background select-none">
         <div className="flex items-center justify-between p-3 border-b border-border/60 bg-muted/5">
-          <h2 className="font-semibold text-[11px] text-muted-foreground tracking-widest uppercase">Tasks Kanban</h2>
+          <h2 className="font-semibold text-[11px] text-muted-foreground tracking-widest uppercase">
+            Tasks Kanban
+          </h2>
           {tasks.length > 0 && (
             <div className="flex items-center gap-2">
               <span className="text-[10px] font-medium text-muted-foreground/70 bg-muted/40 px-1.5 py-0.5 rounded">
@@ -467,7 +518,9 @@ export const TasksPanel = forwardRef<TasksPanelHandle, TasksPanelProps>(
           {tasks.length === 0 && (
             <div className="flex flex-col items-center justify-center p-8 text-center text-muted-foreground/40 mt-10">
               <ListTodoIcon className="w-12 h-12 mb-4" />
-              <p className="text-xs uppercase tracking-widest font-semibold italic">Start Planning</p>
+              <p className="text-xs uppercase tracking-widest font-semibold italic">
+                Start Planning
+              </p>
             </div>
           )}
         </div>
@@ -508,7 +561,11 @@ export const TasksPanel = forwardRef<TasksPanelHandle, TasksPanelProps>(
               <Button variant="outline" onClick={() => setDialogOpen(false)}>
                 Cancel
               </Button>
-              <Button onClick={confirmAttach} disabled={!nameDraft.trim()} className="bg-[#0f4c5c] text-white hover:bg-[#0f4c5c]/90">
+              <Button
+                onClick={confirmAttach}
+                disabled={!nameDraft.trim()}
+                className="bg-[#0f4c5c] text-white hover:bg-[#0f4c5c]/90"
+              >
                 Add task
               </Button>
             </DialogFooter>
@@ -516,7 +573,7 @@ export const TasksPanel = forwardRef<TasksPanelHandle, TasksPanelProps>(
         </Dialog>
       </div>
     );
-  }
+  },
 );
 
 TasksPanel.displayName = "TasksPanel";

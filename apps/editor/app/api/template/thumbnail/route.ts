@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { storage, type FileNode } from "@/lib/storage";
+import { storage, findFileByExtension } from "@/lib/storage";
 import { apiError, ApiError } from "@/lib/authz";
 import { renderPdfThumbnail } from "@/lib/pdf-thumbnail";
 
@@ -16,18 +16,7 @@ async function findPdfBuffer(storageId: string): Promise<Buffer | null> {
   }
 
   const files = await storage.listProjectFiles(storageId);
-  const findPdf = (nodes: FileNode[]): string | null => {
-    for (const node of nodes) {
-      if (node.isDir && node.children) {
-        const res = findPdf(node.children);
-        if (res) return res;
-      } else if (node.name.endsWith(".pdf")) {
-        return node.path;
-      }
-    }
-    return null;
-  };
-  const existingPdfPath = findPdf(files);
+  const existingPdfPath = findFileByExtension(files, ".pdf");
   if (existingPdfPath) {
     try {
       const buf = await storage.readBinaryFile(storageId, existingPdfPath);

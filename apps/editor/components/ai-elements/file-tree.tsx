@@ -13,9 +13,9 @@ import {
   CopyIcon,
   DownloadIcon,
 } from "lucide-react";
-import { useEffect, useRef, useState, useMemo } from "react";
+import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { Tree } from "react-arborist";
-import type { NodeRendererProps } from "react-arborist";
+import type { NodeApi, NodeRendererProps } from "react-arborist";
 
 import {
   ContextMenu,
@@ -35,7 +35,11 @@ export interface FileNode {
 export type FileTreeProps = {
   data: FileNode[];
   selectedPath?: string;
-  activeCollaborators?: Array<{ clientId: number; user: { name: string; color?: string }; activeFile?: string }>;
+  activeCollaborators?: Array<{
+    clientId: number;
+    user: { name: string; color?: string };
+    activeFile?: string;
+  }>;
   onSelect?: (path: string) => void;
   onMove?: (oldPath: string, newPath: string) => void;
   onDelete?: (path: string) => void;
@@ -79,12 +83,21 @@ const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "svg", "webp"]);
 
 const getFileIcon = (name: string) => {
   const ext = name.includes(".") ? name.split(".").pop()!.toLowerCase() : "";
-  if (IMAGE_EXTS.has(ext))
-    return <ImageIcon className="size-4 text-blue-400 shrink-0" />;
-  if (ext === "pdf")
-    return <FileText className="size-4 text-red-400 shrink-0" />;
+  if (IMAGE_EXTS.has(ext)) return <ImageIcon className="size-4 text-blue-400 shrink-0" />;
+  if (ext === "pdf") return <FileText className="size-4 text-red-400 shrink-0" />;
   return <FileIcon className="size-4 text-muted-foreground shrink-0" />;
 };
+
+function handleRowDragOver(e: React.DragEvent<HTMLDivElement>) {
+  if (!e.dataTransfer.types.includes("Files")) return;
+  e.preventDefault();
+  e.stopPropagation();
+  e.currentTarget.classList.add("bg-primary/10", "ring-1", "ring-primary/20");
+}
+
+function handleRowDragLeave(e: React.DragEvent<HTMLDivElement>) {
+  e.currentTarget.classList.remove("bg-primary/10", "ring-1", "ring-primary/20");
+}
 
 export const FileTree = ({
   data,
@@ -115,11 +128,11 @@ export const FileTree = ({
     if (!onMove || dragIds.length === 0) return;
     const dragId = dragIds[0];
     const targetParentId = parentId; // null means root level
-    
+
     // Construct new path
     const fileName = dragId.split("/").pop() || "";
     const newPath = targetParentId ? `${targetParentId}/${fileName}` : fileName;
-    
+
     if (dragId !== newPath) {
       onMove(dragId, newPath);
     }
@@ -135,145 +148,161 @@ export const FileTree = ({
     }
   };
 
-  const NodeRenderer = ({ node, style, dragHandle }: NodeRendererProps<ArboristNode>) => {
-    const isSelected = selectedPath === node.id;
-    const isFolder = !node.isLeaf;
+  const NodeRenderer = useCallback(
+    ({ node, style, dragHandle }: NodeRendererProps<ArboristNode>) => {
+      const isSelected = selectedPath === node.id;
+      const isFolder = !node.isLeaf;
 
-    const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-      if (!e.dataTransfer.types.includes("Files")) return;
-      e.preventDefault();
-      e.stopPropagation();
-      e.currentTarget.classList.add("bg-primary/10", "ring-1", "ring-primary/20");
-    };
-    const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
-      e.currentTarget.classList.remove("bg-primary/10", "ring-1", "ring-primary/20");
-    };
-    const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
-      if (!e.dataTransfer.types.includes("Files")) return;
-      e.preventDefault();
-      e.stopPropagation();
-      e.currentTarget.classList.remove("bg-primary/10", "ring-1", "ring-primary/20");
-      if (e.dataTransfer.files.length > 0) {
-        onUploadFiles?.(e.dataTransfer.files, node.id);
-      }
-    };
+      const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+        if (!e.dataTransfer.types.includes("Files")) return;
+        e.preventDefault();
+        e.stopPropagation();
+        e.currentTarget.classList.remove("bg-primary/10", "ring-1", "ring-primary/20");
+        if (e.dataTransfer.files.length > 0) {
+          onUploadFiles?.(e.dataTransfer.files, node.id);
+        }
+      };
 
-    const handleClick = (e: React.MouseEvent) => {
-      e.stopPropagation();
-      if (node.isEditing) return;
-      if (isFolder) {
-        node.toggle();
-      } else {
-        onSelect?.(node.id);
-      }
-    };
+      const handleClick = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (node.isEditing) return;
+        if (isFolder) {
+          node.toggle();
+        } else {
+          onSelect?.(node.id);
+        }
+      };
 
-    return (
-      <ContextMenu>
-        <ContextMenuTrigger>
-          <div
-            style={style}
-            ref={dragHandle}
-            className={cn(
-              "flex cursor-pointer items-center gap-1 rounded px-2 py-0.5 transition-colors font-mono text-sm group select-none relative",
-              isSelected ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted/40",
-              node.isDragging && "opacity-40",
-              node.willReceiveDrop && "bg-primary/10 border border-primary/30 ring-1 ring-primary/20"
-            )}
-            onClick={handleClick}
-            {...(isFolder ? { onDragOver: handleDragOver, onDragLeave: handleDragLeave, onDrop: handleDrop } : {})}
-          >
-            <div className="flex items-center gap-1 min-w-0 flex-1">
-              {isFolder ? (
-                <>
-                  <ChevronRightIcon
-                    className={cn(
-                      "size-4 shrink-0 text-muted-foreground transition-transform",
-                      node.isOpen && "rotate-90"
+      return (
+        <ContextMenu>
+          <ContextMenuTrigger>
+            {/* Keyboard activation goes through Tree's onActivate below (fires on
+              Enter/Space for the focused row via Arborist's own roving focus);
+              this onClick is the mouse-only path, so no onKeyDown is needed here. */}
+            {/* oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
+            <div
+              style={style}
+              ref={dragHandle}
+              className={cn(
+                "flex cursor-pointer items-center gap-1 rounded px-2 py-0.5 transition-colors font-mono text-sm group select-none relative",
+                isSelected
+                  ? "bg-muted text-foreground"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/40",
+                node.isDragging && "opacity-40",
+                node.willReceiveDrop &&
+                  "bg-primary/10 border border-primary/30 ring-1 ring-primary/20",
+              )}
+              onClick={handleClick}
+              {...(isFolder
+                ? {
+                    onDragOver: handleRowDragOver,
+                    onDragLeave: handleRowDragLeave,
+                    onDrop: handleDrop,
+                  }
+                : {})}
+            >
+              <div className="flex items-center gap-1 min-w-0 flex-1">
+                {isFolder ? (
+                  <>
+                    <ChevronRightIcon
+                      className={cn(
+                        "size-4 shrink-0 text-muted-foreground transition-transform",
+                        node.isOpen && "rotate-90",
+                      )}
+                    />
+                    {node.isOpen ? (
+                      <FolderOpenIcon className="size-4 text-blue-500 shrink-0" />
+                    ) : (
+                      <FolderIcon className="size-4 text-blue-500 shrink-0" />
                     )}
-                  />
-                  {node.isOpen ? (
-                    <FolderOpenIcon className="size-4 text-blue-500 shrink-0" />
-                  ) : (
-                    <FolderIcon className="size-4 text-blue-500 shrink-0" />
-                  )}
-                </>
-              ) : (
-                <>
-                  {/* Spacer matching folder chevron indentation */}
-                  <span className="size-4 shrink-0" />
-                  {getFileIcon(node.data.name)}
-                </>
-              )}
+                  </>
+                ) : (
+                  <>
+                    {/* Spacer matching folder chevron indentation */}
+                    <span className="size-4 shrink-0" />
+                    {getFileIcon(node.data.name)}
+                  </>
+                )}
 
-              {node.isEditing ? (
-                <input
-                  type="text"
-                  defaultValue={node.data.name}
-                  autoFocus
-                  onClick={(e) => e.stopPropagation()}
-                  onMouseDown={(e) => e.stopPropagation()}
-                  onBlur={(e) => node.submit(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") node.submit(e.currentTarget.value);
-                    if (e.key === "Escape") node.reset();
-                  }}
-                  className="flex-1 rounded border px-1 text-xs bg-background focus:outline-none focus:ring-1 focus:ring-primary h-5 min-w-0"
-                />
-              ) : (
-                <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                  <span className="truncate flex-1">{node.data.name}</span>
-                  {activeCollaborators
-                    .filter((c) => c.activeFile === node.id)
-                    .map((c) => (
-                      <span
-                        key={c.clientId}
-                        title={`${c.user.name} is editing`}
-                        className="size-2 rounded-full ring-1 ring-background shrink-0 animate-pulse"
-                        style={{ backgroundColor: c.user.color || "#3b82f6" }}
-                      />
-                    ))}
-                </div>
-              )}
+                {node.isEditing ? (
+                  <input
+                    type="text"
+                    defaultValue={node.data.name}
+                    autoFocus
+                    onClick={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onBlur={(e) => node.submit(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") node.submit(e.currentTarget.value);
+                      if (e.key === "Escape") node.reset();
+                    }}
+                    className="flex-1 rounded border px-1 text-xs bg-background focus:outline-none focus:ring-1 focus:ring-primary h-5 min-w-0"
+                  />
+                ) : (
+                  <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                    <span className="truncate flex-1">{node.data.name}</span>
+                    {activeCollaborators
+                      .filter((c) => c.activeFile === node.id)
+                      .map((c) => (
+                        <span
+                          key={c.clientId}
+                          title={`${c.user.name} is editing`}
+                          className="size-2 rounded-full ring-1 ring-background shrink-0 animate-pulse"
+                          style={{ backgroundColor: c.user.color || "#3b82f6" }}
+                        />
+                      ))}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        </ContextMenuTrigger>
-        <ContextMenuContent className="w-40" onCloseAutoFocus={(e) => e.preventDefault()}>
-          <ContextMenuItem onClick={() => setTimeout(() => node.edit(), 50)} className="gap-2">
-            <Edit2Icon className="size-3.5" />
-            <span>Rename</span>
-          </ContextMenuItem>
-          <ContextMenuItem onClick={() => onDuplicate?.(node.id)} className="gap-2">
-            <CopyIcon className="size-3.5" />
-            <span>Duplicate</span>
-          </ContextMenuItem>
-          {!isFolder && (
-            <ContextMenuItem onClick={() => onDownload?.(node.id)} className="gap-2">
-              <DownloadIcon className="size-3.5" />
-              <span>Download</span>
+          </ContextMenuTrigger>
+          <ContextMenuContent className="w-40" onCloseAutoFocus={(e) => e.preventDefault()}>
+            <ContextMenuItem onClick={() => setTimeout(() => node.edit(), 50)} className="gap-2">
+              <Edit2Icon className="size-3.5" />
+              <span>Rename</span>
             </ContextMenuItem>
-          )}
-          <ContextMenuSeparator />
-          <ContextMenuItem
-            onClick={() => onDelete?.(node.id)}
-            variant="destructive"
-            className="gap-2"
-          >
-            <Trash2Icon className="size-3.5" />
-            <span>Delete</span>
-          </ContextMenuItem>
-        </ContextMenuContent>
-      </ContextMenu>
-    );
-  };
+            <ContextMenuItem onClick={() => onDuplicate?.(node.id)} className="gap-2">
+              <CopyIcon className="size-3.5" />
+              <span>Duplicate</span>
+            </ContextMenuItem>
+            {!isFolder && (
+              <ContextMenuItem onClick={() => onDownload?.(node.id)} className="gap-2">
+                <DownloadIcon className="size-3.5" />
+                <span>Download</span>
+              </ContextMenuItem>
+            )}
+            <ContextMenuSeparator />
+            <ContextMenuItem
+              onClick={() => onDelete?.(node.id)}
+              variant="destructive"
+              className="gap-2"
+            >
+              <Trash2Icon className="size-3.5" />
+              <span>Delete</span>
+            </ContextMenuItem>
+          </ContextMenuContent>
+        </ContextMenu>
+      );
+    },
+    [selectedPath, activeCollaborators, onSelect, onDelete, onDuplicate, onDownload, onUploadFiles],
+  );
+
+  const handleActivate = useCallback(
+    (node: NodeApi<ArboristNode>) => {
+      if (node.isLeaf) onSelect?.(node.id);
+      else node.toggle();
+    },
+    [onSelect],
+  );
 
   return (
+    // Sizing/drop-target wrapper around Arborist's own <Tree>, which renders the
+    // real ARIA tree structure (treeitem roles, roving focus) internally below —
+    // this outer div isn't itself part of that focus order.
+    // oxlint-disable-next-line jsx-a11y/interactive-supports-focus
     <div
       ref={containerRef}
-      className={cn(
-        "bg-background font-mono text-sm w-full h-full min-h-[400px]",
-        className
-      )}
+      className={cn("bg-background font-mono text-sm w-full h-full min-h-[400px]", className)}
       role="tree"
       onDragOver={(e) => {
         if (!e.dataTransfer.types.includes("Files")) return;
@@ -297,6 +326,7 @@ export const FileTree = ({
           data={arboristData}
           onMove={handleMove}
           onRename={handleRename}
+          onActivate={handleActivate}
           width={dimensions.width}
           height={dimensions.height}
           indent={16}

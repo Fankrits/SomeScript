@@ -1,7 +1,14 @@
 import fs from "fs/promises";
 import path from "path";
 import { createHash } from "crypto";
-import { S3Client, GetObjectCommand, PutObjectCommand, ListObjectsV2Command, CopyObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
+import {
+  S3Client,
+  GetObjectCommand,
+  PutObjectCommand,
+  ListObjectsV2Command,
+  CopyObjectCommand,
+  DeleteObjectCommand,
+} from "@aws-sdk/client-s3";
 
 // Interface for File Nodes matching Editor's FileTree structures
 export interface FileNode {
@@ -21,7 +28,12 @@ export interface StorageProvider {
   readFileWithVersion(projectId: string, fileRelativePath: string): Promise<FileSnapshot>;
   readBinaryFile(projectId: string, fileRelativePath: string): Promise<Buffer>;
   writeFile(projectId: string, fileRelativePath: string, content: string | Buffer): Promise<void>;
-  writeFileIfVersion(projectId: string, fileRelativePath: string, expectedVersion: string, content: string): Promise<boolean>;
+  writeFileIfVersion(
+    projectId: string,
+    fileRelativePath: string,
+    expectedVersion: string,
+    content: string,
+  ): Promise<boolean>;
   createDirectory(projectId: string, dirRelativePath: string): Promise<void>;
   listProjectFiles(projectId: string): Promise<FileNode[]>;
   move(projectId: string, oldPath: string, newPath: string): Promise<void>;
@@ -34,7 +46,15 @@ export interface StorageProvider {
 // Directories hidden from the file tree, code search, and zip export — checked as
 // a path *segment* (not just a basename) so both the local walker and the S3 key
 // lister exclude the same things.
-const EXCLUDED = new Set(["node_modules", ".git", ".next", ".eve", ".workflow-data", ".somescript", ".preview-cache"]);
+const EXCLUDED = new Set([
+  "node_modules",
+  ".git",
+  ".next",
+  ".eve",
+  ".workflow-data",
+  ".somescript",
+  ".preview-cache",
+]);
 
 function contentVersion(content: string): string {
   return `sha256:${createHash("sha256").update(content, "utf8").digest("hex")}`;
@@ -46,6 +66,31 @@ function contentVersion(content: string): string {
 // mangled string overwrites the original file with corrupted bytes.
 export function isBinaryContent(buffer: Buffer): boolean {
   return buffer.subarray(0, Math.min(buffer.length, 8000)).includes(0);
+}
+
+/** Depth-first search for the first file whose name ends with `extension` (e.g. ".pdf"). */
+export function findFileByExtension(nodes: FileNode[], extension: string): string | null {
+  for (const node of nodes) {
+    if (node.isDir && node.children) {
+      const res = findFileByExtension(node.children, extension);
+      if (res) return res;
+    } else if (node.name.endsWith(extension)) {
+      return node.path;
+    }
+  }
+  return null;
+}
+
+/** Sorts a file tree in place: directories before files, then alphabetically. */
+function sortFileTree(nodes: FileNode[]): void {
+  nodes.sort((a, b) => {
+    if (a.isDir && !b.isDir) return -1;
+    if (!a.isDir && b.isDir) return 1;
+    return a.name.localeCompare(b.name);
+  });
+  for (const node of nodes) {
+    if (node.children) sortFileTree(node.children);
+  }
 }
 
 // -------------------------------------------------------------
@@ -74,7 +119,11 @@ export class LocalStorageProvider implements StorageProvider {
     return resolved;
   }
 
-  private async withFileLock<T>(projectId: string, fileRelativePath: string, operation: () => Promise<T>): Promise<T> {
+  private async withFileLock<T>(
+    projectId: string,
+    fileRelativePath: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
     const key = `${projectId}:${fileRelativePath}`;
     const previous = this.writeLocks.get(key) ?? Promise.resolve();
     let releaseQueue!: () => void;
@@ -90,7 +139,7 @@ export class LocalStorageProvider implements StorageProvider {
       baseDir,
       ".somescript",
       "storage-locks",
-      `${encodeURIComponent(fileRelativePath)}.lock`
+      `${encodeURIComponent(fileRelativePath)}.lock`,
     );
     const lockParent = path.dirname(lockPath);
     const deadline = Date.now() + 10_000;
@@ -114,7 +163,7 @@ export class LocalStorageProvider implements StorageProvider {
             // The competing lock was released between mkdir and stat.
           }
           if (Date.now() >= deadline) {
-            throw new Error(`Timed out waiting to write ${fileRelativePath}`);
+            throw new Error(`Timed out waiting to write ${fileRelativePath}`, { cause: error });
           }
           await new Promise((resolve) => setTimeout(resolve, 10));
         }
@@ -128,7 +177,11 @@ export class LocalStorageProvider implements StorageProvider {
     }
   }
 
-  private async writeFileUnlocked(projectId: string, fileRelativePath: string, content: string | Buffer): Promise<void> {
+  private async writeFileUnlocked(
+    projectId: string,
+    fileRelativePath: string,
+    content: string | Buffer,
+  ): Promise<void> {
     const fullPath = this.getLocalPath(projectId, fileRelativePath);
     await fs.mkdir(path.dirname(fullPath), { recursive: true });
     if (typeof content === "string") {
@@ -153,9 +206,13 @@ export class LocalStorageProvider implements StorageProvider {
     return await fs.readFile(fullPath);
   }
 
-  async writeFile(projectId: string, fileRelativePath: string, content: string | Buffer): Promise<void> {
+  async writeFile(
+    projectId: string,
+    fileRelativePath: string,
+    content: string | Buffer,
+  ): Promise<void> {
     await this.withFileLock(projectId, fileRelativePath, () =>
-      this.writeFileUnlocked(projectId, fileRelativePath, content)
+      this.writeFileUnlocked(projectId, fileRelativePath, content),
     );
   }
 
@@ -163,7 +220,7 @@ export class LocalStorageProvider implements StorageProvider {
     projectId: string,
     fileRelativePath: string,
     expectedVersion: string,
-    content: string
+    content: string,
   ): Promise<boolean> {
     return await this.withFileLock(projectId, fileRelativePath, async () => {
       const fullPath = this.getLocalPath(projectId, fileRelativePath);
@@ -235,7 +292,7 @@ export class LocalStorageProvider implements StorageProvider {
       // Hide a compiled main.pdf next to main.tex, but not a genuine PDF figure
       // asset — those never share a same-directory basename with a .tex file.
       const texBasenames = new Set(
-        entries.filter((e) => e.name.endsWith(".tex")).map((e) => e.name.slice(0, -4))
+        entries.filter((e) => e.name.endsWith(".tex")).map((e) => e.name.slice(0, -4)),
       );
 
       for (const entry of entries) {
@@ -261,7 +318,7 @@ export class LocalStorageProvider implements StorageProvider {
         }
       }
 
-      return nodes.sort((a, b) => {
+      return nodes.toSorted((a, b) => {
         if (a.isDir && !b.isDir) return -1;
         if (!a.isDir && b.isDir) return 1;
         return a.name.localeCompare(b.name);
@@ -307,7 +364,7 @@ class S3StorageProvider implements StorageProvider {
       new GetObjectCommand({
         Bucket: this.bucket,
         Key: key,
-      })
+      }),
     );
     return (await response.Body?.transformToString()) || "";
   }
@@ -318,7 +375,7 @@ class S3StorageProvider implements StorageProvider {
       new GetObjectCommand({
         Bucket: this.bucket,
         Key: key,
-      })
+      }),
     );
     const content = (await response.Body?.transformToString()) || "";
     return { content, version: response.ETag || contentVersion(content) };
@@ -330,13 +387,17 @@ class S3StorageProvider implements StorageProvider {
       new GetObjectCommand({
         Bucket: this.bucket,
         Key: key,
-      })
+      }),
     );
     const byteArray = await response.Body?.transformToByteArray();
     return byteArray ? Buffer.from(byteArray) : Buffer.alloc(0);
   }
 
-  async writeFile(projectId: string, fileRelativePath: string, content: string | Buffer): Promise<void> {
+  async writeFile(
+    projectId: string,
+    fileRelativePath: string,
+    content: string | Buffer,
+  ): Promise<void> {
     const key = this.getS3Key(projectId, fileRelativePath);
     await this.client.send(
       new PutObjectCommand({
@@ -346,9 +407,9 @@ class S3StorageProvider implements StorageProvider {
         ContentType: fileRelativePath.endsWith(".pdf")
           ? "application/pdf"
           : fileRelativePath.endsWith(".tex")
-          ? "text/plain"
-          : "application/octet-stream",
-      })
+            ? "text/plain"
+            : "application/octet-stream",
+      }),
     );
   }
 
@@ -356,7 +417,7 @@ class S3StorageProvider implements StorageProvider {
     projectId: string,
     fileRelativePath: string,
     expectedVersion: string,
-    content: string
+    content: string,
   ): Promise<boolean> {
     if (expectedVersion.startsWith("sha256:")) {
       return false;
@@ -370,8 +431,10 @@ class S3StorageProvider implements StorageProvider {
           Key: key,
           Body: Buffer.from(content, "utf-8"),
           IfMatch: expectedVersion,
-          ContentType: fileRelativePath.endsWith(".tex") ? "text/plain" : "application/octet-stream",
-        })
+          ContentType: fileRelativePath.endsWith(".tex")
+            ? "text/plain"
+            : "application/octet-stream",
+        }),
       );
       return true;
     } catch (error) {
@@ -397,7 +460,7 @@ class S3StorageProvider implements StorageProvider {
         Bucket: this.bucket,
         Key: key,
         Body: "",
-      })
+      }),
     );
   }
 
@@ -411,7 +474,7 @@ class S3StorageProvider implements StorageProvider {
     let ContinuationToken: string | undefined;
     do {
       const res = await this.client.send(
-        new ListObjectsV2Command({ Bucket: this.bucket, Prefix: prefix, ContinuationToken })
+        new ListObjectsV2Command({ Bucket: this.bucket, Prefix: prefix, ContinuationToken }),
       );
       if (res.Contents) all.push(...res.Contents);
       ContinuationToken = res.IsTruncated ? res.NextContinuationToken : undefined;
@@ -432,16 +495,19 @@ class S3StorageProvider implements StorageProvider {
             Bucket: this.bucket,
             CopySource: encodeURIComponent(`${this.bucket}/${oldPrefix}`),
             Key: newPrefix,
-          })
+          }),
         );
         await this.client.send(
           new DeleteObjectCommand({
             Bucket: this.bucket,
             Key: oldPrefix,
-          })
+          }),
         );
       } catch (error) {
-        console.error("Direct S3 move failed:", error instanceof Error ? error.message : String(error));
+        console.error(
+          "Direct S3 move failed:",
+          error instanceof Error ? error.message : String(error),
+        );
       }
       return;
     }
@@ -456,14 +522,14 @@ class S3StorageProvider implements StorageProvider {
           Bucket: this.bucket,
           CopySource: encodeURIComponent(`${this.bucket}/${object.Key}`),
           Key: destKey,
-        })
+        }),
       );
 
       await this.client.send(
         new DeleteObjectCommand({
           Bucket: this.bucket,
           Key: object.Key,
-        })
+        }),
       );
     }
   }
@@ -480,7 +546,7 @@ class S3StorageProvider implements StorageProvider {
           Bucket: this.bucket,
           CopySource: encodeURIComponent(`${this.bucket}/${srcPrefix}`),
           Key: destPrefix,
-        })
+        }),
       );
       return;
     }
@@ -495,7 +561,7 @@ class S3StorageProvider implements StorageProvider {
           Bucket: this.bucket,
           CopySource: encodeURIComponent(`${this.bucket}/${object.Key}`),
           Key: destKey,
-        })
+        }),
       );
     }
   }
@@ -521,7 +587,7 @@ class S3StorageProvider implements StorageProvider {
           Bucket: this.bucket,
           CopySource: encodeURIComponent(`${this.bucket}/${object.Key}`),
           Key: destPrefix + relativePart,
-        })
+        }),
       );
     }
   }
@@ -536,7 +602,7 @@ class S3StorageProvider implements StorageProvider {
         new DeleteObjectCommand({
           Bucket: this.bucket,
           Key: prefix,
-        })
+        }),
       );
       return;
     }
@@ -547,7 +613,7 @@ class S3StorageProvider implements StorageProvider {
         new DeleteObjectCommand({
           Bucket: this.bucket,
           Key: object.Key,
-        })
+        }),
       );
     }
   }
@@ -564,7 +630,7 @@ class S3StorageProvider implements StorageProvider {
       objects
         .map((o) => o.Key?.substring(prefix.length) ?? "")
         .filter((p) => p.endsWith(".tex"))
-        .map((p) => p.slice(0, -4))
+        .map((p) => p.slice(0, -4)),
     );
 
     const fileNodes: FileNode[] = [];
@@ -623,19 +689,7 @@ class S3StorageProvider implements StorageProvider {
       }
     }
 
-    // Sort function for structure consistency
-    const sortNodes = (nodes: FileNode[]) => {
-      nodes.sort((a, b) => {
-        if (a.isDir && !b.isDir) return -1;
-        if (!a.isDir && b.isDir) return 1;
-        return a.name.localeCompare(b.name);
-      });
-      for (const node of nodes) {
-        if (node.children) sortNodes(node.children);
-      }
-    };
-
-    sortNodes(fileNodes);
+    sortFileTree(fileNodes);
     return fileNodes;
   }
 }
@@ -646,7 +700,4 @@ class S3StorageProvider implements StorageProvider {
 // S3 errors now propagate to callers — a storage failure must fail the request,
 // never silently write to ephemeral local disk.
 export const storage: StorageProvider =
-  process.env.STORAGE_PROVIDER === "s3"
-    ? new S3StorageProvider()
-    : new LocalStorageProvider();
-
+  process.env.STORAGE_PROVIDER === "s3" ? new S3StorageProvider() : new LocalStorageProvider();
