@@ -36,46 +36,33 @@ interface GlassFilterProps {
   scale?: number;
 }
 
-const GlassFilter = React.memo(
-  ({ id, scale = DEFAULT_GLASS_FILTER_SCALE }: GlassFilterProps) => (
-    <svg className="hidden">
-      <title>Glass Effect Filter</title>
-      <defs>
-        <filter
-          colorInterpolationFilters="sRGB"
-          height="200%"
-          id={id}
-          width="200%"
-          x="-50%"
-          y="-50%"
-        >
-          <feTurbulence
-            baseFrequency="0.05 0.05"
-            numOctaves="1"
-            result="turbulence"
-            seed="1"
-            type="fractalNoise"
-          />
-          <feGaussianBlur
-            in="turbulence"
-            result="blurredNoise"
-            stdDeviation="2"
-          />
-          <feDisplacementMap
-            in="SourceGraphic"
-            in2="blurredNoise"
-            result="displaced"
-            scale={scale}
-            xChannelSelector="R"
-            yChannelSelector="B"
-          />
-          <feGaussianBlur in="displaced" result="finalBlur" stdDeviation="4" />
-          <feComposite in="finalBlur" in2="finalBlur" operator="over" />
-        </filter>
-      </defs>
-    </svg>
-  )
-);
+const GlassFilter = React.memo(({ id, scale = DEFAULT_GLASS_FILTER_SCALE }: GlassFilterProps) => (
+  <svg className="hidden">
+    <title>Glass Effect Filter</title>
+    <defs>
+      <filter colorInterpolationFilters="sRGB" height="200%" id={id} width="200%" x="-50%" y="-50%">
+        <feTurbulence
+          baseFrequency="0.05 0.05"
+          numOctaves="1"
+          result="turbulence"
+          seed="1"
+          type="fractalNoise"
+        />
+        <feGaussianBlur in="turbulence" result="blurredNoise" stdDeviation="2" />
+        <feDisplacementMap
+          in="SourceGraphic"
+          in2="blurredNoise"
+          result="displaced"
+          scale={scale}
+          xChannelSelector="R"
+          yChannelSelector="B"
+        />
+        <feGaussianBlur in="displaced" result="finalBlur" stdDeviation="4" />
+        <feComposite in="finalBlur" in2="finalBlur" operator="over" />
+      </filter>
+    </defs>
+  </svg>
+));
 GlassFilter.displayName = "GlassFilter";
 
 // Liquid Button - extends shadcn Button with glass effect
@@ -105,14 +92,11 @@ function LiquidButton({
 
   return (
     <>
-      <Button
-        className={cn(liquidButtonVariants({ liquidVariant }), className)}
-        {...props}
-      >
+      <Button className={cn(liquidButtonVariants({ liquidVariant }), className)} {...props}>
         <div
           className={cn(
             "pointer-events-none absolute inset-0 rounded-full transition-all",
-            GLASS_SHADOW
+            GLASS_SHADOW,
           )}
         />
         <div
@@ -141,22 +125,11 @@ const liquidGlassCardVariants = cva("relative overflow-hidden transition-all dur
 });
 
 export type LiquidGlassCardProps = React.HTMLAttributes<HTMLDivElement> &
-  VariantProps<typeof liquidGlassCardVariants> & {
-    glassEffect?: boolean;
-  };
+  VariantProps<typeof liquidGlassCardVariants>;
 
-function LiquidGlassCard({
-  className,
-  glassSize,
-  glassEffect,
-  children,
-  ...props
-}: LiquidGlassCardProps) {
+function LiquidGlassCard({ className, glassSize, children, ...props }: LiquidGlassCardProps) {
   return (
-    <Card
-      className={cn(liquidGlassCardVariants({ glassSize }), className)}
-      {...props}
-    >
+    <Card className={cn(liquidGlassCardVariants({ glassSize }), className)} {...props}>
       {children}
     </Card>
   );
@@ -192,10 +165,7 @@ const VolumeBars = React.memo(({ isPlaying }: VolumeBarsProps) => {
     <div className="pointer-events-none flex h-8 w-10 items-end gap-0.5">
       {bars.map((bar) => (
         <div
-          className={cn(
-            "w-[3px] rounded-sm",
-            isPlaying && "animate-bounce-music"
-          )}
+          className={cn("w-[3px] rounded-sm", isPlaying && "animate-bounce-music")}
           key={bar.id}
           style={{
             height: isPlaying ? undefined : STATIC_BAR_HEIGHT,
@@ -215,60 +185,51 @@ interface ProgressBarProps {
   onSeek: (newTime: number) => void;
 }
 
-const ProgressBar = React.memo(
-  ({ currentTime, totalDuration, onSeek }: ProgressBarProps) => {
-    const progress =
-      (currentTime / totalDuration) * PROGRESS_PERCENTAGE_MULTIPLIER;
+const ProgressBar = React.memo(({ currentTime, totalDuration, onSeek }: ProgressBarProps) => {
+  const progress = (currentTime / totalDuration) * PROGRESS_PERCENTAGE_MULTIPLIER;
 
-    const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
-      const bar = e.currentTarget;
-      const rect = bar.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const percent = x / rect.width;
-      const newTime = Math.min(
-        Math.max(MIN_TIME, percent * totalDuration),
-        totalDuration
-      );
+  const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const bar = e.currentTarget;
+    const rect = bar.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const percent = x / rect.width;
+    const newTime = Math.min(Math.max(MIN_TIME, percent * totalDuration), totalDuration);
+    onSeek(newTime);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      const newTime = Math.min(currentTime + SEEK_JUMP_SECONDS, totalDuration);
       onSeek(newTime);
-    };
+    }
+  };
 
-    const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-      if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        const newTime = Math.min(
-          currentTime + SEEK_JUMP_SECONDS,
-          totalDuration
-        );
-        onSeek(newTime);
-      }
-    };
-
-    return (
-      <>
-        <div className="flex justify-between font-medium text-xs text-zinc-500 dark:text-zinc-400">
-          <span className="tabular-nums">{formatTime(currentTime)}</span>
-          <span className="tabular-nums">{formatTime(totalDuration)}</span>
-        </div>
+  return (
+    <>
+      <div className="flex justify-between font-medium text-xs text-zinc-500 dark:text-zinc-400">
+        <span className="tabular-nums">{formatTime(currentTime)}</span>
+        <span className="tabular-nums">{formatTime(totalDuration)}</span>
+      </div>
+      <div
+        aria-label="Seek progress bar"
+        aria-valuemax={totalDuration}
+        aria-valuemin={MIN_TIME}
+        aria-valuenow={currentTime}
+        className="relative z-10 h-1 w-full cursor-pointer overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800"
+        onClick={handleClick}
+        onKeyDown={handleKeyDown}
+        role="slider"
+        tabIndex={0}
+      >
         <div
-          aria-label="Seek progress bar"
-          aria-valuemax={totalDuration}
-          aria-valuemin={MIN_TIME}
-          aria-valuenow={currentTime}
-          className="relative z-10 h-1 w-full cursor-pointer overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800"
-          onClick={handleClick}
-          onKeyDown={handleKeyDown}
-          role="slider"
-          tabIndex={0}
-        >
-          <div
-            className="h-full bg-gradient-to-r from-[#FF2E55] to-[#FF6B88] transition-all duration-200"
-            style={{ width: `${progress}%` }}
-          />
-        </div>
-      </>
-    );
-  }
-);
+          className="h-full bg-gradient-to-r from-[#FF2E55] to-[#FF6B88] transition-all duration-200"
+          style={{ width: `${progress}%` }}
+        />
+      </div>
+    </>
+  );
+});
 ProgressBar.displayName = "ProgressBar";
 
 export function NotificationCenter() {
@@ -322,9 +283,7 @@ export function NotificationCenter() {
             <h3 className="overflow-hidden text-ellipsis whitespace-nowrap font-semibold text-lg text-zinc-900 dark:text-white">
               Glow
             </h3>
-            <p className="mt-0.5 text-sm text-zinc-600 dark:text-zinc-400">
-              Echo
-            </p>
+            <p className="mt-0.5 text-sm text-zinc-600 dark:text-zinc-400">Echo</p>
           </div>
 
           <VolumeBars isPlaying={isPlaying} />
@@ -354,11 +313,7 @@ export function NotificationCenter() {
                 size="icon"
                 variant="ghost"
               >
-                {isPlaying ? (
-                  <Pause className="size-5" />
-                ) : (
-                  <Play className="size-5" />
-                )}
+                {isPlaying ? <Pause className="size-5" /> : <Play className="size-5" />}
               </LiquidButton>
               <LiquidButton
                 aria-label="Next track"
