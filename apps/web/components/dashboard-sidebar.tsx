@@ -5,7 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { UserButton, OrganizationSwitcher } from "@clerk/nextjs";
-import { CreditCard, Folder, Menu, X, PanelLeft, LayoutTemplate } from "lucide-react";
+import { CreditCard, Folder, X, PanelLeft, LayoutTemplate } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { UpgradeDialog } from "@/components/upgrade-dialog";
@@ -37,10 +37,14 @@ export function DashboardSidebar({
       <div className="flex flex-col gap-6 sm:gap-8">
         {/* Logo */}
         <Link href="/" className="flex items-center gap-1.5 hover:opacity-90 transition-opacity">
-          <Image src="/logo.svg" alt="SomeScript Logo" width={32} height={32} className="h-8 w-8 -mr-1" />
-          <span className="font-semibold text-base tracking-tight text-foreground">
-            SomeScript
-          </span>
+          <Image
+            src="/logo.svg"
+            alt="SomeScript Logo"
+            width={32}
+            height={32}
+            className="h-8 w-8 -mr-1"
+          />
+          <span className="font-semibold text-base tracking-tight text-foreground">SomeScript</span>
         </Link>
 
         {/* Workspace Select Dropdown */}
@@ -49,7 +53,10 @@ export function DashboardSidebar({
             <span className="text-muted-foreground text-[10px] uppercase font-bold tracking-wider">
               Active Workspace
             </span>
-            <Badge variant={plan === "free" ? "outline" : "default"} className="uppercase text-[9px] px-1.5 py-0">
+            <Badge
+              variant={plan === "free" ? "outline" : "default"}
+              className="uppercase text-[9px] px-1.5 py-0"
+            >
               {PLAN_LABEL[plan] ?? plan}
             </Badge>
           </div>
@@ -163,7 +170,13 @@ export function DashboardSidebar({
             <PanelLeft className="h-5 w-5" />
           </button>
           <Link href="/" className="flex items-center gap-1.5">
-            <Image src="/logo.svg" alt="SomeScript Logo" width={28} height={28} className="h-7 w-7 -mr-1" />
+            <Image
+              src="/logo.svg"
+              alt="SomeScript Logo"
+              width={28}
+              height={28}
+              className="h-7 w-7 -mr-1"
+            />
             <span className="font-semibold text-base tracking-tight text-foreground">
               SomeScript
             </span>
@@ -171,7 +184,10 @@ export function DashboardSidebar({
         </div>
 
         <div className="flex items-center gap-2">
-          <Badge variant={plan === "free" ? "outline" : "default"} className="uppercase text-[9px] px-2 py-0.5">
+          <Badge
+            variant={plan === "free" ? "outline" : "default"}
+            className="uppercase text-[9px] px-2 py-0.5"
+          >
             {PLAN_LABEL[plan] ?? plan}
           </Badge>
           <UserButton showName={false} />
@@ -181,13 +197,17 @@ export function DashboardSidebar({
       {/* Mobile Drawer Sheet Backdrop & Panel */}
       {mobileOpen && (
         <>
+          {/* Dismiss-on-click scrim, not a control — the close button below stays the keyboard/screen-reader way to close it. */}
+          {/* oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
           <div
             className="lg:hidden fixed inset-0 bg-black/60 backdrop-blur-xs z-40 transition-opacity"
             onClick={() => setMobileOpen(false)}
           />
           <aside className="lg:hidden fixed inset-y-0 left-0 z-50 w-72 bg-sidebar border-r border-border p-5 shadow-2xl animate-in slide-in-from-left duration-250">
             <div className="flex items-center justify-between mb-4 pb-2 border-b border-sidebar-border">
-              <span className="text-xs font-mono font-bold text-muted-foreground uppercase tracking-wider">Menu</span>
+              <span className="text-xs font-mono font-bold text-muted-foreground uppercase tracking-wider">
+                Menu
+              </span>
               <button
                 type="button"
                 onClick={() => setMobileOpen(false)}
@@ -208,9 +228,7 @@ export function DashboardSidebar({
       </aside>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {children}
-      </div>
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">{children}</div>
     </div>
   );
 }

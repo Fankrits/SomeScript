@@ -1,19 +1,54 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Copy, Download, FileCode, Hand, ListTodo, Loader2, Maximize2, Minus, MousePointer, Plus, Scan, Search, SquareDashedMousePointer, ZoomIn, ZoomOut } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Copy,
+  Download,
+  FileCode,
+  Hand,
+  ListTodo,
+  Loader2,
+  Maximize2,
+  Minus,
+  MousePointer,
+  Plus,
+  Scan,
+  Search,
+  SquareDashedMousePointer,
+  ZoomIn,
+  ZoomOut,
+} from "lucide-react";
 import { createPluginRegistration } from "@embedpdf/core";
 import { EmbedPDF } from "@embedpdf/core/react";
 import { usePdfiumEngine } from "@embedpdf/engines/react";
-import { DocumentManagerPluginPackage, useActiveDocument, useDocumentManagerCapability } from "@embedpdf/plugin-document-manager/react";
+import {
+  DocumentManagerPluginPackage,
+  useActiveDocument,
+  useDocumentManagerCapability,
+} from "@embedpdf/plugin-document-manager/react";
 import { Viewport, ViewportPluginPackage } from "@embedpdf/plugin-viewport/react";
 import { Scroller, ScrollPluginPackage, useScroll } from "@embedpdf/plugin-scroll/react";
 import { RenderLayer, RenderPluginPackage } from "@embedpdf/plugin-render/react";
-import { ZoomGestureWrapper, ZoomMode, ZoomPluginPackage, useZoom } from "@embedpdf/plugin-zoom/react";
+import {
+  ZoomGestureWrapper,
+  ZoomMode,
+  ZoomPluginPackage,
+  useZoom,
+} from "@embedpdf/plugin-zoom/react";
 import { PanPluginPackage, usePan } from "@embedpdf/plugin-pan/react";
 import { SearchLayer, SearchPluginPackage, useSearch } from "@embedpdf/plugin-search/react";
-import { SelectionLayer, SelectionPluginPackage, useSelectionCapability } from "@embedpdf/plugin-selection/react";
-import { GlobalPointerProvider, InteractionManagerPluginPackage, PagePointerProvider } from "@embedpdf/plugin-interaction-manager/react";
+import {
+  SelectionLayer,
+  SelectionPluginPackage,
+  useSelectionCapability,
+} from "@embedpdf/plugin-selection/react";
+import {
+  GlobalPointerProvider,
+  InteractionManagerPluginPackage,
+  PagePointerProvider,
+} from "@embedpdf/plugin-interaction-manager/react";
 import { Button } from "@/components/ui/button";
 import {
   ContextMenu,
@@ -37,7 +72,6 @@ const pdfPlugins = [
   createPluginRegistration(SelectionPluginPackage),
 ];
 
-
 // One `synctex view` result box, in PDF points from the page's top-left:
 // (x, y) visual box origin, (h, v) box left edge / baseline, W x H box size.
 interface SynctexViewRecord {
@@ -51,7 +85,7 @@ interface SynctexViewRecord {
 }
 // `view` answers with records, `edit` with an input/line pair — one endpoint, both shapes.
 type SynctexQuery = (
-  query: Record<string, unknown>
+  query: Record<string, unknown>,
 ) => Promise<{ records?: SynctexViewRecord[]; input?: string; line?: number } | null>;
 
 interface HeadlessPdfViewerProps {
@@ -111,7 +145,12 @@ const HeadlessPdfViewer = ({
     );
   }
 
-  if (!activeDocumentId || activeDocumentId !== currentDocId || !activeDocument || activeDocument.status !== "loaded") {
+  if (
+    !activeDocumentId ||
+    activeDocumentId !== currentDocId ||
+    !activeDocument ||
+    activeDocument.status !== "loaded"
+  ) {
     return (
       <div className="flex-1 flex items-center justify-center text-xs font-mono text-muted-foreground p-4 text-center gap-2">
         <Loader2 className="size-4 animate-spin text-primary" />
@@ -162,7 +201,12 @@ const HeadlessPdfViewerInner = ({
   // nonce keys the flash element so a re-sync remounts it and the CSS animation restarts —
   // otherwise re-syncing the same line renders an identical element whose finished
   // animation (forwards => opacity 0) never replays, and the highlight seems to "not show".
-  const [syncHighlight, setSyncHighlight] = useState<{ page: number; y: number; h: number; nonce: number } | null>(null);
+  const [syncHighlight, setSyncHighlight] = useState<{
+    page: number;
+    y: number;
+    h: number;
+    nonce: number;
+  } | null>(null);
   const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Forward SyncTeX (`synctex view`): scroll the PDF to the editor line ONLY on an
@@ -186,7 +230,7 @@ const HeadlessPdfViewerInner = ({
     if (!selectedPath || !line) return;
 
     let cancelled = false;
-    (async () => {
+    void (async () => {
       const data = await synctexQuery({ type: "view", texRelativePath: selectedPath, line });
       const records: SynctexViewRecord[] = data?.records ?? [];
       if (cancelled || records.length === 0) return;
@@ -219,17 +263,24 @@ const HeadlessPdfViewerInner = ({
       if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
       highlightTimerRef.current = setTimeout(() => setSyncHighlight(null), 2200);
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [pdfSyncRequest, selectedPath, synctexQuery, scrollHook?.provides]);
 
-  useEffect(() => () => {
-    if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
-  }, []);
+  useEffect(
+    () => () => {
+      if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+    },
+    [],
+  );
 
   // Both the right-click menu and its own state are read once, when the menu
   // opens, so a right-click doesn't re-render the viewer on every pointer move.
   const [hasSelection, setHasSelection] = useState(false);
-  const [contextPage, setContextPage] = useState<{ page: number; x: number; y: number } | null>(null);
+  const [contextPage, setContextPage] = useState<{ page: number; x: number; y: number } | null>(
+    null,
+  );
 
   // Initialize zoom to 100% when a new document ID is loaded to trigger layout calculation.
   // Keyed on documentId only: useZoom() returns a freshly-constructed `provides` object on
@@ -253,24 +304,28 @@ const HeadlessPdfViewerInner = ({
 
   const handleCopy = useCallback(() => {
     if (!selectionCap.provides) return;
-    selectionCap.provides.getSelectedText(documentId).wait((textArray) => {
-      if (textArray && textArray.length > 0) {
-        navigator.clipboard.writeText(textArray.join("\n"))
-          .then(() => {
-            // Leave the highlight up briefly so the copy is visibly acknowledged,
-            // then drop it — the "Copied!" affordance that used to do that is gone.
-            setTimeout(() => selectionCap.provides?.clear(documentId), 1200);
-          })
-          .catch((err) => {
-            console.error("Failed to copy PDF selection to clipboard:", err);
-            selectionCap.provides?.clear(documentId);
-          });
-      } else {
+    selectionCap.provides.getSelectedText(documentId).wait(
+      (textArray) => {
+        if (textArray && textArray.length > 0) {
+          navigator.clipboard
+            .writeText(textArray.join("\n"))
+            .then(() => {
+              // Leave the highlight up briefly so the copy is visibly acknowledged,
+              // then drop it — the "Copied!" affordance that used to do that is gone.
+              setTimeout(() => selectionCap.provides?.clear(documentId), 1200);
+            })
+            .catch((err) => {
+              console.error("Failed to copy PDF selection to clipboard:", err);
+              selectionCap.provides?.clear(documentId);
+            });
+        } else {
+          selectionCap.provides?.clear(documentId);
+        }
+      },
+      () => {
         selectionCap.provides?.clear(documentId);
-      }
-    }, () => {
-      selectionCap.provides?.clear(documentId);
-    });
+      },
+    );
   }, [selectionCap.provides, documentId]);
 
   // Selection's start page is 0-based (GlyphPointer.page), unlike contextPage below
@@ -282,10 +337,13 @@ const HeadlessPdfViewerInner = ({
     const state = selectionCap.provides?.getState(documentId);
     const startPage = state?.selection?.start.page;
     if (!selectionCap.provides || startPage === undefined) return;
-    selectionCap.provides.getSelectedText(documentId).wait((textArray) => {
-      const text = (textArray ?? []).join("\n").trim();
-      if (text) onCreateTask(text, startPage + 1);
-    }, () => {});
+    selectionCap.provides.getSelectedText(documentId).wait(
+      (textArray) => {
+        const text = (textArray ?? []).join("\n").trim();
+        if (text) onCreateTask(text, startPage + 1);
+      },
+      () => {},
+    );
   }, [selectionCap.provides, documentId, onCreateTask]);
 
   // Reverse SyncTeX (`synctex edit`) wants PDF points from the page's top-left.
@@ -294,7 +352,8 @@ const HeadlessPdfViewerInner = ({
   // and returns null off-page (the gutter), where there is no source to jump to.
   const pointFromEvent = useCallback(
     (e: React.MouseEvent) => {
-      const pageEl = (e.target as HTMLElement).closest<HTMLElement>("[data-page-index]");
+      if (!(e.target instanceof HTMLElement)) return null;
+      const pageEl = e.target.closest<HTMLElement>("[data-page-index]");
       if (!pageEl) return null;
       const rect = pageEl.getBoundingClientRect();
       const zoom = zoomHook?.state?.currentZoomLevel ?? 1;
@@ -304,7 +363,7 @@ const HeadlessPdfViewerInner = ({
         y: (e.clientY - rect.top) / zoom,
       };
     },
-    [zoomHook?.state?.currentZoomLevel]
+    [zoomHook?.state?.currentZoomLevel],
   );
 
   const syncToEditor = useCallback(
@@ -312,7 +371,7 @@ const HeadlessPdfViewerInner = ({
       const data = await synctexQuery({ type: "edit", ...point });
       if (data?.input && data.line) onSelectLine(data.input, data.line);
     },
-    [synctexQuery, onSelectLine]
+    [synctexQuery, onSelectLine],
   );
 
   useEffect(() => {
@@ -320,14 +379,14 @@ const HeadlessPdfViewerInner = ({
       const isCopy = (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "c";
       if (isCopy) {
         const state = selectionCap.provides?.getState(documentId);
-        const hasSelection = state?.selection !== null && state?.selection !== undefined;
-        if (hasSelection) {
+        const hasActiveSelection = state?.selection !== null && state?.selection !== undefined;
+        if (hasActiveSelection) {
           const activeEl = document.activeElement;
-          const isEditing = activeEl && (
-            activeEl.tagName === "INPUT" ||
-            activeEl.tagName === "TEXTAREA" ||
-            activeEl.closest(".cm-editor") !== null
-          );
+          const isEditing =
+            activeEl &&
+            (activeEl.tagName === "INPUT" ||
+              activeEl.tagName === "TEXTAREA" ||
+              activeEl.closest(".cm-editor") !== null);
           if (!isEditing) {
             e.preventDefault();
             handleCopy();
@@ -374,8 +433,6 @@ const HeadlessPdfViewerInner = ({
     }
   };
 
-
-
   return (
     <div className="w-full h-full flex flex-col min-w-0 bg-muted/5 relative overflow-hidden select-none">
       {/* Aligned Branded Custom Toolbar */}
@@ -385,7 +442,12 @@ const HeadlessPdfViewerInner = ({
           <Button
             variant="ghost"
             size="icon-xs"
-            className={cn("h-7 w-7 rounded-md transition-all duration-150", !isPanning ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}
+            className={cn(
+              "h-7 w-7 rounded-md transition-all duration-150",
+              !isPanning
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
             onClick={() => {
               if (isPanning) panHook?.provides?.disablePan();
             }}
@@ -398,7 +460,12 @@ const HeadlessPdfViewerInner = ({
           <Button
             variant="ghost"
             size="icon-xs"
-            className={cn("h-7 w-7 rounded-md transition-all duration-150", isPanning ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}
+            className={cn(
+              "h-7 w-7 rounded-md transition-all duration-150",
+              isPanning
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
             onClick={() => {
               if (!isPanning) panHook?.provides?.enablePan();
             }}
@@ -536,11 +603,8 @@ const HeadlessPdfViewerInner = ({
                 <ChevronRight className="size-3.5" />
               </Button>
             </div>
-    
-            <Viewport
-              documentId={documentId}
-              className="w-full h-full overflow-auto"
-            >
+
+            <Viewport documentId={documentId} className="w-full h-full overflow-auto">
               <GlobalPointerProvider documentId={documentId} className="w-full h-full">
                 <ZoomGestureWrapper documentId={documentId} className="w-full min-h-full">
                   <Scroller
@@ -548,69 +612,98 @@ const HeadlessPdfViewerInner = ({
                     renderPage={({ pageIndex, width, height }) => {
                       const handleDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
                         const point = pointFromEvent(e);
-                        if (point) syncToEditor(point);
+                        if (point) void syncToEditor(point);
                       };
-    
+
                       return (
                         <div
                           key={pageIndex}
-                          style={{ width: "100%", display: "flex", justifyContent: "center", paddingTop: pageIndex === 0 ? "16px" : "8px", paddingBottom: "8px" }}
+                          style={{
+                            width: "100%",
+                            display: "flex",
+                            justifyContent: "center",
+                            paddingTop: pageIndex === 0 ? "16px" : "8px",
+                            paddingBottom: "8px",
+                          }}
                         >
                           <div
                             data-page-index={pageIndex}
-                            style={{ width, height, position: "relative", display: "block", flexShrink: 0 }}
+                            style={{
+                              width,
+                              height,
+                              position: "relative",
+                              display: "block",
+                              flexShrink: 0,
+                            }}
                             className="shadow-md bg-background border border-border/40 rounded-sm overflow-hidden"
                             onDoubleClick={handleDoubleClick}
                           >
-                            {syncHighlight && syncHighlight.page === pageIndex + 1 && (() => {
-                              // SyncTeX is line-granular: a record boxes some fragment of the source
-                              // line, not the clicked word, so a box-accurate highlight often lands on
-                              // the wrong word. Highlight the full-width line band instead (à la
-                              // Overleaf): vertical position from the record, horizontal spans the page.
-                              const zoom = zoomHook?.state?.currentZoomLevel ?? 1; // pt -> css px
-                              // Band spans ~3 text lines, centered on the target line, to absorb
-                              // SyncTeX's line-level (not word-level) imprecision.
-                              const lineH = Math.max(syncHighlight.h * zoom, zoom * 11);
-                              return (
-                                <div
-                                  key={syncHighlight.nonce}
-                                  className="synctex-flash"
-                                  style={{
-                                    position: "absolute",
-                                    left: 6,
-                                    right: 6,
-                                    top: Math.max(0, (syncHighlight.y - syncHighlight.h) * zoom - lineH),
-                                    height: lineH * 3,
-                                    pointerEvents: "none",
-                                    zIndex: 30,
-                                  }}
-                                />
-                              );
-                            })()}
+                            {syncHighlight &&
+                              syncHighlight.page === pageIndex + 1 &&
+                              (() => {
+                                // SyncTeX is line-granular: a record boxes some fragment of the source
+                                // line, not the clicked word, so a box-accurate highlight often lands on
+                                // the wrong word. Highlight the full-width line band instead (à la
+                                // Overleaf): vertical position from the record, horizontal spans the page.
+                                const zoom = zoomHook?.state?.currentZoomLevel ?? 1; // pt -> css px
+                                // Band spans ~3 text lines, centered on the target line, to absorb
+                                // SyncTeX's line-level (not word-level) imprecision.
+                                const lineH = Math.max(syncHighlight.h * zoom, zoom * 11);
+                                return (
+                                  <div
+                                    key={syncHighlight.nonce}
+                                    className="synctex-flash"
+                                    style={{
+                                      position: "absolute",
+                                      left: 6,
+                                      right: 6,
+                                      top: Math.max(
+                                        0,
+                                        (syncHighlight.y - syncHighlight.h) * zoom - lineH,
+                                      ),
+                                      height: lineH * 3,
+                                      pointerEvents: "none",
+                                      zIndex: 30,
+                                    }}
+                                  />
+                                );
+                              })()}
                             <PagePointerProvider
                               documentId={documentId}
                               pageIndex={pageIndex}
-                              style={{ width: "100%", height: "100%", position: "relative", display: "block", flexShrink: 0 }}
+                              style={{
+                                width: "100%",
+                                height: "100%",
+                                position: "relative",
+                                display: "block",
+                                flexShrink: 0,
+                              }}
                             >
                               <RenderLayer
-                              documentId={documentId}
-                              pageIndex={pageIndex}
-                              style={{ width: "100%", height: "100%", display: "block", userSelect: "none", pointerEvents: "none" }}
-                              draggable={false}
-                            />
-                            <SearchLayer
-                              documentId={documentId}
-                              pageIndex={pageIndex}
-                              style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
-                            />
-                            {!isPanning && (
-                              <SelectionLayer
                                 documentId={documentId}
                                 pageIndex={pageIndex}
-                                textStyle={{ background: "rgba(59, 130, 246, 0.35)" }}
+                                style={{
+                                  width: "100%",
+                                  height: "100%",
+                                  display: "block",
+                                  userSelect: "none",
+                                  pointerEvents: "none",
+                                }}
+                                draggable={false}
                               />
-                            )}
-                          </PagePointerProvider>
+                              <SearchLayer
+                                documentId={documentId}
+                                pageIndex={pageIndex}
+                                style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
+                              />
+                              {!isPanning && (
+                                <SelectionLayer
+                                  documentId={documentId}
+                                  pageIndex={pageIndex}
+                                  textStyle={{ background: "rgba(59, 130, 246, 0.35)" }}
+                                />
+                              )}
+                            </PagePointerProvider>
                           </div>
                         </div>
                       );

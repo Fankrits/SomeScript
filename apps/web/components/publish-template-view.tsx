@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -16,17 +16,13 @@ import {
   CheckCircle2,
   ChevronRight,
   AlertTriangle,
-  Eye,
   RotateCcw,
   Sparkles,
 } from "lucide-react";
 import { publishTemplate } from "@/app/dashboard/templates/actions";
 import { TEMPLATE_CATEGORIES } from "@/lib/template-categories";
 
-const TemplatePdfViewer = dynamic(
-  () => import("@/components/template-pdf-viewer"),
-  { ssr: false }
-);
+const TemplatePdfViewer = dynamic(() => import("@/components/template-pdf-viewer"), { ssr: false });
 
 type Step = "form" | "compiling" | "preview";
 
@@ -62,20 +58,6 @@ export function PublishTemplateView() {
   // Step 3 → publish
   const [publishing, setPublishing] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
-
-  const resetAll = useCallback(() => {
-    setStep("form");
-    setFile(null);
-    setFormValues({ name: "", description: "", category: "General" });
-    setFormError(null);
-    setCompileLog(null);
-    setCompileFailed(false);
-    setStagingId(null);
-    setElapsed(0);
-    setPublishing(false);
-    setPublishError(null);
-    if (elapsedRef.current) clearInterval(elapsedRef.current);
-  }, []);
 
   // ── drag & drop ────────────────────────────────────────────────────────────
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
@@ -196,9 +178,19 @@ export function PublishTemplateView() {
 
         {/* Step Indicator */}
         <div className="flex items-center gap-2 sm:gap-4">
-          <StepBadge index={1} label="Details & File" active={step === "form"} done={step !== "form"} />
+          <StepBadge
+            index={1}
+            label="Details & File"
+            active={step === "form"}
+            done={step !== "form"}
+          />
           <StepDivider done={step !== "form"} />
-          <StepBadge index={2} label="Compiling" active={step === "compiling"} done={step === "preview"} />
+          <StepBadge
+            index={2}
+            label="Compiling"
+            active={step === "compiling"}
+            done={step === "preview"}
+          />
           <StepDivider done={step === "preview"} />
           <StepBadge index={3} label="PDF Preview" active={step === "preview"} done={false} />
         </div>
@@ -211,9 +203,12 @@ export function PublishTemplateView() {
           <div className="flex-1 overflow-y-auto p-4 sm:p-8 flex justify-center">
             <div className="w-full max-w-3xl space-y-6">
               <div>
-                <h2 className="text-xl font-bold text-foreground tracking-tight">Template Details</h2>
+                <h2 className="text-xl font-bold text-foreground tracking-tight">
+                  Template Details
+                </h2>
                 <p className="text-xs sm:text-sm text-muted-foreground font-light mt-1">
-                  Upload your LaTeX template archive (.zip) containing main.tex and supporting assets.
+                  Upload your LaTeX template archive (.zip) containing main.tex and supporting
+                  assets.
                 </p>
               </div>
 
@@ -239,7 +234,10 @@ export function PublishTemplateView() {
                 </div>
 
                 <div className="grid gap-2">
-                  <Label htmlFor="page-tmpl-category" className="text-xs font-semibold text-foreground">
+                  <Label
+                    htmlFor="page-tmpl-category"
+                    className="text-xs font-semibold text-foreground"
+                  >
                     Category
                   </Label>
                   <select
@@ -276,6 +274,8 @@ export function PublishTemplateView() {
                     Template Archive (.zip) <span className="text-destructive">*</span>
                   </Label>
                   <div
+                    role="button"
+                    tabIndex={0}
                     onDragOver={handleDragOver}
                     onDragLeave={handleDragLeave}
                     onDrop={handleDrop}
@@ -283,10 +283,16 @@ export function PublishTemplateView() {
                       isDragging
                         ? "border-primary bg-primary/10 scale-[1.005]"
                         : file
-                        ? "border-primary/40 bg-primary/5"
-                        : "border-border hover:border-primary/50 bg-background/50"
+                          ? "border-primary/40 bg-primary/5"
+                          : "border-border hover:border-primary/50 bg-background/50"
                     }`}
                     onClick={() => document.getElementById("page-zip-upload-input")?.click()}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        document.getElementById("page-zip-upload-input")?.click();
+                      }
+                    }}
                   >
                     <input
                       type="file"
@@ -303,11 +309,15 @@ export function PublishTemplateView() {
                         file
                           ? "bg-primary/15 text-primary"
                           : isDragging
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-secondary text-primary"
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-secondary text-primary"
                       }`}
                     >
-                      {file ? <CheckCircle2 className="h-6 w-6" /> : <FileArchive className="h-6 w-6" />}
+                      {file ? (
+                        <CheckCircle2 className="h-6 w-6" />
+                      ) : (
+                        <FileArchive className="h-6 w-6" />
+                      )}
                     </div>
                     {file ? (
                       <div>
@@ -321,7 +331,9 @@ export function PublishTemplateView() {
                     ) : (
                       <div>
                         <p className="text-sm font-medium text-foreground">
-                          {isDragging ? "Drop your .zip file here" : "Click to upload or drag & drop .zip archive"}
+                          {isDragging
+                            ? "Drop your .zip file here"
+                            : "Click to upload or drag & drop .zip archive"}
                         </p>
                         <p className="text-xs text-muted-foreground mt-1">
                           Archive should include main.tex, figures, and style files (.cls, .sty)
@@ -358,7 +370,9 @@ export function PublishTemplateView() {
                   <div className="relative mb-6">
                     <div className="h-20 w-20 rounded-full border-4 border-primary/20 border-t-primary animate-spin" />
                     <div className="absolute inset-0 flex items-center justify-center">
-                      <span className="text-xs font-mono font-semibold text-foreground">{elapsed}s</span>
+                      <span className="text-xs font-mono font-semibold text-foreground">
+                        {elapsed}s
+                      </span>
                     </div>
                   </div>
                   <h3 className="text-lg font-bold text-foreground">Compiling LaTeX Source</h3>
@@ -366,8 +380,8 @@ export function PublishTemplateView() {
                     {elapsed < 10
                       ? "Unpacking archive and invoking Tectonic engine..."
                       : elapsed < 30
-                      ? "Fetching TeX Live dependencies and compiling PDF..."
-                      : "Finalizing PDF rendering..."}
+                        ? "Fetching TeX Live dependencies and compiling PDF..."
+                        : "Finalizing PDF rendering..."}
                   </p>
                 </>
               ) : (
@@ -511,8 +525,8 @@ function StepBadge({
           done
             ? "bg-primary text-primary-foreground"
             : active
-            ? "bg-primary/15 text-primary border-2 border-primary"
-            : "bg-muted text-muted-foreground border-2 border-border"
+              ? "bg-primary/15 text-primary border-2 border-primary"
+              : "bg-muted text-muted-foreground border-2 border-border"
         }`}
       >
         {done ? <CheckCircle2 className="h-3.5 w-3.5" /> : index}
@@ -529,5 +543,9 @@ function StepBadge({
 }
 
 function StepDivider({ done }: { done: boolean }) {
-  return <div className={`h-0.5 w-4 sm:w-8 rounded transition-all ${done ? "bg-primary" : "bg-border"}`} />;
+  return (
+    <div
+      className={`h-0.5 w-4 sm:w-8 rounded transition-all ${done ? "bg-primary" : "bg-border"}`}
+    />
+  );
 }
