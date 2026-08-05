@@ -6,6 +6,7 @@ import { projects, workspaces, users } from "@/db/schema";
 import { revalidatePath } from "next/cache";
 import { eq, and } from "drizzle-orm";
 import { assertProjectLimit, assertWorkspaceActive, seedWorkspaceDefaults } from "@/lib/limits";
+import { formString, formFile } from "@/lib/utils";
 
 // Helper to ensure the active workspace exists in our database
 export async function ensureWorkspaceExists(orgId: string | null, userId: string) {
@@ -36,6 +37,7 @@ export async function ensureWorkspaceExists(orgId: string | null, userId: string
 
   // 2. Check if workspace exists
   const existing = await db.query.workspaces.findFirst({
+    // oxlint-disable-next-line no-shadow -- Drizzle's relational-query callback API: this `eq` is the query builder's own helper, not the top-level import.
     where: (w, { eq }) => eq(w.id, targetId),
   });
 
@@ -80,7 +82,7 @@ export async function createProject(formData: FormData): Promise<{ error: string
     return { error: "Unauthorized" };
   }
 
-  const name = formData.get("name") as string;
+  const name = formString(formData, "name");
   if (!name || name.trim() === "") {
     return { error: "Project name is required" };
   }
@@ -122,8 +124,8 @@ export async function importProject(formData: FormData): Promise<{ error: string
     return { error: "Unauthorized" };
   }
 
-  const name = formData.get("name") as string;
-  const file = formData.get("file") as File | null;
+  const name = formString(formData, "name");
+  const file = formFile(formData, "file");
 
   if (!name || name.trim() === "") {
     return { error: "Project name is required" };
@@ -183,8 +185,10 @@ export async function importProject(formData: FormData): Promise<{ error: string
   revalidatePath("/dashboard");
 }
 
-
-export async function renameProject(projectId: string, newName: string): Promise<{ error: string } | void> {
+export async function renameProject(
+  projectId: string,
+  newName: string,
+): Promise<{ error: string } | void> {
   const { userId, orgId } = await auth();
 
   if (!userId) {
@@ -240,8 +244,9 @@ export async function deleteProject(projectId: string): Promise<{ error: string 
     console.error("Error calling editor service to delete project files:", error);
   }
 
-  await db.delete(projects).where(and(eq(projects.id, projectId), eq(projects.workspaceId, workspaceId)));
+  await db
+    .delete(projects)
+    .where(and(eq(projects.id, projectId), eq(projects.workspaceId, workspaceId)));
 
   revalidatePath("/dashboard");
 }
-

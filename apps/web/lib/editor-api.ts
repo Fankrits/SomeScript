@@ -7,11 +7,7 @@ const EDITOR_BASE =
 export async function editorFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const { getToken } = await auth();
   const token = await getToken();
-  return fetch(`${EDITOR_BASE}${path}`, {
-    ...init,
-    headers: {
-      ...(init.headers || {}),
-      Authorization: `Bearer ${token}`,
-    },
-  });
+  const headers = new Headers(init.headers);
+  headers.set("Authorization", `Bearer ${token}`);
+  return fetch(`${EDITOR_BASE}${path}`, { ...init, headers });
 }

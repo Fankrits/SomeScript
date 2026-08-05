@@ -12,11 +12,10 @@ export async function webFetch(path: string, init: RequestInit = {}): Promise<Re
   const { auth } = await import("@clerk/nextjs/server");
   const { getToken } = await auth();
   const token = await getToken();
+  const headers = new Headers(init.headers);
+  headers.set("Authorization", `Bearer ${token}`);
   return fetch(`${WEB_BASE}${path}`, {
     ...init,
-    headers: {
-      ...(init.headers || {}),
-      Authorization: `Bearer ${token}`,
-    },
+    headers,
   });
 }

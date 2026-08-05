@@ -8,16 +8,18 @@ import { eq, and, sql } from "drizzle-orm";
 import { assertProjectLimit, assertWorkspaceActive } from "@/lib/limits";
 import { editorFetch } from "@/lib/editor-api";
 import { ensureWorkspaceExists } from "@/app/dashboard/actions";
+import { formString, formFile } from "@/lib/utils";
 
-
-export async function publishTemplate(formData: FormData): Promise<{ error?: string; success?: boolean; templateId?: string }> {
+export async function publishTemplate(
+  formData: FormData,
+): Promise<{ error?: string; success?: boolean; templateId?: string }> {
   const { userId } = await auth();
   if (!userId) return { error: "Unauthorized" };
 
-  const name = formData.get("name") as string;
-  const description = (formData.get("description") as string) || "";
-  const category = (formData.get("category") as string) || "General";
-  const file = formData.get("file") as File | null;
+  const name = formString(formData, "name");
+  const description = formString(formData, "description");
+  const category = formString(formData, "category") || "General";
+  const file = formFile(formData, "file");
 
   if (!name || name.trim() === "") {
     return { error: "Template name is required" };
@@ -29,7 +31,10 @@ export async function publishTemplate(formData: FormData): Promise<{ error?: str
 
   const user = await currentUser();
   const authorName = user
-    ? user.username || `${user.firstName || ""} ${user.lastName || ""}`.trim() || user.emailAddresses[0]?.emailAddress?.split("@")[0] || "Anonymous"
+    ? user.username ||
+      `${user.firstName || ""} ${user.lastName || ""}`.trim() ||
+      user.emailAddresses[0]?.emailAddress?.split("@")[0] ||
+      "Anonymous"
     : "Anonymous";
   const authorAvatarUrl = user?.imageUrl || null;
 
@@ -77,15 +82,17 @@ export async function publishTemplate(formData: FormData): Promise<{ error?: str
   return { success: true, templateId: template.id };
 }
 
-export async function updateTemplate(formData: FormData): Promise<{ error?: string; success?: boolean }> {
+export async function updateTemplate(
+  formData: FormData,
+): Promise<{ error?: string; success?: boolean }> {
   const { userId } = await auth();
   if (!userId) return { error: "Unauthorized" };
 
-  const templateId = formData.get("templateId") as string;
-  const name = formData.get("name") as string;
-  const description = (formData.get("description") as string) || "";
-  const category = (formData.get("category") as string) || "General";
-  const file = formData.get("file") as File | null;
+  const templateId = formString(formData, "templateId");
+  const name = formString(formData, "name");
+  const description = formString(formData, "description");
+  const category = formString(formData, "category") || "General";
+  const file = formFile(formData, "file");
 
   if (!templateId) return { error: "Template ID is required" };
   if (!name || name.trim() === "") return { error: "Template name is required" };
@@ -135,7 +142,10 @@ export async function updateTemplate(formData: FormData): Promise<{ error?: stri
   return { success: true };
 }
 
-export async function useTemplate(templateId: string, customProjectName?: string): Promise<{ error?: string; redirectUrl?: string }> {
+export async function useTemplate(
+  templateId: string,
+  customProjectName?: string,
+): Promise<{ error?: string; redirectUrl?: string }> {
   const { userId, orgId } = await auth();
   if (!userId) return { error: "Unauthorized" };
 
@@ -203,7 +213,9 @@ export async function useTemplate(templateId: string, customProjectName?: string
   return { redirectUrl: `${editorBaseUrl}/?projectId=${project.id}` };
 }
 
-export async function deleteTemplate(templateId: string): Promise<{ error?: string; success?: boolean }> {
+export async function deleteTemplate(
+  templateId: string,
+): Promise<{ error?: string; success?: boolean }> {
   const { userId } = await auth();
   if (!userId) return { error: "Unauthorized" };
 
@@ -218,25 +230,21 @@ export async function deleteTemplate(templateId: string): Promise<{ error?: stri
   return { success: true };
 }
 
-export async function toggleBookmark(templateId: string): Promise<{ isBookmarked?: boolean; error?: string }> {
+export async function toggleBookmark(
+  templateId: string,
+): Promise<{ isBookmarked?: boolean; error?: string }> {
   const { userId } = await auth();
   if (!userId) return { error: "Unauthorized" };
 
   const existing = await db.query.templateBookmarks.findFirst({
-    where: and(
-      eq(templateBookmarks.userId, userId),
-      eq(templateBookmarks.templateId, templateId)
-    ),
+    where: and(eq(templateBookmarks.userId, userId), eq(templateBookmarks.templateId, templateId)),
   });
 
   if (existing) {
     await db
       .delete(templateBookmarks)
       .where(
-        and(
-          eq(templateBookmarks.userId, userId),
-          eq(templateBookmarks.templateId, templateId)
-        )
+        and(eq(templateBookmarks.userId, userId), eq(templateBookmarks.templateId, templateId)),
       );
     revalidatePath("/dashboard/templates");
     return { isBookmarked: false };
