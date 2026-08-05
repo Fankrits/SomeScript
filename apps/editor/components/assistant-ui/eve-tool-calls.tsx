@@ -55,7 +55,7 @@ type WriteFileOutput = {
 async function fetchFileContent(projectId: string, path: string): Promise<string | null> {
   try {
     const res = await fetch(
-      `/api/files?projectId=${encodeURIComponent(projectId)}&path=${encodeURIComponent(path)}`
+      `/api/files?projectId=${encodeURIComponent(projectId)}&path=${encodeURIComponent(path)}`,
     );
     if (!res.ok) return null; // 404 => file doesn't exist (treated as empty/new)
     const data = await res.json();
@@ -161,7 +161,13 @@ function HitlCard({ args }: { args: ToolCardArgs }) {
             <Button
               key={opt.id}
               size="sm"
-              variant={opt.style === "primary" ? "default" : opt.style === "danger" ? "destructive" : "outline"}
+              variant={
+                opt.style === "primary"
+                  ? "default"
+                  : opt.style === "danger"
+                    ? "destructive"
+                    : "outline"
+              }
               onClick={() => handleAnswer(opt.id)}
               disabled={submitted}
             >
@@ -173,11 +179,7 @@ function HitlCard({ args }: { args: ToolCardArgs }) {
           // the native ToolFallbackApproval bar (default + outline) so the two
           // approval surfaces are indistinguishable.
           <>
-            <Button
-              size="sm"
-              onClick={() => handleAnswer("approve")}
-              disabled={submitted}
-            >
+            <Button size="sm" onClick={() => handleAnswer("approve")} disabled={submitted}>
               Approve
             </Button>
             <Button
@@ -222,9 +224,7 @@ function OAuthCard({ args }: { args: ToolCardArgs }) {
       <p className="font-semibold text-sm text-foreground">
         {displayName} — Authorization Required
       </p>
-      {description && (
-        <p className="text-xs text-muted-foreground">{description}</p>
-      )}
+      {description && <p className="text-xs text-muted-foreground">{description}</p>}
       {authorization?.userCode && (
         <div className="bg-muted p-2 rounded text-center">
           <span className="text-xs text-muted-foreground block mb-1">User Code</span>
@@ -270,13 +270,7 @@ function SubagentCard({ args, status }: EveCardProps) {
 // Harness tool cards
 // ---------------------------------------------------------------------------
 /** Shared output block, mirroring the native `ToolFallbackResult` look. */
-function ToolOutput({
-  children,
-  className,
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
+function ToolOutput({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
     <pre
       className={`bg-muted/50 text-foreground/90 max-h-60 overflow-auto rounded-md p-2.5 font-mono text-xs whitespace-pre-wrap ${className ?? ""}`}
@@ -286,8 +280,7 @@ function ToolOutput({
   );
 }
 
-const asText = (v: unknown) =>
-  typeof v === "string" ? v : JSON.stringify(v, null, 2);
+const asText = (v: unknown) => (typeof v === "string" ? v : JSON.stringify(v, null, 2));
 
 function WebSearchCard({ args, result, status }: EveCardProps) {
   return (
@@ -304,11 +297,7 @@ function WebSearchCard({ args, result, status }: EveCardProps) {
 
 function BashCard({ args, result, status }: EveCardProps) {
   return (
-    <EveToolRow
-      icon={Terminal}
-      label={<>Terminal: {args?.command || "shell"}</>}
-      status={status}
-    >
+    <EveToolRow icon={Terminal} label={<>Terminal: {args?.command || "shell"}</>} status={status}>
       {/* Terminal chrome matches components/ai-elements/terminal.tsx (the
           editor's own terminal panel) so there's one terminal look in the app. */}
       <div className="overflow-hidden rounded-md bg-zinc-950 p-2.5 font-mono text-xs text-zinc-100">
@@ -339,12 +328,7 @@ type CompileOutput = {
   ageSeconds?: number;
 };
 
-function CompileCard({
-  args,
-  result,
-  status,
-  kind,
-}: EveCardProps & { kind: "compile" | "log" }) {
+function CompileCard({ args, result, status, kind }: EveCardProps & { kind: "compile" | "log" }) {
   const out = (result ?? undefined) as CompileOutput | undefined;
   const path = (args?.input as { path?: string } | undefined)?.path || out?.path || "";
   const errorCount = out?.errors?.length ?? 0;
@@ -355,7 +339,8 @@ function CompileCard({
   } else if (out.error) {
     label = kind === "compile" ? <>Compile not run</> : <>No compile log</>;
   } else {
-    const age = typeof out.ageSeconds === "number" && out.ageSeconds > 0 ? ` (${out.ageSeconds}s ago)` : "";
+    const age =
+      typeof out.ageSeconds === "number" && out.ageSeconds > 0 ? ` (${out.ageSeconds}s ago)` : "";
     const verb = kind === "compile" ? (out.ok ? "Compiled" : "Compile failed:") : "Compile log:";
     label = (
       <>
@@ -397,9 +382,7 @@ function ReadFileCard({ args, result, status }: EveCardProps) {
       label={<>Read file: {args?.path || ""}</>}
       status={status}
     >
-      {!!result && (
-        <ToolOutput className="max-h-40 whitespace-pre">{asText(result)}</ToolOutput>
-      )}
+      {!!result && <ToolOutput className="max-h-40 whitespace-pre">{asText(result)}</ToolOutput>}
     </EveToolRow>
   );
 }
@@ -412,7 +395,12 @@ function WebFetchCard({ args, result, status }: EveCardProps) {
   const out = result as WebFetchOutput | undefined;
   const url = out?.url || input.url || "";
   return (
-    <EveToolRow icon={Globe} iconClassName="text-sky-500" label={<>Fetch: {url || "…"}</>} status={status}>
+    <EveToolRow
+      icon={Globe}
+      iconClassName="text-sky-500"
+      label={<>Fetch: {url || "…"}</>}
+      status={status}
+    >
       {!!out?.content && (
         <ToolOutput className="max-h-48 whitespace-pre-wrap">
           {out.truncated ? `${out.content}\n\n[truncated]` : out.content}
@@ -471,7 +459,7 @@ export function WriteFileCard({ args, result }: { args: ToolCardArgs; result?: u
 
   const stats = useMemo(
     () => (out && out.ok !== false && hasBaseline ? diffStats(before ?? "", next) : null),
-    [out, hasBaseline, before, next]
+    [out, hasBaseline, before, next],
   );
 
   // Write in progress — no result yet.
@@ -480,8 +468,7 @@ export function WriteFileCard({ args, result }: { args: ToolCardArgs; result?: u
       <div className={chipClass}>
         <FileText className="size-3.5 shrink-0 text-emerald-500" />
         <span className="text-muted-foreground animate-pulse motion-reduce:animate-none">
-          Editing{" "}
-          <code className="text-foreground font-mono">{path || "file…"}</code>
+          Editing <code className="text-foreground font-mono">{path || "file…"}</code>
         </span>
       </div>
     );
@@ -525,7 +512,12 @@ export function WriteFileCard({ args, result }: { args: ToolCardArgs; result?: u
       }
       const success = created
         ? await postFiles({ projectId: input.projectId, action: "delete", path })
-        : await postFiles({ projectId: input.projectId, action: "save", path, content: before ?? "" });
+        : await postFiles({
+            projectId: input.projectId,
+            action: "save",
+            path,
+            content: before ?? "",
+          });
       if (!success) {
         setError("Revert failed.");
         return;
@@ -566,7 +558,7 @@ export function WriteFileCard({ args, result }: { args: ToolCardArgs; result?: u
         <button
           type="button"
           className={cnChip(
-            "hover:bg-muted/60 focus-visible:ring-ring/50 cursor-pointer transition-colors focus-visible:ring-2 focus-visible:outline-none"
+            "hover:bg-muted/60 focus-visible:ring-ring/50 cursor-pointer transition-colors focus-visible:ring-2 focus-visible:outline-none",
           )}
         >
           <FileText className="size-3.5 shrink-0 text-emerald-500" />
@@ -612,7 +604,10 @@ export function WriteFileCard({ args, result }: { args: ToolCardArgs; result?: u
         </DialogFooter>
       </DialogContent>
 
-      <AlertDialog open={confirmOverwrite} onOpenChange={(open) => !open && resolveOverwriteConfirm(false)}>
+      <AlertDialog
+        open={confirmOverwrite}
+        onOpenChange={(open) => !open && resolveOverwriteConfirm(false)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>File changed since last edit</AlertDialogTitle>
@@ -621,8 +616,12 @@ export function WriteFileCard({ args, result }: { args: ToolCardArgs; result?: u
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => resolveOverwriteConfirm(false)}>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => resolveOverwriteConfirm(true)}>Revert</AlertDialogAction>
+            <AlertDialogCancel onClick={() => resolveOverwriteConfirm(false)}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={() => resolveOverwriteConfirm(true)}>
+              Revert
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -683,7 +682,12 @@ function DeleteFileCard({ args, result }: { args: ToolCardArgs; result?: unknown
     setBusy(true);
     setError(null);
     try {
-      const success = await postFiles({ projectId: input.projectId, action: "save", path, content: before });
+      const success = await postFiles({
+        projectId: input.projectId,
+        action: "save",
+        path,
+        content: before,
+      });
       if (!success) {
         setError("Restore failed.");
         return;
@@ -835,24 +839,15 @@ function TodoCard({ args, result, status }: EveCardProps) {
       label={<>Todo: {args?.action || "update"}</>}
       status={status}
     >
-      {!!result && (
-        <ToolOutput className="max-h-32">{JSON.stringify(result, null, 2)}</ToolOutput>
-      )}
+      {!!result && <ToolOutput className="max-h-32">{JSON.stringify(result, null, 2)}</ToolOutput>}
     </EveToolRow>
   );
 }
 
 function ListFilesCard({ result, status }: EveCardProps) {
   return (
-    <EveToolRow
-      icon={Search}
-      iconClassName="text-violet-500"
-      label="List files"
-      status={status}
-    >
-      {!!result && (
-        <ToolOutput className="max-h-40 whitespace-pre">{asText(result)}</ToolOutput>
-      )}
+    <EveToolRow icon={Search} iconClassName="text-violet-500" label="List files" status={status}>
+      {!!result && <ToolOutput className="max-h-40 whitespace-pre">{asText(result)}</ToolOutput>}
     </EveToolRow>
   );
 }
@@ -889,9 +884,7 @@ export const WebSearchToolUI = makeAssistantToolUI({
 
 export const BashToolUI = makeAssistantToolUI({
   toolName: "bash",
-  render: ({ args, result, status }) => (
-    <BashCard args={args} result={result} status={status} />
-  ),
+  render: ({ args, result, status }) => <BashCard args={args} result={result} status={status} />,
 });
 
 export const ReadFileToolUI = makeAssistantToolUI({
@@ -934,9 +927,7 @@ export const ListFilesSnakeToolUI = makeAssistantToolUI({
 
 export const TodoToolUI = makeAssistantToolUI({
   toolName: "todo",
-  render: ({ args, result, status }) => (
-    <TodoCard args={args} result={result} status={status} />
-  ),
+  render: ({ args, result, status }) => <TodoCard args={args} result={result} status={status} />,
 });
 
 export const WebFetchToolUI = makeAssistantToolUI({
@@ -971,5 +962,3 @@ export const ReadCompileLogToolUI = makeAssistantToolUI({
     <CompileCard args={args} result={result} status={status} kind="log" />
   ),
 });
-
-

@@ -1,7 +1,14 @@
 "use client";
 
-import { useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { useRef, useState } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,13 +20,14 @@ export function ImportProjectDialog() {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [fileName, setFileName] = useState<string>("");
+  const nameInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       setFileName(file.name);
       // Auto-populate project name if empty
-      const nameInput = document.getElementById("import-name") as HTMLInputElement;
+      const nameInput = nameInputRef.current;
       if (nameInput && !nameInput.value) {
         // Strip .zip extension
         const baseName = file.name.replace(/\.[^/.]+$/, "");
@@ -52,17 +60,24 @@ export function ImportProjectDialog() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" className="w-full sm:w-auto border-border hover:bg-secondary text-foreground font-medium gap-1.5 rounded-md shadow-sm">
+        <Button
+          variant="outline"
+          className="w-full sm:w-auto border-border hover:bg-secondary text-foreground font-medium gap-1.5 rounded-md shadow-sm"
+        >
           <Upload className="h-4 w-4" /> Import ZIP
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-[425px] bg-card border-border text-foreground rounded-xl shadow-lg">
         <DialogHeader>
-          <DialogTitle className="text-xl font-bold tracking-tight text-foreground">Import LaTeX Project</DialogTitle>
+          <DialogTitle className="text-xl font-bold tracking-tight text-foreground">
+            Import LaTeX Project
+          </DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-6 pt-4">
           <div className="space-y-2">
-            <Label htmlFor="import-file" className="text-muted-foreground text-sm font-medium">ZIP File</Label>
+            <Label htmlFor="import-file" className="text-muted-foreground text-sm font-medium">
+              ZIP File
+            </Label>
             <div className="flex items-center justify-center w-full">
               <label
                 htmlFor="import-file"
@@ -90,8 +105,11 @@ export function ImportProjectDialog() {
             </div>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="import-name" className="text-muted-foreground text-sm font-medium">Project Name</Label>
+            <Label htmlFor="import-name" className="text-muted-foreground text-sm font-medium">
+              Project Name
+            </Label>
             <Input
+              ref={nameInputRef}
               id="import-name"
               name="name"
               placeholder="e.g., Imported Physics Report"
