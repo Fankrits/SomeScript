@@ -5,7 +5,10 @@ import { cn } from "@/lib/utils";
 import { ClerkProvider } from "@clerk/nextjs";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
+import { GoogleAnalytics } from "@next/third-parties/google";
 import { ClarityAnalytics } from "@/components/analytics/clarity";
+
+const gaMeasurementId = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID;
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans", display: "swap" });
 
@@ -175,6 +178,7 @@ export default function RootLayout({
           <Analytics />
           <SpeedInsights />
           <ClarityAnalytics />
+          {gaMeasurementId && <GoogleAnalytics gaId={gaMeasurementId} />}
         </body>
       </html>
     </ClerkProvider>

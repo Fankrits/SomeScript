@@ -32,6 +32,7 @@
     "@embedpdf/plugin-zoom": "^2.14.4",
     "@embedpdf/react-pdf-viewer": "^2.14.4",
     "@microsoft/clarity": "^1.0.2",
+    "@next/third-parties": "^16.3.0",
     "@paper-design/shaders-react": "^0.0.78",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.7.0",
