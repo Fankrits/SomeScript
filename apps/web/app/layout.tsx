@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Inter, Playfair_Display } from "next/font/google";
+import { Geist_Mono, Inter, Playfair_Display } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 import { ClerkProvider } from "@clerk/nextjs";
@@ -15,19 +15,13 @@ const playfair = Playfair_Display({
   display: "swap",
 });
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-  display: "swap",
-});
-
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
   display: "swap",
 });
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://somescript.com";
+const siteUrl = process.env.NEXT_PUBLIC_APP_URL || "https://somescript.com";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -164,7 +158,6 @@ export default function RootLayout({
         className={cn(
           "h-full",
           "antialiased",
-          geistSans.variable,
           geistMono.variable,
           "font-sans",
           inter.variable,
