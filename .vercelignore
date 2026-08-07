@@ -12,6 +12,10 @@ build
 apps/editor
 apps/compiler
 apps/docs
+# Deploys on Railway (railway.json + Dockerfile), never Vercel. Without this it
+# stays in `turbo run build`'s scope and fails: server.ts imports
+# ../editor/lib/storage, which apps/editor above has already stripped.
+apps/collaboration
 workspaces
 projects
 bin
