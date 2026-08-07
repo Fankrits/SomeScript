@@ -130,9 +130,7 @@ function HitlCard({ args }: { args: ToolCardArgs }) {
 
   const handleAnswer = (optionId: string) => {
     setSubmitted(true);
-    void agent.send({
-      inputResponses: [{ requestId: inputRequest.requestId, optionId }],
-    });
+    void agent.respond([{ requestId: inputRequest.requestId, optionId }]);
   };
 
   return (

@@ -25,7 +25,7 @@ import {
 import type { EveMode } from "@/lib/eve-modes";
 import { filterOrphanedMessages } from "@/lib/eve-messages";
 import { cancelEveTurn } from "@/lib/eve-cancel";
-import type { HandleMessageStreamEvent, SessionState } from "eve/client";
+import type { HandleMessageStreamEvent, ClientSessionState } from "eve/client";
 import {
   loadThreadHistory,
   saveThreadHistory,
@@ -236,7 +236,7 @@ export function useEveRuntime(
   const [initialData] = useState(() =>
     typeof window === "undefined"
       ? null
-      : loadThreadHistory<HandleMessageStreamEvent, SessionState>(threadId, localStorage),
+      : loadThreadHistory<HandleMessageStreamEvent, ClientSessionState>(threadId, localStorage),
   );
 
   const agent = useEveAgent({
@@ -469,11 +469,7 @@ export function useEveRuntime(
 
           const firstPart = parts[0];
           const sendArgs: Parameters<typeof agent.send>[0] =
-            parts.length === 1 && firstPart.type === "text"
-              ? { message: firstPart.text }
-              : {
-                  message: parts,
-                };
+            parts.length === 1 && firstPart.type === "text" ? firstPart.text : parts;
           try {
             setSendError(null);
             setCanContinue(false);
@@ -599,7 +595,7 @@ export function useEveRuntime(
   const continueTurn = useCallback(() => {
     setSendError(null);
     setCanContinue(false);
-    agent.send({ message: "continue" }).catch((e) => {
+    agent.send("continue").catch((e) => {
       setSendError(e instanceof Error ? e.message : String(e));
     });
   }, [agent]);
