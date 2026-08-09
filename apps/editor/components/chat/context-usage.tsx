@@ -5,7 +5,6 @@ import {
   Context,
   ContextContent,
   ContextContentBody,
-  ContextContentFooter,
   ContextContentHeader,
   ContextTrigger,
 } from "@/components/ai-elements/context";
@@ -64,7 +63,6 @@ const compact = new Intl.NumberFormat("en-US", { notation: "compact" });
  * ContextInputUsage/OutputUsage/CacheUsage components price tokens through
  * tokenlens, which has no entry for any gateway model id configured here and
  * returns an empty costUSD — they would render $0.00 as though it were real.
- * The footer below uses eve's own gateway-reported costUsd instead.
  */
 export function ContextIndicator() {
   const usage = React.useContext(ContextUsageContext);
@@ -78,7 +76,6 @@ export function ContextIndicator() {
   // (the call that crosses the trigger is still allowed to finish), and a ring
   // past full reads as a bug.
   const usedTokens = Math.min(usage.inputTokens, maxTokens);
-  const cost = usage.costUsd;
 
   return (
     <Context maxTokens={maxTokens} usedTokens={usedTokens} usage={undefined}>
@@ -97,16 +94,7 @@ export function ContextIndicator() {
             <span className="text-muted-foreground">Last turn output</span>
             <span className="font-mono">{compact.format(usage.outputTokens)}</span>
           </div>
-          <p className="pt-1 text-[11px] leading-relaxed text-muted-foreground">
-            Older turns are summarized automatically as this fills, so the conversation keeps going.
-          </p>
         </ContextContentBody>
-        {cost > 0 && (
-          <ContextContentFooter>
-            <span className="text-muted-foreground">Session cost</span>
-            <span className="font-mono">{cost < 0.01 ? "<$0.01" : `$${cost.toFixed(2)}`}</span>
-          </ContextContentFooter>
-        )}
       </ContextContent>
     </Context>
   );
