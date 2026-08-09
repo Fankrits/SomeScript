@@ -25,7 +25,7 @@ import {
 import type { EveMode } from "@/lib/eve-modes";
 import { filterOrphanedMessages } from "@/lib/eve-messages";
 import { Client } from "eve/client";
-import type { HandleMessageStreamEvent, ClientSessionState } from "eve/client";
+import type { MessageStreamEvent, ClientSessionState } from "eve/client";
 import {
   loadThreadHistory,
   saveThreadHistory,
@@ -102,7 +102,7 @@ const CANCEL_BOUNDARY_GRACE_MS = 5_000;
  * collapsing reducer inside eve. A reload starts small again, since
  * loadThreadHistory now replays the collapsed log.
  */
-const compactEvents = (events: readonly HandleMessageStreamEvent[]) =>
+const compactEvents = (events: readonly MessageStreamEvent[]) =>
   stripEventFileData(collapseAppendedRuns(events));
 
 // assistant-ui only ships Simple adapters for images and text. PDFs get the
@@ -326,7 +326,7 @@ export function useEveRuntime(
   const [initialData] = useState(() =>
     typeof window === "undefined"
       ? null
-      : loadThreadHistory<HandleMessageStreamEvent, ClientSessionState>(threadId, localStorage),
+      : loadThreadHistory<MessageStreamEvent, ClientSessionState>(threadId, localStorage),
   );
 
   // Same-origin, matching useEveAgent's own default host. Only used for the
@@ -886,6 +886,21 @@ export function useEveRuntime(
   // guidance: "persist the session state as soon as it contains a sessionId"
   // (docs/guides/frontend/overview.mdx). Latched, so this is one write per
   // session, not per event.
+  //
+  // Known gap, not fixable from here in 0.31.3: this restores the *cursor*,
+  // not the turn. `sessions.attach()` performs no I/O and the store only opens
+  // a stream from send(), so reloading mid-turn leaves the server-side turn
+  // running (and billing) with nothing rendering it — a truncated reply and a
+  // re-enabled composer. eve's documented recovery is
+  // `session.stream({ startIndex: savedEvents.length })` from the lower-level
+  // client, but useEveAgent exposes no way to feed those events back into its
+  // reducer, so driving it would mean owning the whole store. Detecting it is
+  // no better: only turn 1 leaves a mid-turn blob (later turns save on
+  // onFinish, at a boundary), and the optimistic user message is never in
+  // `events` to save — "optimistic events are reducer-facing projection events
+  // only". Sending anything resumes the same durable session, so the
+  // conversation is intact; only the interrupted turn's output is lost to the
+  // UI.
   useEffect(() => {
     const sessionId = agent.session?.sessionId;
     if (!sessionId || cursorPinnedRef.current === sessionId) return;

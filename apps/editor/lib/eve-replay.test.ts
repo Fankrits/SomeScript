@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { EveAgentStore, defaultMessageReducer } from "eve/client";
-import type { HandleMessageStreamEvent } from "eve/client";
+import type { MessageStreamEvent } from "eve/client";
 
 /**
  * Pins the two halves of eve's rehydration contract that use-eve-runtime.ts is
@@ -57,7 +57,7 @@ const savedEvents = [
       usage: { costUsd: 0.01, inputTokens: 17_972, outputTokens: 3_000 },
     },
   },
-] as unknown as HandleMessageStreamEvent[];
+] as unknown as MessageStreamEvent[];
 
 test("eve seeds the first snapshot with the entire replayed history", () => {
   const store = new EveAgentStore({

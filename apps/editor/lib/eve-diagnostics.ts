@@ -1,7 +1,7 @@
 "use client";
 
 import * as Sentry from "@sentry/nextjs";
-import type { HandleMessageStreamEvent } from "eve/client";
+import type { MessageStreamEvent } from "eve/client";
 
 /**
  * Diagnostics for the Eve chat.
@@ -186,7 +186,7 @@ function rememberTool(callId: string, toolName: string) {
  * carries the whole message so far, so logging it would both flood the console
  * and defeat the point of collapsing those events everywhere else.
  */
-export function logEveEvent(event: HandleMessageStreamEvent) {
+export function logEveEvent(event: MessageStreamEvent) {
   switch (event.type) {
     // The three that currently vanish. `details` is where a relayed provider
     // error actually lives, so it is logged whole rather than summarized.
