@@ -90,7 +90,10 @@ function record(level: EveLogEntry["level"], kind: string, data?: unknown) {
   // cancel:failed, …). Those should be searchable issues, not just a trail
   // behind someone else's crash.
   if (level === "error") {
-    Sentry.captureMessage(`${PREFIX} ${kind}`, { level: "error", extra: { data: summarize(data) } });
+    Sentry.captureMessage(`${PREFIX} ${kind}`, {
+      level: "error",
+      extra: { data: summarize(data) },
+    });
   }
 }
 
