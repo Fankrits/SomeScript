@@ -185,6 +185,26 @@ export function useEveRuntime(
   const compileStartedCalls = useRef<Set<string>>(new Set());
   const compileSettledCalls = useRef<Set<string>>(new Set());
   const processedSteps = useRef<Set<string>>(new Set());
+  // `turnId:stepIndex` keys already seen on step.completed, so a step eve
+  // silently re-ran shows up as a repeat. Kept apart from processedSteps, which
+  // guards credit billing and would conflate "already billed" with "retried".
+  const retriedStepsRef = useRef<Set<string>>(new Set());
+  // Where the replayed history ends.
+  //
+  // EveAgentStore's constructor seeds *both* `snapshot.events` and
+  // `data.messages` from `initialEvents` before the first render, so every
+  // effect below that means "react to what just happened" would otherwise
+  // react to the entire saved thread on mount. That is not a rare path: this
+  // component remounts on a reload, on a thread switch, and on a mode switch
+  // (<EveThreadInner> is keyed by mode), and the once-only Sets above are all
+  // freshly empty each time.
+  const billedThrough = useRef<number | null>(null);
+  const toolsHydrated = useRef(false);
+  // Set between `compaction.requested` and `compaction.completed`, which
+  // bracket a summarization model call that emits nothing in between. Also
+  // cleared on the turn boundary, so a compaction that never reports back
+  // can't disarm the stall watchdog for the rest of the session.
+  const compactingRef = useRef(false);
   // Id of the turn currently streaming, tracked from `turn.started` and cleared
   // on its boundary event. abandonTurn passes it to cancel() so a click (or a
   // watchdog firing) that lands after the turn already ended is a no-op instead
@@ -303,6 +323,7 @@ export function useEveRuntime(
       // reliably re-error.
       if (event.type === "turn.failed" || event.type === "session.failed") {
         turnIdRef.current = null;
+        compactingRef.current = false;
         const { code, message } = event.data;
         setSendError(
           `The assistant stopped: ${message || "the model stream failed"}${code ? ` (${code})` : ""}`,
@@ -314,7 +335,37 @@ export function useEveRuntime(
       if (event.type === "turn.started") turnIdRef.current = event.data.turnId;
       else if (event.type === "turn.completed" || event.type === "turn.cancelled") {
         turnIdRef.current = null;
+        compactingRef.current = false;
+      } else if (event.type === "compaction.requested") {
+        // Opens a summarization model call over the whole context that emits
+        // nothing until its checkpoint lands — exactly the shape the stall
+        // watchdog is built to kill, so it has to stand down for it.
+        compactingRef.current = true;
+      } else if (event.type === "compaction.completed") {
+        compactingRef.current = false;
       } else if (event.type === "step.completed") {
+        // eve re-runs a step in place after a transient model-call failure
+        // (runModelCallWithRetries in harness/tool-loop.js), discarding the
+        // first attempt and emitting nothing to say so — no step.failed, and
+        // step.started is suppressed on retries. A repeated stepIndex within a
+        // turn is the only client-visible trace it leaves. Worth an error-level
+        // record: it costs a wasted model call, re-executes tools that already
+        // ran, and is the mechanism behind duplicated replies (see
+        // dropRetriedRuns in lib/eve-messages.ts).
+        const stepKey = `${event.data.turnId}:${event.data.stepIndex}`;
+        if (retriedStepsRef.current.has(stepKey)) {
+          logEveError("step:retried", {
+            turnId: event.data.turnId,
+            stepIndex: event.data.stepIndex,
+            // Identical input tokens across attempts confirm the discarded
+            // attempt's output never entered the conversation.
+            inputTokens: event.data.usage?.inputTokens,
+            outputTokens: event.data.usage?.outputTokens,
+          });
+        } else {
+          retriedStepsRef.current.add(stepKey);
+        }
+
         const usage = event.data.usage;
         if (usage?.inputTokens === undefined) return;
         setContextUsage((prev) => ({
@@ -744,8 +795,13 @@ export function useEveRuntime(
   // server-side turn, so the resend raced a live turn that was still writing
   // files, and an invisible recovery that can itself fail just delays the same
   // dead end. A visible banner with a working Continue is the honest version.
+  //
+  // Compaction is the other legitimate silence, and unlike a tool it leaves no
+  // trace in the message list — see compactingRef. This effect re-runs on every
+  // event (abandonStalledTurn is rebuilt from the new `agent` snapshot), so
+  // reading the ref here is enough to arm and disarm on the bracketing events.
   useEffect(() => {
-    if (!isBusy || isAwaitingTool) return;
+    if (!isBusy || isAwaitingTool || compactingRef.current) return;
     const timer = setTimeout(() => {
       logEveError("stall:timeout", {
         afterMs: STALL_TIMEOUT_MS,
@@ -837,6 +893,16 @@ export function useEveRuntime(
   // Watch agent messages/events for completed tool calls
   useEffect(() => {
     if (!agent.data?.messages) return;
+    // The first pass sees the whole replayed thread (see billedThrough). Walk
+    // it so the once-only Sets below learn what has already happened, then
+    // dispatch nothing. Without this, every reload, thread switch and mode
+    // switch re-fires the tail of the saved history as if it had just
+    // occurred: the editor jumps to the last file Eve ever wrote in this
+    // thread, and `somescript:compiled` replays a stale Tectonic log into the
+    // terminal and swaps the PDF pane under whatever the user was reading
+    // (see the listener in app/page.tsx).
+    const replaying = !toolsHydrated.current;
+    toolsHydrated.current = true;
 
     let shouldRefresh = false;
     // Last file Eve successfully wrote this pass — the editor jumps to it, so a
@@ -923,6 +989,8 @@ export function useEveRuntime(
       }
     }
 
+    if (replaying) return;
+
     if (shouldRefresh) {
       window.dispatchEvent(new CustomEvent("somescript:refresh-workspace"));
     }
@@ -957,8 +1025,24 @@ export function useEveRuntime(
   // span capture via eve's defineInstrumentation setup() hook (registerOTel).
   useEffect(() => {
     if (!agent.events) return;
-    for (const event of agent.events) {
+    // Pinned on the first pass rather than started at 0. The replayed history
+    // is already sitting in `agent.events` (see billedThrough), so counting
+    // from zero re-charges every step of the saved thread on every remount —
+    // and at whatever mode is selected *now*, since sentModeRef knows nothing
+    // about the turn that actually ran. The POST is a real deduction that is
+    // allowed to go negative, so this was billed money rather than a stale
+    // counter. Doubles as a cursor: the scan is now O(new events) instead of
+    // walking the entire log again on every single stream event.
+    const from = billedThrough.current;
+    billedThrough.current = agent.events.length;
+    if (from === null) return;
+
+    for (let i = from; i < agent.events.length; i++) {
+      const event = agent.events[i];
       if (event.type !== "step.completed") continue;
+      // Still needed alongside the cursor: eve's silent retry emits a *second*
+      // step.completed for the same step, and only one of the two attempts
+      // reaches the conversation.
       const key = `${event.data.turnId}:${event.data.stepIndex}`;
       if (processedSteps.current.has(key)) continue;
       processedSteps.current.add(key);
