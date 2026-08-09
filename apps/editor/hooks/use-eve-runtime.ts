@@ -152,6 +152,37 @@ class SimplePdfAttachmentAdapter implements AttachmentAdapter {
   }
 }
 
+/**
+ * Bills one completed model call against the workspace's AI credit balance.
+ *
+ * `step.completed` is the only place real output-token usage is reported at
+ * all (eve has no server-side post-turn hook — see agent/agent.ts), so this is
+ * the authoritative deduction, not the pre-flight check in onNew.
+ *
+ * ponytail: client-reported, so a dropped tab or network between a step
+ * completing and this POST leaves that step unbilled. Bounded to one step, not
+ * systematically exploitable. Upgrade path if it ever matters: server-side OTel
+ * span capture via eve's defineInstrumentation setup() hook (registerOTel).
+ */
+function recordStepUsage(mode: EveMode, outputTokens: number) {
+  fetch("/api/eve/credits", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mode, outputTokens }),
+  })
+    .then((res) => {
+      logEveAction("credits:recorded", { mode, outputTokens, ok: res.ok, status: res.status });
+      if (res.ok) notifyCreditsUpdated();
+    })
+    .catch((e) =>
+      logEveError("credits:failed", {
+        mode,
+        outputTokens,
+        error: e instanceof Error ? e.message : String(e),
+      }),
+    );
+}
+
 /** Filename of agent/tools/compile-project.ts, which is its model-facing name. */
 const COMPILE_TOOL_NAME = "compile-project";
 
@@ -184,21 +215,25 @@ export function useEveRuntime(
   // on both edges, so each edge needs its own once-only guard.
   const compileStartedCalls = useRef<Set<string>>(new Set());
   const compileSettledCalls = useRef<Set<string>>(new Set());
-  const processedSteps = useRef<Set<string>>(new Set());
-  // `turnId:stepIndex` keys already seen on step.completed, so a step eve
-  // silently re-ran shows up as a repeat. Kept apart from processedSteps, which
-  // guards credit billing and would conflate "already billed" with "retried".
-  const retriedStepsRef = useRef<Set<string>>(new Set());
+  // `turnId:stepIndex` keys seen on step.completed. A repeat is eve silently
+  // re-running the step, which is both the thing to log and the thing not to
+  // bill — one Set answers both, because "already seen" and "is a retry" are
+  // the same question once billing runs from onEvent.
+  const seenSteps = useRef<Set<string>>(new Set());
   // Where the replayed history ends.
   //
-  // EveAgentStore's constructor seeds *both* `snapshot.events` and
-  // `data.messages` from `initialEvents` before the first render, so every
-  // effect below that means "react to what just happened" would otherwise
-  // react to the entire saved thread on mount. That is not a rare path: this
-  // component remounts on a reload, on a thread switch, and on a mode switch
-  // (<EveThreadInner> is keyed by mode), and the once-only Sets above are all
-  // freshly empty each time.
-  const billedThrough = useRef<number | null>(null);
+  // EveAgentStore's constructor seeds `data.messages` from `initialEvents`
+  // before the first render, so an effect that means "react to what just
+  // happened" reacts to the entire saved thread on mount instead. That is not
+  // a rare path: this component remounts on a reload, on a thread switch, and
+  // on a mode switch (<EveThreadInner> is keyed by mode), and the once-only
+  // Sets above are freshly empty each time.
+  //
+  // Only the message-driven mirror below needs this. Everything keyed off
+  // `onEvent` is already safe: eve admits the replayed log in its constructor,
+  // before callbacks are even attached, so onEvent fires for genuinely new
+  // events only ("onEvent only fires for events your UI has not seen" —
+  // docs/guides/frontend/overview.mdx). See lib/eve-replay.test.ts.
   const toolsHydrated = useRef(false);
   // Set between `compaction.requested` and `compaction.completed`, which
   // bracket a summarization model call that emits nothing in between. Also
@@ -353,20 +388,32 @@ export function useEveRuntime(
         // ran, and is the mechanism behind duplicated replies (see
         // dropRetriedRuns in lib/eve-messages.ts).
         const stepKey = `${event.data.turnId}:${event.data.stepIndex}`;
-        if (retriedStepsRef.current.has(stepKey)) {
+        const isRetry = seenSteps.current.has(stepKey);
+        seenSteps.current.add(stepKey);
+
+        const usage = event.data.usage;
+        if (isRetry) {
           logEveError("step:retried", {
             turnId: event.data.turnId,
             stepIndex: event.data.stepIndex,
             // Identical input tokens across attempts confirm the discarded
             // attempt's output never entered the conversation.
-            inputTokens: event.data.usage?.inputTokens,
-            outputTokens: event.data.usage?.outputTokens,
+            inputTokens: usage?.inputTokens,
+            outputTokens: usage?.outputTokens,
           });
-        } else {
-          retriedStepsRef.current.add(stepKey);
+        } else if (usage?.outputTokens) {
+          // Billed from here rather than from an effect over `agent.events`,
+          // which also carries the replayed history and so re-charged the whole
+          // saved thread on every reload, thread switch and mode switch — at
+          // whatever mode was selected *now*. eve's dedupe makes onEvent
+          // exactly-once for new events, which is the guarantee that
+          // bookkeeping was reimplementing.
+          //
+          // The retry branch is deliberately not billed: only one of the two
+          // attempts reaches the conversation.
+          recordStepUsage(sentModeRef.current, usage.outputTokens);
         }
 
-        const usage = event.data.usage;
         if (usage?.inputTokens === undefined) return;
         setContextUsage((prev) => ({
           // Replaced, not summed: this is the size of the context as of the
@@ -893,7 +940,7 @@ export function useEveRuntime(
   // Watch agent messages/events for completed tool calls
   useEffect(() => {
     if (!agent.data?.messages) return;
-    // The first pass sees the whole replayed thread (see billedThrough). Walk
+    // The first pass sees the whole replayed thread (see toolsHydrated). Walk
     // it so the once-only Sets below learn what has already happened, then
     // dispatch nothing. Without this, every reload, thread switch and mode
     // switch re-fires the tail of the saved history as if it had just
@@ -1014,65 +1061,6 @@ export function useEveRuntime(
       );
     }
   }, [agent.data?.messages]);
-
-  // Bill completed model-call steps against the workspace's AI credit balance.
-  // step.completed is the only place real output-token usage is reported at all
-  // (eve has no server-side post-turn hook — see agent/agent.ts) — this is the
-  // authoritative deduction, not the pre-flight check above.
-  // ponytail: client-reported, so a dropped tab/network between a step completing
-  // and this POST leaves that step's cost unbilled. Bounded to one step, not
-  // systematically exploitable. Upgrade path if it ever matters: server-side OTel
-  // span capture via eve's defineInstrumentation setup() hook (registerOTel).
-  useEffect(() => {
-    if (!agent.events) return;
-    // Pinned on the first pass rather than started at 0. The replayed history
-    // is already sitting in `agent.events` (see billedThrough), so counting
-    // from zero re-charges every step of the saved thread on every remount —
-    // and at whatever mode is selected *now*, since sentModeRef knows nothing
-    // about the turn that actually ran. The POST is a real deduction that is
-    // allowed to go negative, so this was billed money rather than a stale
-    // counter. Doubles as a cursor: the scan is now O(new events) instead of
-    // walking the entire log again on every single stream event.
-    const from = billedThrough.current;
-    billedThrough.current = agent.events.length;
-    if (from === null) return;
-
-    for (let i = from; i < agent.events.length; i++) {
-      const event = agent.events[i];
-      if (event.type !== "step.completed") continue;
-      // Still needed alongside the cursor: eve's silent retry emits a *second*
-      // step.completed for the same step, and only one of the two attempts
-      // reaches the conversation.
-      const key = `${event.data.turnId}:${event.data.stepIndex}`;
-      if (processedSteps.current.has(key)) continue;
-      processedSteps.current.add(key);
-
-      const outputTokens = event.data.usage?.outputTokens;
-      if (!outputTokens || outputTokens <= 0) continue;
-
-      fetch("/api/eve/credits", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: sentModeRef.current, outputTokens }),
-      })
-        .then((res) => {
-          logEveAction("credits:recorded", {
-            mode: sentModeRef.current,
-            outputTokens,
-            ok: res.ok,
-            status: res.status,
-          });
-          if (res.ok) notifyCreditsUpdated();
-        })
-        .catch((e) =>
-          logEveError("credits:failed", {
-            mode: sentModeRef.current,
-            outputTokens,
-            error: e instanceof Error ? e.message : String(e),
-          }),
-        );
-    }
-  }, [agent.events]);
 
   // Dispatch refresh when agent finishes all work
   useEffect(() => {

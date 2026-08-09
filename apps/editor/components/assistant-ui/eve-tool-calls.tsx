@@ -156,7 +156,24 @@ function HitlCard({ args }: { args: ToolCardArgs }) {
 
   const handleAnswer = (optionId: string) => {
     setSubmitted(true);
-    void agent.respond([{ requestId: inputRequest.requestId, optionId }]);
+    agent.respond([{ requestId: inputRequest.requestId, optionId }]).catch((e: unknown) => {
+      // `respond()` rejects outright when a turn is already in flight, and that
+      // throw happens before the store's own try/catch — so unlike a network or
+      // session failure it never becomes `agent.error` and never reaches the
+      // error banner. Discarding it left the card claiming "Response submitted"
+      // while the turn sat waiting for an answer it never received, which is
+      // the chat hanging with nothing to explain it.
+      //
+      // Putting the buttons back is safe even if the request did land: the
+      // state checks above flip the card to the confirmation the moment eve
+      // reports the part settled, whatever this local flag says.
+      setSubmitted(false);
+      logEveError("hitl:respond-failed", {
+        requestId: inputRequest.requestId,
+        optionId,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    });
   };
 
   return (
