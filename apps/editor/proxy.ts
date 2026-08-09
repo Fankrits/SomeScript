@@ -19,13 +19,21 @@ export default clerkMiddleware(async (auth, req) => {
   const res = NextResponse.next();
   // Mirrors next.config.ts's CSP (both set this header — a browser enforces
   // multiple Content-Security-Policy headers as their intersection, so they
-  // must stay consistent or the stricter one silently wins). ws://localhost:*
-  // is dev-only, for apps/collaboration's plaintext WebSocket; production
-  // connects over wss:, already covered by the unconditional `wss:` below.
+  // must stay consistent or the stricter one silently wins).
+  //
+  // Both dev-only additions exist because localhost is plain-text in dev and
+  // matches none of 'self' (this origin only), https:, or wss::
+  //   ws://localhost:*   — apps/collaboration's plaintext WebSocket.
+  //   http://localhost:* — Clerk's satellite handshake. This app runs as a
+  //     satellite (NEXT_PUBLIC_CLERK_IS_SATELLITE) whose primary sign-in is on
+  //     http://localhost:3000, so blocking it leaves __clerk_synced=false, the
+  //     session token silently stops refreshing, and every /eve/* request
+  //     eventually 401s — which surfaces as the chat quietly not responding.
+  // Production is same-origin over https:, already covered unconditionally.
   const isProd = process.env.NODE_ENV === "production";
   res.headers.set(
     "Content-Security-Policy",
-    `default-src 'self' 'unsafe-eval' 'unsafe-inline' blob: data: https:; script-src 'self' 'unsafe-eval' 'unsafe-inline' blob: https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' blob: data: https:; font-src 'self' data: https:; connect-src 'self' blob: data: https: wss:${isProd ? "" : " ws://localhost:*"}; worker-src 'self' blob: data:;`,
+    `default-src 'self' 'unsafe-eval' 'unsafe-inline' blob: data: https:; script-src 'self' 'unsafe-eval' 'unsafe-inline' blob: https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' blob: data: https:; font-src 'self' data: https:; connect-src 'self' blob: data: https: wss:${isProd ? "" : " ws://localhost:* http://localhost:*"}; worker-src 'self' blob: data:;`,
   );
   return res;
 });
