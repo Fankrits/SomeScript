@@ -8,8 +8,10 @@ import * as Sentry from "@sentry/nextjs";
 Sentry.init({
   dsn: "https://491e119c4d82d37f6eda844826dde444@o4511827346849792.ingest.de.sentry.io/4511827460816976",
 
-  // Define how likely traces are sampled. Adjust this value in production, or use tracesSampler for greater control.
-  tracesSampleRate: 1,
+  // See sentry.server.config.ts — same reasoning, this file was never loaded
+  // either. Edge covers proxy.ts, which runs on every request, so 1 here would
+  // have been the largest single source of trace volume.
+  tracesSampleRate: 0.1,
 
   // Enable logs to be sent to Sentry
   enableLogs: true,
