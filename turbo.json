@@ -13,7 +13,8 @@
         "STRIPE_PRICE_PRO",
         "STRIPE_PRICE_TEAM",
         "STRIPE_SECRET_KEY",
-        "STRIPE_WEBHOOK_SECRET"
+        "STRIPE_WEBHOOK_SECRET",
+        "VERCEL_ENV"
       ],
       "passThroughEnv": ["SENTRY_AUTH_TOKEN"]
     },
