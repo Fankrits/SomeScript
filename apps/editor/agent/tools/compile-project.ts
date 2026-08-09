@@ -2,6 +2,7 @@ import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveToolProject } from "../../lib/authz";
 import { compileUpload, compilerMode } from "../../lib/compile";
+import { readProjectSettings } from "../../lib/project-settings";
 import {
   formatCompileForModel,
   parseCompileErrors,
@@ -43,25 +44,37 @@ export default defineTool({
       .string()
       .optional()
       .describe(
-        "Project-relative .tex file to compile as the root document, e.g. 'main.tex' or 'chapters/intro.tex'. Omit to compile 'main.tex'. Use the [openFile: ...] context marker when the user says 'this file' or 'the current file'.",
+        "Project-relative .tex file to compile as the root document, e.g. 'main.tex' or 'chapters/intro.tex'. Omit to compile the project's configured root document. Use the [openFile: ...] context marker when the user says 'this file' or 'the current file'.",
       ),
   }),
   async execute({ projectId, path }, ctx) {
-    const texPath = path?.trim() || "main.tex";
-
-    if (!texPath.endsWith(".tex")) {
-      return didNotRun(texPath, `Cannot compile ${texPath}: only .tex files can be compiled.`);
-    }
+    const requested = path?.trim();
 
     if (compilerMode() !== "upload") {
       return didNotRun(
-        texPath,
+        requested ?? "",
         'Compiling from chat needs the compiler in upload mode. Set COMPILER_MODE="upload" in apps/editor/.env.local and restart the dev server. The Compile button in the toolbar still works.',
       );
     }
 
+    let texPath = requested ?? "";
+    let pid: string | undefined;
     try {
-      const pid = await resolveToolProject(projectId);
+      pid = await resolveToolProject(projectId);
+
+      // An omitted path compiles the project's *configured* root document —
+      // the same one the toolbar's Compile button uses. This used to hardcode
+      // "main.tex", so on any project whose root is named otherwise (Main.tex,
+      // thesis.tex) the model's first compile failed with "Root file not found
+      // in workspace" and it then burned steps rediscovering the real name.
+      texPath = requested || (await readProjectSettings(pid)).mainFilePath;
+
+      // Checked after resolution, not just on the model's argument:
+      // sanitizeProjectSettings guarantees a non-empty string, not a .tex one,
+      // so a hand-edited settings file would otherwise reach the compiler.
+      if (!texPath.endsWith(".tex")) {
+        return didNotRun(texPath, `Cannot compile ${texPath}: only .tex files can be compiled.`);
+      }
 
       const since = Date.now() - (lastCompileAt.get(pid) ?? 0);
       if (since < MIN_COMPILE_INTERVAL_MS) {
@@ -86,6 +99,19 @@ export default defineTool({
         log: result.log,
       } satisfies CompileToolOutput;
     } catch (e) {
+      // The stamp is set before the upload because compileUpload re-reads and
+      // hashes every project file before the compiler ever sees it, and that is
+      // the cost the throttle exists to bound. But a throw means no compile ran
+      // and no log was stored, so releasing it here is what keeps the throttle
+      // honest: otherwise the model's *corrective* retry gets "Already compiled
+      // Ns ago. Use read-compile-log to see that result" pointing at a log that
+      // does not exist, and read-compile-log answers "nothing has been compiled
+      // recently". Observed costing three wasted steps and ~900 output tokens
+      // on a project whose root was Main.tex.
+      //
+      // Only reachable with `pid` set when compileUpload threw: resolveToolProject
+      // throws before it is assigned, and readProjectSettings never throws.
+      if (pid !== undefined) lastCompileAt.delete(pid);
       return didNotRun(
         texPath,
         `Error compiling ${texPath}: ${e instanceof Error ? e.message : String(e)}`,
