@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "lsof -ti:3000 | xargs kill 2>/dev/null; bun --bun next dev -p 3000",
-    "build": "if [ \"$VERCEL_ENV\" = production ]; then drizzle-kit migrate; fi && next build",
+    "build": "case \"$VERCEL_ENV\" in production|preview) drizzle-kit migrate ;; esac && next build",
     "start": "bun --bun next start",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
