@@ -3,6 +3,7 @@
 import React, { useMemo, useRef, useState } from "react";
 import {
   ShieldAlert,
+  MessageCircleQuestion,
   Bot,
   CheckCircle,
   XCircle,
@@ -154,6 +155,15 @@ function HitlCard({ args }: { args: ToolCardArgs }) {
     );
   }
 
+  // "Approval Required" gates a consequential action (a confirmation prompt, or
+  // a bare tool approval with no options); "Question" is Eve asking a routine
+  // multiple-choice follow-up. The two used to share one amber "alert" card,
+  // which read as a warning even for benign questions like "what's next?" —
+  // amber is now reserved for the icon on a real approval, on the same neutral
+  // card shell every other tool card (e.g. OAuthCard below) already uses.
+  const isApproval = inputRequest.display === "confirmation" || !inputRequest.options;
+  const options = inputRequest.options;
+
   const handleAnswer = (optionId: string) => {
     setSubmitted(true);
     agent.respond([{ requestId: inputRequest.requestId, optionId }]).catch((e: unknown) => {
@@ -177,28 +187,40 @@ function HitlCard({ args }: { args: ToolCardArgs }) {
   };
 
   return (
-    <div className="rounded-lg border border-amber-200 bg-amber-50/50 dark:border-amber-900/50 dark:bg-amber-950/20 p-4 mt-2 space-y-3">
+    <div className="rounded-lg border border-border bg-card p-4 mt-2 space-y-3 shadow-sm">
       <div className="flex items-center gap-2">
-        <ShieldAlert className="size-4 text-amber-600 dark:text-amber-400" />
-        <p className="font-semibold text-sm text-amber-800 dark:text-amber-300">
-          {inputRequest.display === "confirmation" || !inputRequest.options
-            ? "Approval Required"
-            : "Question"}
+        {isApproval ? (
+          <ShieldAlert className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+        ) : (
+          <MessageCircleQuestion className="size-4 shrink-0 text-blue-600 dark:text-blue-400" />
+        )}
+        <p className="font-semibold text-sm text-foreground">
+          {isApproval ? "Approval Required" : "Question"}
         </p>
       </div>
 
-      <p className="text-sm text-foreground">{inputRequest.prompt}</p>
+      <p className="text-sm text-foreground wrap-break-word">{inputRequest.prompt}</p>
 
       {/* Show tool input for transparency on approvals */}
       {!!args.input && inputRequest.display === "confirmation" && (
-        <pre className="text-xs bg-muted/65 p-2 rounded overflow-x-auto max-h-40 font-mono">
+        <pre className="text-xs bg-muted/50 p-2.5 rounded-md overflow-x-auto max-h-40 font-mono">
           {JSON.stringify(args.input, null, 2)}
         </pre>
       )}
 
-      <div className="flex flex-wrap gap-2 pt-1">
-        {inputRequest.options && inputRequest.options.length > 0 ? (
-          inputRequest.options.map((opt) => (
+      {options && options.length > 0 ? (
+        // Full-width, left-aligned and wrappable: option labels are
+        // Eve-authored and arbitrary-length ("Polish/clean up remaining
+        // warnings"), unlike the fixed Approve/Reject/Allow/Deny below, so a
+        // fixed-height nowrap button would clip or overflow a narrow panel.
+        // Two columns on a wide-enough panel (via the @container the thread
+        // root already declares), one on a narrow one.
+        <div
+          role="group"
+          aria-label="Response options"
+          className="grid grid-cols-1 gap-2 pt-1 @sm:grid-cols-2"
+        >
+          {options.map((opt) => (
             <Button
               key={opt.id}
               size="sm"
@@ -211,29 +233,30 @@ function HitlCard({ args }: { args: ToolCardArgs }) {
               }
               onClick={() => handleAnswer(opt.id)}
               disabled={submitted}
+              className="h-auto min-h-9 justify-start py-2 text-left leading-snug whitespace-normal"
             >
               {opt.label}
             </Button>
-          ))
-        ) : (
-          // Default approve / reject buttons for bare tool approvals. Mirrors
-          // the native ToolFallbackApproval bar (default + outline) so the two
-          // approval surfaces are indistinguishable.
-          <>
-            <Button size="sm" onClick={() => handleAnswer("approve")} disabled={submitted}>
-              Approve
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => handleAnswer("reject")}
-              disabled={submitted}
-            >
-              Reject
-            </Button>
-          </>
-        )}
-      </div>
+          ))}
+        </div>
+      ) : (
+        // Default approve / reject buttons for bare tool approvals. Mirrors
+        // the native ToolFallbackApproval bar (default + outline) so the two
+        // approval surfaces are indistinguishable.
+        <div role="group" aria-label="Response options" className="flex flex-wrap gap-2 pt-1">
+          <Button size="sm" onClick={() => handleAnswer("approve")} disabled={submitted}>
+            Approve
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => handleAnswer("reject")}
+            disabled={submitted}
+          >
+            Reject
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
