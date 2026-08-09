@@ -20,6 +20,7 @@ import { structuredPatch } from "diff";
 import Ansi from "ansi-to-react";
 import { Button } from "@/components/ui/button";
 import { useEveAgentCtx } from "@/components/chat/eve-agent-context";
+import { logEveAction, logEveError } from "@/lib/eve-diagnostics";
 import { makeAssistantToolUI, type ToolCallMessagePartStatus } from "@assistant-ui/react";
 import { EveToolRow } from "@/components/assistant-ui/tool-fallback";
 import { DiffViewer } from "@/components/diff-viewer";
@@ -65,15 +66,30 @@ async function fetchFileContent(projectId: string, path: string): Promise<string
   }
 }
 
+/**
+ * Every file mutation the *cards* make — reverting an edit, restoring a delete,
+ * undoing a move. Logged because these write to the user's project just like
+ * the agent's own tools do, so a trail that only covers `write-file` would show
+ * a change that is no longer on disk with nothing explaining why.
+ */
 async function postFiles(body: Record<string, unknown>): Promise<boolean> {
+  const action = typeof body.action === "string" ? body.action : "write";
+  const path = typeof body.path === "string" ? body.path : undefined;
   try {
     const res = await fetch("/api/files", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
+    if (res.ok) logEveAction("user:file-mutation", { action, path });
+    else logEveError("user:file-mutation-failed", { action, path, status: res.status });
     return res.ok;
-  } catch {
+  } catch (e) {
+    logEveError("user:file-mutation-failed", {
+      action,
+      path,
+      error: e instanceof Error ? e.message : String(e),
+    });
     return false;
   }
 }
@@ -118,8 +134,18 @@ function HitlCard({ args }: { args: ToolCardArgs }) {
 
   if (!inputRequest) return null;
 
-  // Already responded — show confirmation
-  if (state === "approval-responded" || submitted) {
+  // Already responded — show confirmation. The `output-*` states matter as
+  // much as `approval-responded`: once the answer comes back the tool runs and
+  // the part settles, and without them the card fell back to the live prompt.
+  // `submitted` masked that within the session, but a reload or a mode switch
+  // (key={mode} remounts the thread) reset it and the dead buttons returned.
+  if (
+    submitted ||
+    state === "approval-responded" ||
+    state === "output-available" ||
+    state === "output-error" ||
+    state === "output-denied"
+  ) {
     return (
       <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
         <CheckCircle className="size-3.5 text-green-500" />

@@ -8,7 +8,53 @@
 
 // Stamped into saved threads. Bump on any eve upgrade, or any change to what
 // is persisted, so state the current client cannot replay is discarded.
-export const HISTORY_VERSION = "eve-0.26";
+// (Was left at "eve-0.26" across the 0.31 upgrade, which changed the session
+// state type — those blobs were being replayed into the new reducer.)
+export const HISTORY_VERSION = "eve-0.31";
+
+const APPENDED_TYPES = new Set(["message.appended", "reasoning.appended"]);
+
+/**
+ * Collapses eve's streaming text runs down to their final event.
+ *
+ * eve streams text by resending the whole message: every `message.appended`
+ * carries `messageSoFar`, the full text up to that point (see
+ * `messageSoFar` in eve/dist/src/protocol/message.d.ts), and the client keeps
+ * every event. So one reply of N chunks costs O(N²) characters to store — a
+ * 20 KB answer serializes to ~6 MB, past the ~5 MB origin quota, and a model
+ * stuck in a repetition loop reaches tens of MB. Stringifying that on the
+ * autosave path froze the main thread, which is what made the chat look
+ * "stuck" mid-reply.
+ *
+ * Only the newest `*.appended` per (turnId, stepIndex) is needed: the
+ * reducer's `upsertRun` replaces the still-`streaming` part in place, and
+ * `message.completed` overwrites it with the final text anyway. Keeping the
+ * last one replays identically — including for a turn abandoned mid-stream,
+ * which never gets a `completed` event and so still needs its partial text.
+ *
+ * Caveat: eve documents `initialEvents` as "an ordered prefix of the same
+ * session's stream" (docs/guides/frontend/overview.mdx), and collapsing makes
+ * it a subsequence instead. That is safe here only because resume rides on
+ * `initialSession.streamIndex`, not on the saved log's length. If anyone
+ * adopts the lower-level reconnect the same doc describes —
+ * `session.stream({ startIndex: savedEvents.length })` — that length is no
+ * longer the stream position and the collapse has to move behind it.
+ */
+export function collapseAppendedRuns<T>(events: readonly T[]): T[] {
+  const newest = new Map<string, number>();
+  events.forEach((event, i) => {
+    const e = event as { type?: string; data?: { turnId?: string; stepIndex?: number } } | null;
+    if (e?.type && APPENDED_TYPES.has(e.type)) {
+      newest.set(`${e.type}:${e.data?.turnId}:${e.data?.stepIndex}`, i);
+    }
+  });
+  if (newest.size === 0) return events as T[];
+  const keep = new Set(newest.values());
+  return events.filter((event, i) => {
+    const type = (event as { type?: string } | null)?.type;
+    return !type || !APPENDED_TYPES.has(type) || keep.has(i);
+  });
+}
 
 export const THREAD_KEY_PREFIX = "eve-thread-";
 export const threadKey = (id: string) => `${THREAD_KEY_PREFIX}${id}`;
@@ -121,50 +167,4 @@ export function saveThreadHistory(
     }
   }
   return false;
-}
-
-/** Reads a thread's current title from the sidebar list page.tsx owns. */
-export function getThreadTitle(
-  projectId: string,
-  threadId: string,
-  storage: Storage = localStorage,
-): string {
-  try {
-    const list = JSON.parse(storage.getItem(threadsListKey(projectId)) ?? "[]") as {
-      id: string;
-      title: string;
-    }[];
-    return list.find((t) => t.id === threadId)?.title ?? "New Chat";
-  } catch {
-    return "New Chat";
-  }
-}
-
-/**
- * Best-effort write-through backup to /api/eve/threads/[id] (which forwards
- * to the web app's chat_threads table — see apps/web/db/schema.ts). Never
- * throws: a failed backup must not disrupt the conversation, and localStorage
- * (already saved by the caller before this runs) remains the source of truth
- * for reads — this exists only so a cleared browser or quota eviction doesn't
- * lose history outright. Skipped for "default", the local sandbox project,
- * which has no server-side project row to attach to.
- */
-export async function syncThreadToCloud(
-  threadId: string,
-  projectId: string,
-  title: string,
-  events: readonly unknown[],
-  sessionState: unknown,
-): Promise<void> {
-  if (projectId === "default") return;
-  try {
-    const res = await fetch(`/api/eve/threads/${threadId}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ projectId, title, events, sessionState }),
-    });
-    if (!res.ok) console.error("Cloud thread backup rejected", res.status, await res.text());
-  } catch (e) {
-    console.error("Cloud thread backup failed", e);
-  }
 }

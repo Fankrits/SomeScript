@@ -24,16 +24,17 @@ import {
 } from "@/lib/attachment-blocks";
 import type { EveMode } from "@/lib/eve-modes";
 import { filterOrphanedMessages } from "@/lib/eve-messages";
-import { cancelEveTurn } from "@/lib/eve-cancel";
+import { Client } from "eve/client";
 import type { HandleMessageStreamEvent, ClientSessionState } from "eve/client";
 import {
   loadThreadHistory,
   saveThreadHistory,
-  syncThreadToCloud,
-  getThreadTitle,
   threadsListKey,
+  collapseAppendedRuns,
 } from "@/lib/thread-history";
 import { notifyCreditsUpdated } from "@/hooks/use-credit-status";
+import { clipText, logEveAction, logEveError, logEveEvent } from "@/lib/eve-diagnostics";
+import * as Sentry from "@sentry/nextjs";
 
 // Context markers prefixed to the outgoing user message in onNew. The model (and
 // the dynamic model resolver in agent/agent.ts) read them; the UI must strip them
@@ -67,28 +68,42 @@ function buildContextMarker(
 //
 // ponytail: app-level idle timer, delete once eve ships the real fix.
 // https://github.com/vercel/eve/pull/1186 adds a native `streamIdleTimeoutMs`
-// that reconnects from the last durable cursor mid-turn. It merged 2026-07-29 but
-// is NOT in 0.27.12 (the newest release, published hours earlier). When a release
-// containing it lands, bump eve, delete this watchdog, and delete
-// filterOrphanedMessages with it — a resumed turn is never abandoned, so it
-// leaves no orphans to filter.
+// that reconnects from the last durable cursor mid-turn. Merged 2026-07-29 and
+// still NOT shipped as of 0.31.3, the version installed here — rechecked
+// against eve/dist/src/client/ndjson.js, whose readNdjsonStream still awaits
+// reader.read() with no timeout, and open-stream.js, whose reconnect policies
+// only fire when the body *throws*. Don't delete this on the version number
+// alone; reread those two files first. When a release containing it lands,
+// bump eve, delete this watchdog, and delete filterOrphanedMessages with it —
+// a resumed turn is never abandoned, so it leaves no orphans to filter.
 //
 // 60s, not the 15s that issue's reporter used: their case was short
 // conversational replies, ours runs tectonic compiles and web searches through
 // tools. See isAwaitingTool below for why a flat timer isn't enough on its own.
 const STALL_TIMEOUT_MS = 60_000;
 
-// How long a thread's events must stay quiet before the cloud backup fires
-// (see syncThreadToCloud in lib/thread-history.ts) — coalesces a whole burst
-// of per-token stream events into one write instead of one per event.
-const CLOUD_SYNC_DEBOUNCE_MS = 4_000;
+// How long to wait for eve's `turn.cancelled` boundary after cancelling a
+// *stalled* turn before detaching the stream locally. Only the stall path needs
+// this: a healthy stream delivers the boundary in one round trip, but a silent
+// one may never deliver it at all, and the composer can't stay disabled forever.
+const CANCEL_BOUNDARY_GRACE_MS = 5_000;
 
-// Same coalescing for the localStorage save, much shorter: unlike the cloud
-// backup, localStorage is the primary read path (loadThreadHistory on the
-// next mount) — without this, every token delta re-stringifies and writes
-// the whole event log, and a long session with a big tool result (a Tectonic
-// log, a large read_file) turns that into a main-thread stall on every token.
-const LOCAL_SAVE_DEBOUNCE_MS = 300;
+/**
+ * Everything that shrinks the event log before it is written anywhere.
+ * Collapse first: it drops most of the log, so the file-data strip that
+ * follows walks a fraction of the events. Both run only from eve's `onFinish`
+ * callback — once per settled turn, never per stream event, which is what made
+ * this quadratic.
+ *
+ * ponytail: this bounds what is *persisted*, not what eve holds in memory.
+ * EveAgentStore keeps every raw `message.appended`, each carrying the whole
+ * message so far, so a single long reply still costs O(n²) characters of RAM
+ * for the duration of the session. Not fixable from here — it needs a
+ * collapsing reducer inside eve. A reload starts small again, since
+ * loadThreadHistory now replays the collapsed log.
+ */
+const compactEvents = (events: readonly HandleMessageStreamEvent[]) =>
+  stripEventFileData(collapseAppendedRuns(events));
 
 // assistant-ui only ships Simple adapters for images and text. PDFs get the
 // same treatment: read as a data URL, forward as a generic `file` content
@@ -170,15 +185,19 @@ export function useEveRuntime(
   const compileStartedCalls = useRef<Set<string>>(new Set());
   const compileSettledCalls = useRef<Set<string>>(new Set());
   const processedSteps = useRef<Set<string>>(new Set());
-  // Debounce for the cloud backup below: the autosave effect re-runs on every
-  // stream event (token deltas included), but a network call per event would
-  // hammer the API for no benefit — only the settled result needs to land.
-  const cloudSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Debounce + in-flight payload for the localStorage save below, mirroring
-  // the cloud-sync timer's pattern but flushed on unmount (see the effect
-  // near the bottom) since this one can't afford to lose a pending write.
-  const localSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingLocalSaveRef = useRef<{ events: unknown[]; session: unknown } | null>(null);
+  // Id of the turn currently streaming, tracked from `turn.started` and cleared
+  // on its boundary event. abandonTurn passes it to cancel() so a click (or a
+  // watchdog firing) that lands after the turn already ended is a no-op instead
+  // of cancelling whatever turn started since.
+  const turnIdRef = useRef<string | null>(null);
+  // Session id whose cursor has already been pinned to localStorage; see the
+  // effect below. Keyed by id rather than a boolean so a reset that mints a new
+  // session pins the new cursor too.
+  const cursorPinnedRef = useRef<string | null>(null);
+  // The thread title is derived from the *first* user message, so it only has
+  // to be written once. Without this latch the effect below did a synchronous
+  // localStorage read + JSON.parse on every single stream event.
+  const titleWrittenRef = useRef(false);
   // Read inside onNew, which assistant-ui may hold across renders — a ref keeps
   // the marker in sync with the live selection without rebuilding the runtime.
   const modeRef = useRef(mode);
@@ -228,6 +247,22 @@ export function useEveRuntime(
   // send. This covers that gap; see isPending below.
   const [isSending, setIsSending] = useState(false);
 
+  // Live context usage for the composer meter. `inputTokens` on the most recent
+  // completed step *is* the context size: it counts everything sent to the model
+  // for that call. Captured from the event stream rather than recomputed from
+  // agent.events, so it stays O(1) per event.
+  //
+  // costUsd is eve's own gateway-reported figure, accumulated across the
+  // session. Deliberately not tokenlens's getUsage (which the ai-elements
+  // Context footer would use): tokenlens has no entry for any of the gateway
+  // model ids configured here and returns an empty costUSD, so those components
+  // would render a confident $0.00. A real number or nothing.
+  const [contextUsage, setContextUsage] = useState<{
+    inputTokens: number;
+    outputTokens: number;
+    costUsd: number;
+  } | null>(null);
+
   // Load initial state synchronously on mount/remount. A blob written by a
   // different eve client is replayed into this one's reducer and session, so a
   // shape change between versions can wedge the whole thread; bump the stamp
@@ -239,10 +274,80 @@ export function useEveRuntime(
       : loadThreadHistory<HandleMessageStreamEvent, ClientSessionState>(threadId, localStorage),
   );
 
+  // Same-origin, matching useEveAgent's own default host. Only used for the
+  // ID-addressed session routes (cancel today, compact/clear if ever needed) —
+  // `sessions.attach` performs no I/O, so this is just a URL builder with the
+  // official route contract instead of a hand-inlined path.
+  const client = useMemo(() => new Client({ host: "" }), []);
+
   const agent = useEveAgent({
     initialEvents: initialData?.events,
     initialSession: initialData?.sessionState,
+    // Turn-boundary bookkeeping for abandonTurn's cancel guard, the
+    // context-meter reading, and diagnostics. All O(1) per event.
+    onEvent: (event) => {
+      logEveEvent(event);
+
+      // eve's reducer handles `turn.failed` with `return state` and the client
+      // store only turns `session.failed` into agent.error — so a failed turn
+      // otherwise produces an assistant message with no parts, which renders as
+      // nothing at all. The reply just never arrives and the composer
+      // re-enables, which is the "AI not responding" report: users re-send into
+      // the silence, leaving a run of user bubbles with no answers between them.
+      //
+      // Surfaced with the upstream code attached, since the message is relayed
+      // verbatim from the gateway/provider and is the only clue about cause.
+      // Continue is offered for a *turn* failure but not a session one:
+      // `session.failed` is the terminal session-level variant, and sending to a
+      // terminal session id fails instead of reopening it, so the button would
+      // reliably re-error.
+      if (event.type === "turn.failed" || event.type === "session.failed") {
+        turnIdRef.current = null;
+        const { code, message } = event.data;
+        setSendError(
+          `The assistant stopped: ${message || "the model stream failed"}${code ? ` (${code})` : ""}`,
+        );
+        setCanContinue(event.type === "turn.failed");
+        return;
+      }
+
+      if (event.type === "turn.started") turnIdRef.current = event.data.turnId;
+      else if (event.type === "turn.completed" || event.type === "turn.cancelled") {
+        turnIdRef.current = null;
+      } else if (event.type === "step.completed") {
+        const usage = event.data.usage;
+        if (usage?.inputTokens === undefined) return;
+        setContextUsage((prev) => ({
+          // Replaced, not summed: this is the size of the context as of the
+          // latest call, and it *drops* after eve compacts — which is the whole
+          // signal the meter exists to show.
+          inputTokens: usage.inputTokens ?? 0,
+          outputTokens: usage.outputTokens ?? 0,
+          // Cost is the opposite: a running total for the session.
+          costUsd: (prev?.costUsd ?? 0) + (usage.costUsd ?? 0),
+        }));
+      }
+    },
+    // The one place chat history is written. eve calls this from the store's
+    // `finally`, so it covers a turn that succeeded, errored, or was aborted —
+    // which is why this needs no debounce, no pending-payload ref and no
+    // unmount flush. Callbacks are re-bound on every render (setCallbacks in
+    // eve/react), so threadId/projectId here are never stale.
+    onFinish: (snapshot) => {
+      if (!snapshot.session?.sessionId) return;
+      if (
+        !saveThreadHistory(threadId, projectId, compactEvents(snapshot.events), snapshot.session)
+      ) {
+        logEveError("persist:quota-exceeded", { threadId, events: snapshot.events.length });
+      }
+    },
   });
+
+  // useEveAgent hands back a fresh snapshot object per event, so a callback that
+  // closed over `agent` sees a stale status once it fires on a timer. The grace
+  // timer in abandonStalledTurn has to read the status as of when it fires.
+  const agentRef = useRef(agent);
+  agentRef.current = agent;
 
   const convertEvePart = useCallback((part: EveMessagePart, messageId: string, index: number) => {
     // 1. Plain text — assistant-ui TextMessagePart.
@@ -262,13 +367,24 @@ export function useEveRuntime(
     // 3. Dynamic tool calls — covers all Eve harness tools, HITL, subagents.
     //    The toolName is overridden so EveToolCalls can dispatch to the right card.
     if (part.type === "dynamic-tool") {
+      // Eve *merges* toolMetadata forward on every update, so `inputRequest`
+      // survives long after the prompt was answered and the tool ran. Routing
+      // on its presence alone therefore sent settled calls back to the
+      // approval card: the real tool result never rendered, and the card
+      // re-offered live buttons for a dead requestId (HitlCard's in-session
+      // `submitted` flag hid that until a reload or a mode switch remounted
+      // the thread). Terminal states are results, not prompts.
+      const isTerminal =
+        part.state === "output-available" ||
+        part.state === "output-error" ||
+        part.state === "output-denied";
       // HITL: either explicit approval states, or the tool itself is ask_question,
       // or an inputRequest object has already been populated by Eve.
       const isApproval =
         part.state === "approval-requested" ||
         part.state === "approval-responded" ||
-        part.toolName === "ask_question" ||
-        Boolean(part.toolMetadata?.eve?.inputRequest);
+        (!isTerminal &&
+          (part.toolName === "ask_question" || Boolean(part.toolMetadata?.eve?.inputRequest)));
       const isSubagent = part.toolMetadata?.eve?.kind === "subagent-call";
 
       // Resolved display toolName for our custom card registry
@@ -474,12 +590,23 @@ export function useEveRuntime(
             setSendError(null);
             setCanContinue(false);
             sentModeRef.current = modeRef.current;
+            // `text` is what the user actually sent, markers and all — the
+            // client half of the transcript, and the only place the pre-send
+            // text exists if agent.send() never lands. Markers are kept
+            // deliberately: they are the record of which mode and which open
+            // file this turn claimed, which is what the mode bug hid.
+            logEveAction("send", {
+              mode: sentModeRef.current,
+              parts: parts.length,
+              chars: parts.reduce((n, p) => n + (p.type === "text" ? p.text.length : 0), 0),
+              text: clipText(textPart?.text),
+            });
             await agent.send(sendArgs);
           } catch (e) {
             // Rethrowing would reject into assistant-ui's send handler and vanish
             // silently, leaving a cleared composer and no message on screen.
             setSendError(e instanceof Error ? e.message : String(e));
-            console.error("Failed to send message to Eve", e);
+            logEveError("send:failed", { error: e instanceof Error ? e.message : String(e) });
           }
         }
       } finally {
@@ -508,16 +635,58 @@ export function useEveRuntime(
     [agent.data.messages],
   );
 
-  // Giving up on the current turn, from anywhere: stop reading the stream *and*
-  // tell the server to stop producing it. agent.stop() alone only aborts the
-  // local fetch — eve turns are durable, so without the cancel the abandoned
-  // turn keeps running tools server-side and can still write project files
-  // underneath whatever happens next. See lib/eve-cancel.ts.
+  // Giving up on the current turn, from anywhere.
+  //
+  // eve turns are durable: agent.stop() only aborts the local fetch, so the
+  // server keeps running tools and writing project files underneath whatever
+  // happens next. The cancel is what actually stops the work.
+  //
+  // Deliberately does NOT call agent.stop() on the normal path. Per
+  // eve/docs/guides/frontend/overview.mdx — "Keep the stream open until the
+  // cancellation boundary arrives; do not use stop() for this interaction" —
+  // eve answers a cancel with `turn.cancelled` then `session.waiting`, and the
+  // reducer's `turn.cancelled` case is what flips still-streaming text and
+  // reasoning parts to `done`. Hanging up first is what used to leave messages
+  // frozen mid-stream forever. Status stays "streaming" until the boundary
+  // lands, which correctly keeps the composer disabled while the turn settles.
+  //
+  // The turnId guard makes a late abandon (a slow click, or the stall watchdog
+  // firing after the turn already ended) a no-op instead of killing a newer turn.
   const abandonTurn = useCallback(async () => {
-    agent.stop();
     const sessionId = agent.session?.sessionId;
-    if (sessionId) await cancelEveTurn(sessionId);
-  }, [agent]);
+    const turnId = turnIdRef.current;
+    logEveAction("cancel:requested", { sessionId, turnId, status: agent.status });
+    if (!sessionId || !turnId) {
+      // Nothing addressable to cancel — fall back to detaching locally so the
+      // caller still gets out of a running state.
+      agent.stop();
+      return;
+    }
+    try {
+      const result = await client.sessions.attach(sessionId).cancel({ turnId });
+      logEveAction("cancel:accepted", { turnId, result });
+    } catch (e) {
+      // Cancellation is advisory (eve counts `no_active_turn` as success) and
+      // every caller is on a recovery path that must not break here.
+      logEveError("cancel:failed", { turnId, error: e instanceof Error ? e.message : String(e) });
+      agent.stop();
+    }
+  }, [agent, client]);
+
+  // The stall path can't rely on the boundary arriving: the whole reason the
+  // watchdog fired is that the stream went silent, so `turn.cancelled` may
+  // never be delivered even though the server honoured the cancel. Give it a
+  // short grace period, then detach locally as a last resort. This is the only
+  // remaining path that can strand a mid-stream message, which is why
+  // filterOrphanedMessages still exists.
+  const abandonStalledTurn = useCallback(async () => {
+    await abandonTurn();
+    setTimeout(() => {
+      if (agentRef.current.status === "streaming" || agentRef.current.status === "submitted") {
+        agentRef.current.stop();
+      }
+    }, CANCEL_BOUNDARY_GRACE_MS);
+  }, [abandonTurn]);
 
   const runtime = useExternalStoreRuntime<EveMessage>({
     isRunning: isPending,
@@ -578,14 +747,19 @@ export function useEveRuntime(
   useEffect(() => {
     if (!isBusy || isAwaitingTool) return;
     const timer = setTimeout(() => {
-      void abandonTurn();
+      logEveError("stall:timeout", {
+        afterMs: STALL_TIMEOUT_MS,
+        status: agentRef.current.status,
+        turnId: turnIdRef.current,
+      });
+      void abandonStalledTurn();
       setSendError(
         "The assistant stopped responding. Continue to try picking up where it left off.",
       );
       setCanContinue(true);
     }, STALL_TIMEOUT_MS);
     return () => clearTimeout(timer);
-  }, [abandonTurn, isAwaitingTool, isBusy]);
+  }, [abandonStalledTurn, isAwaitingTool, isBusy]);
 
   // User-triggered recovery from the "stopped responding" banner: sends a
   // plain "continue" turn rather than replaying the original message
@@ -595,102 +769,70 @@ export function useEveRuntime(
   const continueTurn = useCallback(() => {
     setSendError(null);
     setCanContinue(false);
+    logEveAction("continue", { sessionId: agent.session?.sessionId });
     agent.send("continue").catch((e) => {
+      logEveError("continue:failed", { error: e instanceof Error ? e.message : String(e) });
       setSendError(e instanceof Error ? e.message : String(e));
     });
   }, [agent]);
 
+  // Pin the session cursor as soon as eve mints one, before the first turn
+  // settles. onFinish covers every later save, but a reload *during* the very
+  // first turn would otherwise find nothing saved at all — no cursor, so no
+  // durable session to resume, and the thread comes back empty. eve's own
+  // guidance: "persist the session state as soon as it contains a sessionId"
+  // (docs/guides/frontend/overview.mdx). Latched, so this is one write per
+  // session, not per event.
   useEffect(() => {
-    if (agent.session?.sessionId) {
-      // Coalesce the burst of per-token stream events into one write instead
-      // of one per token. Never throws: losing saved history is survivable,
-      // but an error out of this effect unmounts the thread mid-conversation.
-      const strippedEvents = stripEventFileData(agent.events);
-      pendingLocalSaveRef.current = { events: strippedEvents, session: agent.session };
-      if (localSaveTimerRef.current) clearTimeout(localSaveTimerRef.current);
-      localSaveTimerRef.current = setTimeout(() => {
-        pendingLocalSaveRef.current = null;
-        if (!saveThreadHistory(threadId, projectId, strippedEvents, agent.session)) {
-          console.error("Failed to persist chat history: localStorage is full");
-        }
-      }, LOCAL_SAVE_DEBOUNCE_MS);
+    const sessionId = agent.session?.sessionId;
+    if (!sessionId || cursorPinnedRef.current === sessionId) return;
+    cursorPinnedRef.current = sessionId;
+    saveThreadHistory(threadId, projectId, compactEvents(agent.events), agent.session);
+    // Same latch, so this is one call per session. sessionId is the join key
+    // across every surface: it resolves a Sentry issue to an `eve traces` span
+    // tree, to the server transcript in agent/hooks/transcript.ts, and to the
+    // run in Vercel's Agent Runs tab.
+    Sentry.setContext("eve", { sessionId, threadId, projectId, mode: modeRef.current });
+  }, [threadId, projectId, agent.session, agent.events]);
 
-      // Auto-update the title of the conversation in the threads list based on the first user message
+  // Name the thread after its first user message. Latched by titleWrittenRef
+  // so the localStorage read + parse happens on the first turn and then never
+  // again, instead of on every stream event.
+  useEffect(() => {
+    if (titleWrittenRef.current) return;
+    const firstUserMessage = agent.data?.messages?.find((m) => m.role === "user");
+    const firstPart = firstUserMessage?.parts?.find(
+      (p: { type: string; text?: string }) => p.type === "text",
+    );
+    if (!firstPart || !("text" in firstPart) || !firstPart.text) return;
+    // Strip the injected "[mode: …]"/"[projectId: …]" context markers
+    // (same as convertEvePart) so the title shows the actual message.
+    const cleanText = firstPart.text.replace(MARKER_PREFIX, "").trim();
+    if (!cleanText) return;
+
+    try {
       const threadListRaw = localStorage.getItem(threadsListKey(projectId));
-      if (threadListRaw) {
-        try {
-          const list = JSON.parse(threadListRaw) as { id: string; title: string }[];
-          const threadIndex = list.findIndex((t) => t.id === threadId);
-          // Also repair threads whose title was previously saved as the raw
-          // "[projectId: ...]" marker before this fix.
-          const needsTitle =
-            threadIndex !== -1 &&
-            (list[threadIndex].title === "New Chat" ||
-              list[threadIndex].title.startsWith("[projectId:"));
-          if (needsTitle) {
-            const firstUserMessage = agent.data?.messages?.find((m) => m.role === "user");
-            const firstPart = firstUserMessage?.parts?.find(
-              (p: { type: string; text?: string }) => p.type === "text",
-            );
-            if (firstPart && "text" in firstPart && firstPart.text) {
-              // Strip the injected "[mode: …]"/"[projectId: …]" context markers
-              // (same as convertEvePart) so the title shows the actual message.
-              const cleanText = firstPart.text.replace(MARKER_PREFIX, "").trim();
-              if (cleanText) {
-                list[threadIndex].title =
-                  cleanText.length > 25 ? cleanText.substring(0, 22) + "..." : cleanText;
-                localStorage.setItem(threadsListKey(projectId), JSON.stringify(list));
-                window.dispatchEvent(new Event("storage"));
-              }
-            }
-          }
-        } catch (e) {
-          console.error("Failed to update thread title", e);
-        }
+      if (!threadListRaw) return;
+      const list = JSON.parse(threadListRaw) as { id: string; title: string }[];
+      const threadIndex = list.findIndex((t) => t.id === threadId);
+      // Not in the list yet — page.tsx owns that write, so leave the latch
+      // open and retry on the next event rather than never titling it.
+      if (threadIndex === -1) return;
+      // Also repair threads whose title was previously saved as the raw
+      // "[projectId: ...]" marker before this fix.
+      const needsTitle =
+        list[threadIndex].title === "New Chat" || list[threadIndex].title.startsWith("[projectId:");
+      if (needsTitle) {
+        list[threadIndex].title =
+          cleanText.length > 25 ? cleanText.substring(0, 22) + "..." : cleanText;
+        localStorage.setItem(threadsListKey(projectId), JSON.stringify(list));
+        window.dispatchEvent(new Event("storage"));
       }
-
-      // Cloud backup (durability only — reads still come from localStorage
-      // above; see syncThreadToCloud's doc comment). Re-armed on every event,
-      // same debounce pattern as the stall watchdog earlier in this file.
-      if (cloudSyncTimerRef.current) clearTimeout(cloudSyncTimerRef.current);
-      cloudSyncTimerRef.current = setTimeout(() => {
-        void syncThreadToCloud(
-          threadId,
-          projectId,
-          getThreadTitle(projectId, threadId),
-          stripEventFileData(agent.events),
-          agent.session,
-        );
-      }, CLOUD_SYNC_DEBOUNCE_MS);
+      titleWrittenRef.current = true;
+    } catch (e) {
+      console.error("Failed to update thread title", e);
     }
-  }, [threadId, projectId, agent.events, agent.session, agent.data?.messages]);
-
-  // Flush isn't needed on unmount: a mode switch remounts this whole hook
-  // (key={mode} in eve-thread.tsx) mid-debounce, but the next turn's autosave
-  // re-arms the same debounce and catches up — this is a backup copy, not
-  // something a few seconds of lag can corrupt.
-  useEffect(
-    () => () => {
-      if (cloudSyncTimerRef.current) clearTimeout(cloudSyncTimerRef.current);
-    },
-    [],
-  );
-
-  // Unlike the cloud backup above, localStorage is the primary read path
-  // (loadThreadHistory replays it on the next mount) — a mode switch right
-  // after Eve's reply finishes but before this timer fires would otherwise
-  // drop that reply from history. Flush synchronously instead of just
-  // clearing the timer.
-  useEffect(
-    () => () => {
-      if (localSaveTimerRef.current) {
-        clearTimeout(localSaveTimerRef.current);
-        const pending = pendingLocalSaveRef.current;
-        if (pending) saveThreadHistory(threadId, projectId, pending.events, pending.session);
-      }
-    },
-    [threadId, projectId],
-  );
+  }, [threadId, projectId, agent.data?.messages]);
 
   // Watch agent messages/events for completed tool calls
   useEffect(() => {
@@ -785,12 +927,20 @@ export function useEveRuntime(
       window.dispatchEvent(new CustomEvent("somescript:refresh-workspace"));
     }
     if (wrotePath) {
+      // The file the turn finished on. Paired with the tool:requested record,
+      // this is the end-to-end trail for "the AI changed my document".
+      logEveAction("edit:applied", { path: wrotePath });
       window.dispatchEvent(new CustomEvent("somescript:open-file", { detail: wrotePath }));
     }
     if (compileStarted) {
       window.dispatchEvent(new CustomEvent("somescript:compiling"));
     }
     if (compiled) {
+      logEveAction("compile:settled", {
+        ok: compiled.ok,
+        path: compiled.path,
+        hasLog: compiled.log !== null,
+      });
       window.dispatchEvent(
         new CustomEvent<CompiledEventDetail>("somescript:compiled", { detail: compiled }),
       );
@@ -822,9 +972,21 @@ export function useEveRuntime(
         body: JSON.stringify({ mode: sentModeRef.current, outputTokens }),
       })
         .then((res) => {
+          logEveAction("credits:recorded", {
+            mode: sentModeRef.current,
+            outputTokens,
+            ok: res.ok,
+            status: res.status,
+          });
           if (res.ok) notifyCreditsUpdated();
         })
-        .catch((e) => console.error("Failed to record Eve credit usage", e));
+        .catch((e) =>
+          logEveError("credits:failed", {
+            mode: sentModeRef.current,
+            outputTokens,
+            error: e instanceof Error ? e.message : String(e),
+          }),
+        );
     }
   }, [agent.events]);
 
@@ -841,6 +1003,7 @@ export function useEveRuntime(
     runtime,
     agent,
     error,
+    contextUsage,
     canContinue,
     continueTurn,
     dismissError: () => {

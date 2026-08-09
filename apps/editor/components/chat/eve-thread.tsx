@@ -6,6 +6,7 @@ import { Thread } from "@/components/assistant-ui/thread";
 import { useEveRuntime } from "@/hooks/use-eve-runtime";
 import { EveAgentContext } from "@/components/chat/eve-agent-context";
 import { ModelModeContext } from "@/components/chat/model-mode-context";
+import { ContextUsageProvider } from "@/components/chat/context-usage";
 import { DEFAULT_MODE, isEveMode, type EveMode } from "@/lib/eve-modes";
 import {
   HitlToolUI,
@@ -93,6 +94,7 @@ function ChatError({
           Continue
         </button>
       )}
+      <CopyDiagnostics />
       <button
         type="button"
         onClick={onDismiss}
@@ -101,6 +103,40 @@ function ChatError({
         Dismiss
       </button>
     </div>
+  );
+}
+
+/**
+ * Hands the user the ring buffer from lib/eve-diagnostics.ts as pasteable JSON.
+ * Turns "the AI stopped responding" — a report with nothing attached to it —
+ * into the event trail that led up to it, without asking anyone to open devtools.
+ */
+function CopyDiagnostics() {
+  const [copied, setCopied] = React.useState(false);
+  // Void-returning so it can be passed straight to onClick without allocating
+  // a new arrow on every render of the banner.
+  const onCopy = React.useCallback(() => {
+    void (async () => {
+      try {
+        await navigator.clipboard.writeText(
+          JSON.stringify(window.eveDiagnostics?.() ?? [], null, 2),
+        );
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      } catch {
+        // Clipboard is permission-gated and can simply refuse. The label just
+        // doesn't change; nothing here is worth breaking an error banner over.
+      }
+    })();
+  }, []);
+  return (
+    <button
+      type="button"
+      onClick={onCopy}
+      className="shrink-0 rounded px-1 text-xs underline underline-offset-2 hover:opacity-70"
+    >
+      {copied ? "Copied" : "Copy diagnostics"}
+    </button>
   );
 }
 
@@ -130,53 +166,51 @@ function EveThreadInner({
   mode: EveMode;
   openFile?: string | null;
 }) {
-  const { runtime, agent, error, canContinue, continueTurn, dismissError } = useEveRuntime(
-    threadId,
-    projectId,
-    mode,
-    openFile,
-  );
+  const { runtime, agent, error, contextUsage, canContinue, continueTurn, dismissError } =
+    useEveRuntime(threadId, projectId, mode, openFile);
 
   return (
     <EveAgentContext.Provider value={agent}>
-      <AssistantRuntimeProvider runtime={runtime}>
-        {/* Natively register all Eve-specific custom tool call UIs */}
-        <HitlToolUI />
-        <AskQuestionToolUI />
-        <OauthToolUI />
-        <SubagentToolUI />
-        <WebSearchToolUI />
-        <BashToolUI />
-        <ReadFileToolUI />
-        <ReadFileDashToolUI />
-        <WriteFileToolUI />
-        <WriteFileDashToolUI />
-        <ListFilesToolUI />
-        <ListFilesSnakeToolUI />
-        <TodoToolUI />
-        <WebFetchToolUI />
-        <DeleteFileToolUI />
-        <MoveFileToolUI />
-        <CompileProjectToolUI />
-        <ReadCompileLogToolUI />
-        <ComposerInbox />
+      <ContextUsageProvider value={contextUsage}>
+        <AssistantRuntimeProvider runtime={runtime}>
+          {/* Natively register all Eve-specific custom tool call UIs */}
+          <HitlToolUI />
+          <AskQuestionToolUI />
+          <OauthToolUI />
+          <SubagentToolUI />
+          <WebSearchToolUI />
+          <BashToolUI />
+          <ReadFileToolUI />
+          <ReadFileDashToolUI />
+          <WriteFileToolUI />
+          <WriteFileDashToolUI />
+          <ListFilesToolUI />
+          <ListFilesSnakeToolUI />
+          <TodoToolUI />
+          <WebFetchToolUI />
+          <DeleteFileToolUI />
+          <MoveFileToolUI />
+          <CompileProjectToolUI />
+          <ReadCompileLogToolUI />
+          <ComposerInbox />
 
-        <div className="h-full flex flex-col bg-background">
-          {/* Thread is h-full, so it needs its own flex box to shrink for the
+          <div className="h-full flex flex-col bg-background">
+            {/* Thread is h-full, so it needs its own flex box to shrink for the
               error banner instead of pushing it out of view. */}
-          <div className="min-h-0 flex-1">
-            <Thread />
+            <div className="min-h-0 flex-1">
+              <Thread />
+            </div>
+            {error && (
+              <ChatError
+                message={error}
+                canContinue={canContinue}
+                onContinue={continueTurn}
+                onDismiss={dismissError}
+              />
+            )}
           </div>
-          {error && (
-            <ChatError
-              message={error}
-              canContinue={canContinue}
-              onContinue={continueTurn}
-              onDismiss={dismissError}
-            />
-          )}
-        </div>
-      </AssistantRuntimeProvider>
+        </AssistantRuntimeProvider>
+      </ContextUsageProvider>
     </EveAgentContext.Provider>
   );
 }

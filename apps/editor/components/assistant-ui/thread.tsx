@@ -21,6 +21,7 @@ import {
 } from "@/components/assistant-ui/tool-group";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { ModelModeSelect } from "@/components/chat/model-mode-select";
+import { ContextIndicator } from "@/components/chat/context-usage";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
@@ -235,6 +236,9 @@ const ComposerAction: FC = () => {
       <div className="flex items-center gap-1">
         <ComposerAddAttachment />
         <ModelModeSelect />
+        {/* Renders nothing until a turn has reported usage and the active
+            mode has a configured window — see ContextIndicator. */}
+        <ContextIndicator />
       </div>
       <div className="flex items-center gap-1.5">
         <AuiIf condition={(s) => s.thread.capabilities.dictation}>
@@ -286,11 +290,15 @@ const ComposerAction: FC = () => {
         </AuiIf>
         <AuiIf condition={(s) => s.thread.isRunning}>
           <ComposerPrimitive.Cancel asChild>
+            {/* Cancelling is no longer instant: the runtime asks eve to cancel
+                and keeps the stream open until `turn.cancelled` arrives, so the
+                turn can take a round trip to settle. active:/disabled: styling
+                marks the press so the gap doesn't read as a dead button. */}
             <Button
               type="button"
               variant="default"
               size="icon"
-              className="aui-composer-cancel size-7 rounded-full"
+              className="aui-composer-cancel size-7 rounded-full transition-opacity active:opacity-60 disabled:opacity-60"
               aria-label="Stop generating"
             >
               <SquareIcon className="aui-composer-cancel-icon size-3.5 fill-current" />

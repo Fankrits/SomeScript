@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import {
   HISTORY_VERSION,
+  collapseAppendedRuns,
   loadThreadHistory,
   saveThreadHistory,
   threadKey,
@@ -125,4 +126,60 @@ test("a full store does not wedge later writes", () => {
   expect(saveThreadHistory("t1", "p1", big, null, s)).toBe(true);
   expect(saveThreadHistory("t1", "p1", [...big, event(60)], null, s)).toBe(true);
   expect(loadThreadHistory("t1", s)).not.toBeNull();
+});
+
+// --- collapseAppendedRuns -------------------------------------------------
+
+/** One streamed reply as eve emits it: every event carries the full text so far. */
+const appendedRun = (turnId: string, stepIndex: number, chunks: string[]) =>
+  chunks.map((_, i) => ({
+    type: "message.appended",
+    data: { turnId, stepIndex, messageSoFar: chunks.slice(0, i + 1).join("") },
+  }));
+
+test("collapses a streaming run to its final event, keeping the full text", () => {
+  const events = collapseAppendedRuns(appendedRun("t1", 0, ["Hel", "lo ", "there"]));
+  expect(events).toHaveLength(1);
+  expect((events[0] as { data: { messageSoFar: string } }).data.messageSoFar).toBe("Hello there");
+});
+
+test("keeps runs from different turns, steps, and event types apart", () => {
+  const events = collapseAppendedRuns([
+    ...appendedRun("t1", 0, ["a", "b"]),
+    { type: "reasoning.appended", data: { turnId: "t1", stepIndex: 0, reasoningSoFar: "why" } },
+    ...appendedRun("t1", 1, ["c", "d"]),
+    ...appendedRun("t2", 0, ["e", "f"]),
+  ]);
+  // One survivor per (type, turnId, stepIndex) — four runs in, four out.
+  expect(events).toHaveLength(4);
+});
+
+test("preserves every non-appended event, in order", () => {
+  const events = collapseAppendedRuns([
+    { type: "step.started", data: { turnId: "t1", stepIndex: 0 } },
+    ...appendedRun("t1", 0, ["a", "b", "c"]),
+    { type: "message.completed", data: { turnId: "t1", stepIndex: 0, message: "abc" } },
+    { type: "turn.completed", data: { turnId: "t1" } },
+  ]);
+  expect(events.map((e) => (e as { type: string }).type)).toEqual([
+    "step.started",
+    "message.appended",
+    "message.completed",
+    "turn.completed",
+  ]);
+});
+
+test("keeps a mid-stream partial when the turn was abandoned before completing", () => {
+  // No message.completed: the last appended event is the only copy of the text.
+  const events = collapseAppendedRuns(appendedRun("t1", 0, ["par", "tial"]));
+  expect((events[0] as { data: { messageSoFar: string } }).data.messageSoFar).toBe("partial");
+});
+
+test("a long reply fits in the origin quota once collapsed", () => {
+  // 600 chunks of 34 chars ~= 20 KB of visible text, which serialized
+  // uncollapsed to ~5.9 MB and blew the ~5 MB quota.
+  const chunks = Array.from({ length: 600 }, () => "x".repeat(34));
+  const raw = appendedRun("t1", 0, chunks);
+  expect(JSON.stringify(raw).length).toBeGreaterThan(5_000_000);
+  expect(JSON.stringify(collapseAppendedRuns(raw)).length).toBeLessThan(100_000);
 });
