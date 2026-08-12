@@ -1,6 +1,7 @@
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveToolProject, touchProject } from "../../lib/authz";
+import { workspaceFrom } from "../lib/workspace";
 import { storage } from "../../lib/storage";
 import { notifyCollabPathsChanged } from "../../lib/collab-notify";
 
@@ -13,9 +14,9 @@ export default defineTool({
     oldPath: z.string().describe("Current relative path of the file from project root"),
     newPath: z.string().describe("New relative path for the file from project root"),
   }),
-  async execute({ projectId, oldPath, newPath }) {
+  async execute({ projectId, oldPath, newPath }, ctx) {
     try {
-      const pid = await resolveToolProject(projectId);
+      const pid = await resolveToolProject(projectId, workspaceFrom(ctx));
       await storage.move(pid, oldPath, newPath);
       await touchProject(pid);
       await notifyCollabPathsChanged(pid, [oldPath, newPath]);

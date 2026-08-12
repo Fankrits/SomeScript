@@ -1,6 +1,7 @@
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveToolProject } from "../../lib/authz";
+import { workspaceFrom } from "../lib/workspace";
 import { compileLogKey, type StoredCompileLog } from "../../lib/compile";
 import {
   formatCompileForModel,
@@ -35,9 +36,9 @@ export default defineTool({
       .string()
       .describe("The projectId from the [projectId: ...] context marker in the conversation"),
   }),
-  async execute({ projectId }) {
+  async execute({ projectId }, ctx) {
     try {
-      const pid = await resolveToolProject(projectId);
+      const pid = await resolveToolProject(projectId, workspaceFrom(ctx));
       const raw = await redisGet(compileLogKey(pid));
 
       if (!raw) {

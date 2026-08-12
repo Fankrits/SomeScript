@@ -1,6 +1,7 @@
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveToolProject } from "../../lib/authz";
+import { workspaceFrom } from "../lib/workspace";
 import { compileUpload, compilerMode } from "../../lib/compile";
 import { readProjectSettings } from "../../lib/project-settings";
 import {
@@ -60,7 +61,7 @@ export default defineTool({
     let texPath = requested ?? "";
     let pid: string | undefined;
     try {
-      pid = await resolveToolProject(projectId);
+      pid = await resolveToolProject(projectId, workspaceFrom(ctx));
 
       // An omitted path compiles the project's *configured* root document —
       // the same one the toolbar's Compile button uses. This used to hardcode

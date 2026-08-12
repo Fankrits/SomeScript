@@ -1,3 +1,7 @@
+// pg's own deps (pg-types, pg-pool, ...) are pinned as direct deps in package.json:
+// Next's default serverExternalPackages list marks "pg" external, and Bun's isolated
+// linker only exposes *direct* deps by bare name — without this, dev fails with
+// "Cannot find package 'pg-types'" the moment this module loads. See apps/web/lib/db.ts.
 import { Pool } from "pg";
 import path from "path";
 
@@ -61,31 +65,34 @@ export async function requireProject(projectId: string | null | undefined): Prom
 
 /**
  * Project resolution for Eve agent tools. Eve executes tools in its own runtime,
- * which may be outside the Next request context where Clerk `auth()` can read the
- * session. This keeps the full ownership check when auth() is available — a
- * signed-out caller (401) or a non-owner (404) is still denied — and falls back to
- * format validation only when auth() cannot run at all (raw, non-ApiError throw).
- * The agent HTTP endpoint itself is gated by the Next middleware (proxy.ts).
- * ponytail: best-effort ownership in the no-context case; make it a hard check once
- * eve exposes request identity (workspaceId) to tool execution.
+ * outside the Next request context where Clerk `auth()` can read the session, so
+ * the caller's identity arrives a different way: the eve channel verifies the
+ * Clerk token on the way in and puts the workspace on the session
+ * (agent/channels/eve.ts), and tools read it back with workspaceFrom(ctx).
+ *
+ * `projectId` is model-supplied text and is treated as a selector only —
+ * ownership is decided by `workspaceId`, which the model cannot influence. A
+ * missing workspace is a hard 401, never a pass: this used to fall back to
+ * UUID-format validation whenever auth() could not run, which accepted any
+ * well-formed id the model emitted.
  */
-export async function resolveToolProject(projectId: string | null | undefined): Promise<string> {
+export async function resolveToolProject(
+  projectId: string | null | undefined,
+  workspaceId: string | null | undefined,
+): Promise<string> {
   if (!projectId) throw new ApiError(400, "Missing projectId");
   if (projectId === "default") {
     if (process.env.NODE_ENV !== "production") return projectId;
     throw new ApiError(404, "Project not found");
   }
   if (!isUuid(projectId)) throw new ApiError(404, "Project not found");
+  if (!workspaceId) throw new ApiError(401, "Unauthorized");
 
-  try {
-    return await requireProject(projectId);
-  } catch (e) {
-    // ApiError (401 signed-out, 404 not-owned) is a genuine denial — propagate it.
-    if (e instanceof ApiError) throw e;
-    // Non-ApiError means auth() could not run in this execution context; fall back
-    // to the already format-validated id. Endpoint identity is enforced upstream.
-    return projectId;
+  const res = await getPool().query("SELECT workspace_id FROM projects WHERE id = $1", [projectId]);
+  if (!res.rows[0] || res.rows[0].workspace_id !== workspaceId) {
+    throw new ApiError(404, "Project not found");
   }
+  return projectId;
 }
 
 /**
