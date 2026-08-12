@@ -1,7 +1,8 @@
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveToolProject, touchProject } from "../../lib/authz";
-import { storage } from "../../lib/storage";
+import { workspaceFrom } from "../lib/workspace";
+import { storage, type FileNode } from "../../lib/storage";
 import { notifyCollabPathsChanged } from "../../lib/collab-notify";
 
 // Same cap as write-file.ts: above this we skip the snapshot rather than
@@ -15,6 +16,15 @@ function isNotFound(e: unknown): boolean {
   );
 }
 
+function findDirectory(nodes: FileNode[], target: string): boolean {
+  for (const node of nodes) {
+    if (!node.isDir) continue;
+    if (node.path === target) return true;
+    if (node.children && findDirectory(node.children, target)) return true;
+  }
+  return false;
+}
+
 export default defineTool({
   description: "Deletes a file from the workspace.",
   inputSchema: z.object({
@@ -23,9 +33,22 @@ export default defineTool({
       .describe("The projectId from the [projectId: ...] context marker in the conversation"),
     path: z.string().describe("Relative path to the file from project root"),
   }),
-  async execute({ projectId, path: filePath }) {
+  async execute({ projectId, path: filePath }, ctx) {
     try {
-      const pid = await resolveToolProject(projectId);
+      const pid = await resolveToolProject(projectId, workspaceFrom(ctx));
+
+      // storage.delete removes a directory recursively (fs.rm recursive locally, a
+      // prefix sweep on S3) but the snapshot below is a single readFile — so a
+      // folder delete would wipe many files and offer to restore one, and on S3
+      // would even report "did not exist". Refuse instead; this is the data-loss
+      // category, which does not get simplified away.
+      if (findDirectory(await storage.listProjectFiles(pid), filePath)) {
+        return {
+          ok: false as const,
+          path: filePath,
+          error: `${filePath} is a folder, not a file. Deleting a folder cannot be undone from the chat — list its files and delete them individually, or ask the user to remove the folder from the file tree.`,
+        };
+      }
 
       // Snapshot the current content before deleting so the UI can restore it on revert.
       let before: string | null = null;

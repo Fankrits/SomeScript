@@ -1,6 +1,8 @@
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveToolProject, touchProject } from "../../lib/authz";
+import { workspaceFrom } from "../lib/workspace";
+import { hashContent, readHashFor, recordRead } from "../lib/read-versions";
 import { storage } from "../../lib/storage";
 import { notifyCollabPathsChanged } from "../../lib/collab-notify";
 
@@ -25,9 +27,9 @@ export default defineTool({
     path: z.string().describe("Relative path to the file from project root"),
     content: z.string().describe("The complete file content to write"),
   }),
-  async execute({ projectId, path: filePath, content }) {
+  async execute({ projectId, path: filePath, content }, ctx) {
     try {
-      const pid = await resolveToolProject(projectId);
+      const pid = await resolveToolProject(projectId, workspaceFrom(ctx));
 
       // Snapshot the current content before overwriting so the UI can diff and revert.
       // `before === null && created` -> new file (revert = delete).
@@ -42,9 +44,27 @@ export default defineTool({
         // Non-not-found read error: leave before=null, created=false so revert stays disabled.
       }
 
+      // Clobber guard. `before` was just read, so comparing it to the hash recorded
+      // when this session last read the file catches a human typing in CodeMirror
+      // between the agent's read and this write. Two deliberate passes:
+      //   - no recorded read -> allow (this is file creation, the most common first
+      //     write; instructions.md already requires reading before writing)
+      //   - before === null (>1MB or unreadable) -> allow, nothing to hash
+      const expected = readHashFor(pid, filePath);
+      if (expected !== undefined && before !== null && hashContent(before) !== expected) {
+        return {
+          ok: false as const,
+          path: filePath,
+          stale: true,
+          error: `${filePath} changed since you read it — someone may be editing it live. Read it again, re-apply your change to the current content, then write.`,
+        };
+      }
+
       await storage.writeFile(pid, filePath, content);
       await touchProject(pid);
       await notifyCollabPathsChanged(pid, [filePath]);
+      // Keeps a write-then-write in the same turn from tripping the guard.
+      recordRead(pid, filePath, content);
       return { ok: true as const, path: filePath, before, created };
     } catch (e) {
       return {
