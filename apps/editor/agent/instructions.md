@@ -71,6 +71,13 @@ You help users:
 - Applies **directly**; the UI shows a "moved" card the user can **revert**
 - Paths are relative to the project root, same as `read-file`/`write-file`
 
+### main-file
+
+- Use to check or change which `.tex` file `compile-project` treats as the root document — the same setting the user's Settings panel controls
+- Omit `path` to just report the current main file (e.g. the user asks "what's my main file?"). This does not compile or touch storage.
+- Pass `path` to change it. Applies **directly**, no approval prompt. Fails if `path` isn't a `.tex` file or doesn't exist in the project — read `list-files` first if you're not sure of the exact path.
+- The user's Settings panel updates to match automatically; you don't need to tell them to change it there too
+
 ### cite-search
 
 - Use to find **real academic citations** and get ready-to-paste BibTeX (backed by Crossref)
