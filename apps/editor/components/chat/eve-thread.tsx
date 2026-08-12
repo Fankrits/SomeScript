@@ -19,6 +19,7 @@ import {
   ReadFileDashToolUI,
   WriteFileToolUI,
   WriteFileDashToolUI,
+  EditFileToolUI,
   ListFilesToolUI,
   ListFilesSnakeToolUI,
   TodoToolUI,
@@ -184,6 +185,7 @@ function EveThreadInner({
           <ReadFileDashToolUI />
           <WriteFileToolUI />
           <WriteFileDashToolUI />
+          <EditFileToolUI />
           <ListFilesToolUI />
           <ListFilesSnakeToolUI />
           <TodoToolUI />

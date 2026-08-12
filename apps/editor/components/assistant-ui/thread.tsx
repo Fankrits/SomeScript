@@ -355,6 +355,7 @@ const AssistantMessage: FC = () => {
                 // message flow — never buried inside the collapsed tool group.
                 part.toolName === "write-file" ||
                 part.toolName === "write_file" ||
+                part.toolName === "edit-file" ||
                 part.args?.state === "approval-requested" ||
                 part.args?.state === "approval-responded")
             ) {

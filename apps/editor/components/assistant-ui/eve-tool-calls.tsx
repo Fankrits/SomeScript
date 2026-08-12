@@ -50,6 +50,8 @@ type WriteFileOutput = {
   ok?: boolean;
   path?: string;
   before?: string | null;
+  /** edit-file only: it has no `content` input, so the diff's "after" side comes from here. */
+  after?: string;
   created?: boolean;
   error?: string;
 };
@@ -438,15 +440,40 @@ function CompileCard({ args, result, status, kind }: EveCardProps & { kind: "com
   );
 }
 
+type ReadFileInput = { path?: string };
+type ReadFileOutput = {
+  ok?: boolean;
+  path?: string;
+  content?: string;
+  totalLines?: number;
+  lastLine?: number;
+  truncated?: boolean;
+  error?: string;
+};
+
 function ReadFileCard({ args, result, status }: EveCardProps) {
+  const input = (args.input ?? {}) as ReadFileInput;
+  // ToolCardArgs.path is a top-level field the dash tools never populate, so the
+  // label read "Read file: " with nothing after it until this looked at input.
+  const out = (typeof result === "object" ? result : undefined) as ReadFileOutput | undefined;
+  const path = input.path || out?.path || args?.path || "";
+
   return (
     <EveToolRow
       icon={FileText}
-      iconClassName="text-violet-500"
-      label={<>Read file: {args?.path || ""}</>}
+      iconClassName={out?.ok === false ? "text-red-500" : "text-violet-500"}
+      label={<>Read file: {path}</>}
       status={status}
     >
-      {!!result && <ToolOutput className="max-h-40 whitespace-pre">{asText(result)}</ToolOutput>}
+      {out?.ok === false ? (
+        <span className="text-xs text-red-500">{out.error || "unknown error"}</span>
+      ) : (
+        !!result && (
+          <ToolOutput className="max-h-40 whitespace-pre">
+            {out?.content ?? asText(result)}
+          </ToolOutput>
+        )
+      )}
     </EveToolRow>
   );
 }
@@ -496,7 +523,9 @@ export function WriteFileCard({ args, result }: { args: ToolCardArgs; result?: u
   const input = (args.input ?? {}) as WriteFileInput;
   const out = result as WriteFileOutput | undefined;
   const path = input.path || out?.path || args.path || "";
-  const next = input.content ?? "";
+  // write-file carries the new content on the input; edit-file splices it server-side
+  // and returns it as `after`. Without the fallback the diff renders as a full delete.
+  const next = input.content ?? out?.after ?? "";
 
   const [reverted, setReverted] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -972,6 +1001,13 @@ export const WriteFileToolUI = makeAssistantToolUI({
 
 export const WriteFileDashToolUI = makeAssistantToolUI({
   toolName: "write-file",
+  render: ({ args, result }) => <WriteFileCard args={args} result={result} />,
+});
+
+// Same card: edit-file returns the same {before, after, created} contract, so the
+// diff, the stats chip, and the revert button all work unchanged.
+export const EditFileToolUI = makeAssistantToolUI({
+  toolName: "edit-file",
   render: ({ args, result }) => <WriteFileCard args={args} result={result} />,
 });
 
