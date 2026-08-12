@@ -990,7 +990,8 @@ export function useEveRuntime(
                 name === "write-file" ||
                 name === "delete_file" ||
                 name === "delete-file" ||
-                name === "move"
+                name === "move" ||
+                name === "main-file"
               ) {
                 shouldRefresh = true;
               }

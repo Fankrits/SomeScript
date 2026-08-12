@@ -2126,6 +2126,7 @@ const Example = () => {
     const handleRefreshWorkspace = () => {
       void refreshWorkspace();
       void refreshCurrentFile();
+      void loadProjectSettings();
       collab.notifyFileTreeChanged();
     };
 
@@ -2193,6 +2194,7 @@ const Example = () => {
   }, [
     refreshWorkspace,
     refreshCurrentFile,
+    loadProjectSettings,
     handleFileSelect,
     projectId,
     withProject,
