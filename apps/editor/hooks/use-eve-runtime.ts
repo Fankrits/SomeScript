@@ -13,6 +13,7 @@ import {
   type AppendMessage,
 } from "@assistant-ui/react";
 import { useEveAgent } from "eve/react";
+import { useAuth } from "@clerk/nextjs";
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import type { EveMessage, EveMessagePart } from "eve/react";
 import {
@@ -31,6 +32,7 @@ import {
   saveThreadHistory,
   threadsListKey,
   collapseAppendedRuns,
+  capOversizedPayloads,
 } from "@/lib/thread-history";
 import { notifyCreditsUpdated } from "@/hooks/use-credit-status";
 import { clipText, logEveAction, logEveError, logEveEvent } from "@/lib/eve-diagnostics";
@@ -90,10 +92,15 @@ const CANCEL_BOUNDARY_GRACE_MS = 5_000;
 
 /**
  * Everything that shrinks the event log before it is written anywhere.
- * Collapse first: it drops most of the log, so the file-data strip that
- * follows walks a fraction of the events. Both run only from eve's `onFinish`
- * callback — once per settled turn, never per stream event, which is what made
- * this quadratic.
+ * Collapse first: it drops most of the log, so the file-data strip and
+ * payload cap that follow walk a fraction of the events. All three run only
+ * from eve's `onFinish` callback — once per settled turn, never per stream
+ * event, which is what made this quadratic.
+ *
+ * capOversizedPayloads runs last: it is the backstop for a single event too
+ * big to shrink any other way (a full compile log, a large file read), which
+ * is what saveThreadHistory's own escalation has no answer for once it is
+ * down to just the newest event.
  *
  * ponytail: this bounds what is *persisted*, not what eve holds in memory.
  * EveAgentStore keeps every raw `message.appended`, each carrying the whole
@@ -103,7 +110,7 @@ const CANCEL_BOUNDARY_GRACE_MS = 5_000;
  * loadThreadHistory now replays the collapsed log.
  */
 const compactEvents = (events: readonly MessageStreamEvent[]) =>
-  stripEventFileData(collapseAppendedRuns(events));
+  capOversizedPayloads(stripEventFileData(collapseAppendedRuns(events)));
 
 // assistant-ui only ships Simple adapters for images and text. PDFs get the
 // same treatment: read as a data URL, forward as a generic `file` content
@@ -335,7 +342,17 @@ export function useEveRuntime(
   // official route contract instead of a hand-inlined path.
   const client = useMemo(() => new Client({ host: "" }), []);
 
+  // The agent's tenancy check runs on this token, not on the [projectId: …]
+  // marker: agent/channels/eve.ts verifies it and puts the caller's workspace on
+  // the session, and the file tools check project ownership against that. Passed
+  // as a function so the client resolves a fresh, unexpired token before every
+  // request rather than pinning the one that existed at mount. An empty string
+  // (Clerk still booting, or signed out) fails the auth walk with a 401 instead
+  // of silently running unauthenticated.
+  const { getToken } = useAuth();
+
   const agent = useEveAgent({
+    auth: { bearer: async () => (await getToken()) ?? "" },
     initialEvents: initialData?.events,
     initialSession: initialData?.sessionState,
     // Turn-boundary bookkeeping for abandonTurn's cancel guard, the
@@ -995,7 +1012,9 @@ export function useEveRuntime(
               ) {
                 shouldRefresh = true;
               }
-              if (name === "write_file" || name === "write-file") {
+              // edit-file rides the same path: without this the splice lands in
+              // storage but the user's open editor never reloads it.
+              if (name === "write_file" || name === "write-file" || name === "edit-file") {
                 const input = part.input as { path?: string } | undefined;
                 const output = part.output as { ok?: boolean; path?: string } | undefined;
                 const path = input?.path ?? output?.path;

@@ -56,6 +56,46 @@ export function collapseAppendedRuns<T>(events: readonly T[]): T[] {
   });
 }
 
+/**
+ * Longest string kept intact in a persisted event before it is truncated.
+ *
+ * Unlike the streaming duplication collapseAppendedRuns fixes, a tool result
+ * is a single event with no cheaper form: write-file carries the whole new
+ * file, read-file returns the whole document, compile-project returns the
+ * full Tectonic log. Any one of those can alone exceed the ~5 MB origin
+ * quota, and saveThreadHistory's escalation has nothing left to drop once
+ * it is down to the single newest event — that is what produced the
+ * `persist:quota-exceeded` diagnostic. Generous enough that a truncated tool
+ * result is still useful on reload; small enough that no single event can
+ * single-handedly exhaust the budget.
+ */
+const MAX_PAYLOAD_STRING = 200_000;
+
+function capStrings(value: unknown): unknown {
+  if (typeof value === "string") {
+    return value.length > MAX_PAYLOAD_STRING
+      ? `${value.slice(0, MAX_PAYLOAD_STRING)}… (${value.length} chars, truncated for storage)`
+      : value;
+  }
+  if (Array.isArray(value)) return value.map(capStrings);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, capStrings(v)]));
+  }
+  return value;
+}
+
+/**
+ * Caps oversized string payloads anywhere in an event, structure otherwise
+ * intact. Walks every event generically, the same way eve-diagnostics.ts's
+ * `summarize` does, rather than special-casing `action.result`/
+ * `actions.requested` field names — those are today's known offenders, but
+ * eve's protocol adding a new large-payload event should not silently
+ * reopen this hole.
+ */
+export function capOversizedPayloads<T>(events: readonly T[]): T[] {
+  return events.map((event) => capStrings(event)) as T[];
+}
+
 export const THREAD_KEY_PREFIX = "eve-thread-";
 export const threadKey = (id: string) => `${THREAD_KEY_PREFIX}${id}`;
 
@@ -167,4 +207,47 @@ export function saveThreadHistory(
     }
   }
   return false;
+}
+
+/**
+ * Writes a small piece of thread bookkeeping — the thread list or the
+ * active-thread pointer — without ever throwing on a full origin.
+ *
+ * Both values are tiny by themselves, but setItem enforces the quota on the
+ * whole origin: a single large eve-thread-* blob (see saveThreadHistory
+ * above) is enough to make even a two-line write here throw
+ * QuotaExceededError uncaught — which is what crashed page.tsx's syncThreads
+ * effect. liveThreadIds comes from the caller rather than being read back
+ * from storage: several callers are writing a list that has not been
+ * persisted yet (a thread just created or just deleted), and pruning against
+ * the old stored list would be pruning against stale data.
+ *
+ * Returns false, never throws, if even this fits nowhere — bookkeeping, not
+ * chat content, and the caller's in-memory state already reflects reality
+ * for this tab.
+ */
+export function saveThreadMeta(
+  key: string,
+  value: string,
+  liveThreadIds: readonly string[],
+  storage: Storage = localStorage,
+): boolean {
+  try {
+    storage.setItem(key, value);
+    return true;
+  } catch {
+    // Out of quota — reclaim orphaned thread blobs and retry once.
+  }
+
+  const liveKeys = new Set(liveThreadIds.map(threadKey));
+  for (const k of Object.keys(storage)) {
+    if (k.startsWith(THREAD_KEY_PREFIX) && !liveKeys.has(k)) storage.removeItem(k);
+  }
+
+  try {
+    storage.setItem(key, value);
+    return true;
+  } catch {
+    return false;
+  }
 }

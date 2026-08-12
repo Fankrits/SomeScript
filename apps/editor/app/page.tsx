@@ -156,7 +156,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { pickDetectedMainFile } from "@/lib/main-file";
-import { threadsListKey, activeThreadIdKey } from "@/lib/thread-history";
+import { threadsListKey, activeThreadIdKey, saveThreadMeta } from "@/lib/thread-history";
 import {
   versionKey,
   FILE_TREE_VERSION_FIELD,
@@ -854,8 +854,8 @@ const Example = () => {
         const defaultThread = { id: defaultId, title: "New Chat", createdAt: Date.now() };
         currentList = [defaultThread];
         currentActiveId = defaultId;
-        localStorage.setItem(threadsListKey(projectId), JSON.stringify(currentList));
-        localStorage.setItem(activeThreadIdKey(projectId), defaultId);
+        saveThreadMeta(threadsListKey(projectId), JSON.stringify(currentList), [defaultId]);
+        saveThreadMeta(activeThreadIdKey(projectId), defaultId, [defaultId]);
       }
 
       // Active id missing or pointing at a deleted thread: fall back to the first
@@ -863,7 +863,11 @@ const Example = () => {
       // "somescript:attach-to-chat" events (no composer to receive them).
       if (!currentList.some((t: { id: string }) => t.id === currentActiveId)) {
         currentActiveId = currentList[0].id;
-        localStorage.setItem(activeThreadIdKey(projectId), currentActiveId);
+        saveThreadMeta(
+          activeThreadIdKey(projectId),
+          currentActiveId,
+          currentList.map((t: { id: string }) => t.id),
+        );
       }
 
       setThreads(currentList);
@@ -880,8 +884,9 @@ const Example = () => {
       typeof crypto !== "undefined" ? crypto.randomUUID() : Math.random().toString(36).substring(2);
     const newThread = { id: newId, title: "New Chat", createdAt: Date.now() };
     const updatedList = [newThread, ...threads];
-    localStorage.setItem(threadsListKey(projectId), JSON.stringify(updatedList));
-    localStorage.setItem(activeThreadIdKey(projectId), newId);
+    const liveIds = updatedList.map((t) => t.id);
+    saveThreadMeta(threadsListKey(projectId), JSON.stringify(updatedList), liveIds);
+    saveThreadMeta(activeThreadIdKey(projectId), newId, liveIds);
     setThreads(updatedList);
     setActiveThreadId(newId);
     setShowHistory(false);
@@ -889,11 +894,15 @@ const Example = () => {
 
   const handleSwitchChat = useCallback(
     (id: string) => {
-      localStorage.setItem(activeThreadIdKey(projectId), id);
+      saveThreadMeta(
+        activeThreadIdKey(projectId),
+        id,
+        threads.map((t) => t.id),
+      );
       setActiveThreadId(id);
       setShowHistory(false);
     },
-    [projectId],
+    [threads, projectId],
   );
 
   const handleDeleteChat = useCallback(
@@ -917,8 +926,9 @@ const Example = () => {
         }
       }
 
-      localStorage.setItem(threadsListKey(projectId), JSON.stringify(updatedList));
-      localStorage.setItem(activeThreadIdKey(projectId), nextActiveId);
+      const liveIds = updatedList.map((t) => t.id);
+      saveThreadMeta(threadsListKey(projectId), JSON.stringify(updatedList), liveIds);
+      saveThreadMeta(activeThreadIdKey(projectId), nextActiveId, liveIds);
       setThreads(updatedList);
       setActiveThreadId(nextActiveId);
     },

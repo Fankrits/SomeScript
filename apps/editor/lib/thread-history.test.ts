@@ -1,9 +1,12 @@
 import { expect, test } from "bun:test";
 import {
   HISTORY_VERSION,
+  activeThreadIdKey,
+  capOversizedPayloads,
   collapseAppendedRuns,
   loadThreadHistory,
   saveThreadHistory,
+  saveThreadMeta,
   threadKey,
   threadsListKey,
 } from "./thread-history";
@@ -128,6 +131,41 @@ test("a full store does not wedge later writes", () => {
   expect(loadThreadHistory("t1", s)).not.toBeNull();
 });
 
+// --- saveThreadMeta ---------------------------------------------------------
+
+test("writes thread-list metadata normally", () => {
+  const s = fakeStorage(10_000);
+  expect(saveThreadMeta(threadsListKey("p1"), JSON.stringify([{ id: "t1" }]), ["t1"], s)).toBe(
+    true,
+  );
+  expect(s.getItem(threadsListKey("p1"))).toBe(JSON.stringify([{ id: "t1" }]));
+});
+
+test("reclaims an orphaned thread blob when a tiny metadata write hits a full origin", () => {
+  // 1017 bytes of orphan + 30 of pointer > budget until the orphan goes.
+  const s = fakeStorage(1_030);
+  s.setItem(threadKey("orphan"), "y".repeat(1_000));
+
+  expect(saveThreadMeta(activeThreadIdKey("p1"), "live-id", ["live-id"], s)).toBe(true);
+  expect(s.getItem(threadKey("orphan"))).toBeNull();
+  expect(s.getItem(activeThreadIdKey("p1"))).toBe("live-id");
+});
+
+test("does not delete a live thread's blob to make room for metadata", () => {
+  // 1018 bytes of live blob + 30 of pointer > budget, and the live blob is
+  // never a valid target for reclaiming — nothing to prune, write just fails.
+  const s = fakeStorage(1_030);
+  s.setItem(threadKey("live-id"), "y".repeat(1_000));
+
+  expect(saveThreadMeta(activeThreadIdKey("p1"), "live-id", ["live-id"], s)).toBe(false);
+  expect(s.getItem(threadKey("live-id"))).not.toBeNull();
+});
+
+test("returns false instead of throwing when even the metadata cannot fit", () => {
+  const s = fakeStorage(5);
+  expect(saveThreadMeta(activeThreadIdKey("p1"), "some-id", [], s)).toBe(false);
+});
+
 // --- collapseAppendedRuns -------------------------------------------------
 
 /** One streamed reply as eve emits it: every event carries the full text so far. */
@@ -182,4 +220,43 @@ test("a long reply fits in the origin quota once collapsed", () => {
   const raw = appendedRun("t1", 0, chunks);
   expect(JSON.stringify(raw).length).toBeGreaterThan(5_000_000);
   expect(JSON.stringify(collapseAppendedRuns(raw)).length).toBeLessThan(100_000);
+});
+
+// --- capOversizedPayloads --------------------------------------------------
+
+test("caps a string leaf over the limit, noting its original length", () => {
+  const events = [{ type: "action.result", data: { result: { output: "x".repeat(300_000) } } }];
+  const [capped] = capOversizedPayloads(events) as [{ data: { result: { output: string } } }];
+  expect(capped.data.result.output.length).toBeLessThan(300_000);
+  expect(capped.data.result.output).toContain("300000 chars");
+});
+
+test("leaves strings under the limit untouched", () => {
+  const events = [{ type: "action.result", data: { result: { output: "a short result" } } }];
+  const [capped] = capOversizedPayloads(events) as [{ data: { result: { output: string } } }];
+  expect(capped.data.result.output).toBe("a short result");
+});
+
+test("caps a long string nested inside an array, leaving short siblings alone", () => {
+  const events = [
+    { type: "actions.requested", data: { actions: [{ input: { path: "a.tex" } }] } },
+    { type: "message.completed", data: { message: "y".repeat(300_000) } },
+  ];
+  const capped = capOversizedPayloads(events) as [
+    { data: { actions: [{ input: { path: string } }] } },
+    { data: { message: string } },
+  ];
+  expect(capped[0].data.actions[0].input.path).toBe("a.tex");
+  expect(capped[1].data.message.length).toBeLessThan(300_000);
+});
+
+test("a huge tool result fits in the origin quota once capped", () => {
+  // One read-file/compile-project result, well past the ~5 MB origin quota
+  // on its own — the case collapseAppendedRuns cannot help with, since
+  // there is no streaming run to collapse.
+  const events = [
+    { type: "action.result", data: { result: { callId: "1", output: "z".repeat(6_000_000) } } },
+  ];
+  expect(JSON.stringify(events).length).toBeGreaterThan(5_000_000);
+  expect(JSON.stringify(capOversizedPayloads(events)).length).toBeLessThan(1_000_000);
 });
