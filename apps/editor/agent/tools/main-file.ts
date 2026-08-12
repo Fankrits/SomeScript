@@ -1,6 +1,7 @@
 import { defineTool } from "eve/tools";
 import { z } from "zod";
 import { resolveToolProject, touchProject } from "../../lib/authz";
+import { workspaceFrom } from "../lib/workspace";
 import { readProjectSettings, setMainFile } from "../../lib/project-settings";
 
 interface MainFileOutput {
@@ -8,6 +9,8 @@ interface MainFileOutput {
   path: string;
   previousPath?: string;
   error?: string;
+  /** Set on a failed read (no `path` given) so toModelOutput doesn't call it a "set" error. */
+  readAttempt?: boolean;
 }
 
 export default defineTool({
@@ -24,9 +27,9 @@ export default defineTool({
         "Project-relative .tex path to make the new main file, e.g. 'chapters/thesis.tex'. Omit to just report the current main file.",
       ),
   }),
-  async execute({ projectId, path }) {
+  async execute({ projectId, path }, ctx) {
     try {
-      const pid = await resolveToolProject(projectId);
+      const pid = await resolveToolProject(projectId, workspaceFrom(ctx));
 
       if (path === undefined) {
         const current = await readProjectSettings(pid);
@@ -49,13 +52,19 @@ export default defineTool({
         ok: false as const,
         path: path ?? "",
         error: e instanceof Error ? e.message : String(e),
+        readAttempt: path === undefined,
       };
     }
   },
   toModelOutput(output) {
     const out = output as MainFileOutput;
     if (!out.ok) {
-      return { type: "text", value: `Error setting main file to ${out.path}: ${out.error ?? "unknown error"}` };
+      return {
+        type: "text",
+        value: out.readAttempt
+          ? `Error checking the main file: ${out.error ?? "unknown error"}`
+          : `Error setting main file to ${out.path}: ${out.error ?? "unknown error"}`,
+      };
     }
     return {
       type: "text",
