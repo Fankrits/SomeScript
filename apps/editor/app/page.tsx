@@ -2128,6 +2128,7 @@ const Example = () => {
       void refreshCurrentFile();
       void loadProjectSettings();
       collab.notifyFileTreeChanged();
+      collab.notifyProjectSettingsChanged();
     };
 
     // Eve wrote a file — show it. Already-open files no-op here and are picked
