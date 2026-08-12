@@ -44,3 +44,34 @@ export async function readProjectSettings(
     return { ...DEFAULT_PROJECT_SETTINGS };
   }
 }
+
+export type SetMainFileResult =
+  | { ok: true; mainFilePath: string; previousMainFilePath: string }
+  | { ok: false; error: string };
+
+/**
+ * Validates and persists a new mainFilePath. The existence check matters: a
+ * mainFilePath pointing at a file that isn't there would silently break
+ * every future compile-project call instead of failing here, once, clearly.
+ */
+export async function setMainFile(
+  projectId: string,
+  path: string,
+  s: Pick<StorageProvider, "readFile" | "writeFile"> = storage,
+): Promise<SetMainFileResult> {
+  if (!path.endsWith(".tex")) {
+    return { ok: false, error: "only .tex files can be the main file" };
+  }
+
+  try {
+    await s.readFile(projectId, path);
+  } catch {
+    return { ok: false, error: "no such file in the project" };
+  }
+
+  const current = await readProjectSettings(projectId, s);
+  const next = sanitizeProjectSettings({ ...current, mainFilePath: path });
+  await s.writeFile(projectId, PROJECT_SETTINGS_PATH, JSON.stringify(next));
+
+  return { ok: true, mainFilePath: path, previousMainFilePath: current.mainFilePath };
+}
