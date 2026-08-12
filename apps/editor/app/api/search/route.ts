@@ -3,7 +3,7 @@ import { storage, type FileNode } from "@/lib/storage";
 import { requireProject, touchProject, apiError } from "@/lib/authz";
 import { notifyCollabPathsChanged } from "@/lib/collab-notify";
 import { buildSearchPattern, replaceMatchAt } from "@/lib/search-pattern";
-import path from "path";
+import { isTextFile, searchFiles } from "@/lib/search-files";
 
 export interface SearchResult {
   fileId: string;
@@ -11,29 +11,6 @@ export interface SearchResult {
   line: number;
   text: string;
   matchIndex: number;
-}
-
-const BINARY_EXTENSIONS = new Set([
-  ".pdf",
-  ".png",
-  ".jpg",
-  ".jpeg",
-  ".gif",
-  ".ico",
-  ".zip",
-  ".gz",
-  ".tar",
-  ".woff",
-  ".woff2",
-  ".ttf",
-  ".eot",
-  ".mp4",
-  ".mp3",
-]);
-
-function isTextFile(filename: string): boolean {
-  const ext = path.extname(filename).toLowerCase();
-  return !BINARY_EXTENSIONS.has(ext);
 }
 
 interface SingleMatchTarget {
@@ -114,57 +91,22 @@ export async function GET(req: NextRequest) {
     const endLine = endLineStr ? parseInt(endLineStr, 10) : null;
 
     const pattern = buildSearchPattern(query, { matchCase, matchWholeWord, useRegex });
-    const MAX_RESULTS = 2000;
-    const results: SearchResult[] = [];
-    const files = await storage.listProjectFiles(projectId);
+    const scopedToOneFile = scope === "current";
 
-    const traverse = async (nodes: FileNode[]) => {
-      for (const node of nodes) {
-        if (results.length >= MAX_RESULTS) return;
-        if (node.isDir) {
-          if (node.children) await traverse(node.children);
-        } else {
-          // Scope limit
-          if (scope === "current" && node.path !== selectedPath) {
-            continue;
-          }
-          if (!isTextFile(node.name)) {
-            continue;
-          }
+    const { matches } = await searchFiles(projectId, pattern, {
+      pathGlob: scopedToOneFile ? selectedPath : undefined,
+      startLine: scopedToOneFile && startLine !== null && !isNaN(startLine) ? startLine : null,
+      endLine: scopedToOneFile && endLine !== null && !isNaN(endLine) ? endLine : null,
+      maxResults: 2000,
+    });
 
-          try {
-            const content = await storage.readFile(projectId, node.path);
-            const lines = content.split("\n");
-
-            lines.forEach((lineText, idx) => {
-              const lineNum = idx + 1;
-              if (scope === "current") {
-                if (startLine !== null && !isNaN(startLine) && lineNum < startLine) return;
-                if (endLine !== null && !isNaN(endLine) && lineNum > endLine) return;
-              }
-
-              pattern.lastIndex = 0;
-              let match = pattern.exec(lineText);
-              while (match !== null && results.length < MAX_RESULTS) {
-                results.push({
-                  fileId: node.path,
-                  fileName: node.name,
-                  line: lineNum,
-                  text: lineText,
-                  matchIndex: match.index,
-                });
-                if (match[0].length === 0) pattern.lastIndex++;
-                match = pattern.exec(lineText);
-              }
-            });
-          } catch {
-            // Ignored
-          }
-        }
-      }
-    };
-
-    await traverse(files);
+    const results: SearchResult[] = matches.map((m) => ({
+      fileId: m.path,
+      fileName: m.name,
+      line: m.line,
+      text: m.text,
+      matchIndex: m.column,
+    }));
 
     const resultsByFile: Record<string, { name: string; matches: SearchResult[] }> = {};
     results.forEach((res) => {
