@@ -1837,10 +1837,10 @@ const Example = () => {
   /**
    * Resolve the project's configured root document, in the same order
    * Overleaf's CLSI resolves one: the configured main file (if it still
-   * exists) → a file literally named main.tex → the project's only .tex
-   * file, if there's exactly one. Otherwise null. Used directly by Download,
-   * and as Compile's fallback when the currently open file can't stand alone
-   * (see handleCompileLatex below).
+   * exists) → a file literally named main.tex or Main.tex → the project's
+   * only .tex file, if there's exactly one. Otherwise null. Used directly by
+   * Download, and as Compile's fallback when the currently open file can't
+   * stand alone (see handleCompileLatex below).
    */
   const resolveMainFile = useCallback((): string | null => {
     const texFiles = getTexFiles(fileTree);
@@ -1849,6 +1849,7 @@ const Example = () => {
     if (configured && texFiles.includes(configured)) return configured;
 
     if (texFiles.includes("main.tex")) return "main.tex";
+    if (texFiles.includes("Main.tex")) return "Main.tex";
 
     return texFiles.length === 1 ? texFiles[0] : null;
   }, [settings.mainFilePath, fileTree, getTexFiles, toProjectRelative]);
@@ -1886,7 +1887,7 @@ const Example = () => {
     const mainPath = resolveMainFile() ?? (await detectMainFile());
     if (!mainPath) {
       toast.error(
-        "No main file specified. This project has multiple .tex files and none is named main.tex — set the Main Entry File in the Settings tab.",
+        "No main file specified. This project has multiple .tex files and none is named main.tex or Main.tex — set the Main Entry File in the Settings tab.",
       );
     }
     return mainPath;
