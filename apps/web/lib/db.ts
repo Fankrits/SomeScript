@@ -1,4 +1,8 @@
 import { drizzle } from "drizzle-orm/node-postgres";
+// pg's own deps (pg-types, pg-pool, ...) are pinned as direct deps in package.json:
+// Next's default serverExternalPackages list marks "pg" external, and Bun's isolated
+// linker only exposes *direct* deps by bare name — without this, dev fails with
+// "Cannot find package 'pg-types'" the moment this module loads.
 import { Pool } from "pg";
 import * as schema from "../db/schema";
 
