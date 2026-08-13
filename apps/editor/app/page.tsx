@@ -156,7 +156,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { pickDetectedMainFile } from "@/lib/main-file";
-import { threadsListKey, activeThreadIdKey, saveThreadMeta } from "@/lib/thread-history";
+import {
+  fetchThreadIndex,
+  saveThreadIndex,
+  deleteThread as deleteCloudThread,
+  migrateLocalThreads,
+  type ThreadMeta,
+} from "@/lib/eve-threads-client";
 import {
   versionKey,
   FILE_TREE_VERSION_FIELD,
@@ -313,6 +319,60 @@ function getViewMode(filePath: string): "code" | "image" | "pdf-standalone" {
   if (imageExts.includes(ext)) return "image";
   if (ext === "pdf") return "pdf-standalone";
   return "code";
+}
+
+/**
+ * One-time upload of a browser's pre-cloud-storage Eve chat history into the
+ * new server-side store, then clears the local blobs. Guarded by a per-project
+ * flag so it runs at most once per browser. Raw localStorage keys (rather than
+ * the old lib/thread-history.ts helpers, which are gone) are used here since
+ * this is the one remaining reader of that legacy format.
+ *
+ * Best-effort: on failure the flag is left unset so the next load retries,
+ * except for malformed local data, which would fail identically forever —
+ * that's marked migrated (nothing recoverable to retry) rather than looping.
+ */
+async function migrateLocalEveThreads(projectId: string): Promise<void> {
+  const flagKey = `eve-migrated-v1-${projectId}`;
+  if (localStorage.getItem(flagKey)) return;
+
+  const listRaw = localStorage.getItem(`eve-threads-list-${projectId}`);
+  if (!listRaw) {
+    localStorage.setItem(flagKey, "1");
+    return;
+  }
+
+  let list: { id: string; title: string; createdAt: number }[];
+  try {
+    const parsed = JSON.parse(listRaw);
+    if (!Array.isArray(parsed) || parsed.length === 0) {
+      localStorage.setItem(flagKey, "1");
+      return;
+    }
+    list = parsed;
+  } catch {
+    localStorage.setItem(flagKey, "1"); // unparseable — nothing to retry
+    return;
+  }
+
+  const activeThreadId = localStorage.getItem(`eve-active-thread-id-${projectId}`) ?? list[0].id;
+  const threads = list.flatMap((t) => {
+    const raw = localStorage.getItem(`eve-thread-${t.id}`);
+    if (!raw) return [];
+    try {
+      return [{ id: t.id, snapshot: JSON.parse(raw) }];
+    } catch {
+      return [];
+    }
+  });
+
+  const ok = await migrateLocalThreads(projectId, { threads: list, activeThreadId }, threads);
+  if (!ok) return; // network/server failure — retry on next load
+
+  localStorage.removeItem(`eve-threads-list-${projectId}`);
+  localStorage.removeItem(`eve-active-thread-id-${projectId}`);
+  for (const t of list) localStorage.removeItem(`eve-thread-${t.id}`);
+  localStorage.setItem(flagKey, "1");
 }
 
 const Example = () => {
@@ -819,31 +879,29 @@ const Example = () => {
     [projectId, compiledPath],
   );
 
-  // Chat History / Multi-thread states
-  const [threads, setThreads] = useState<Array<{ id: string; title: string; createdAt: number }>>(
-    [],
-  );
+  // Chat History / Multi-thread states — persisted server-side, per signed-in
+  // user, via lib/eve-threads-storage.ts (see lib/eve-threads-client.ts for
+  // the fetch wrappers). No client cache: cloud is the sole source of truth.
+  const [threads, setThreads] = useState<ThreadMeta[]>([]);
   const [activeThreadId, setActiveThreadId] = useState<string>("");
   const [showHistory, setShowHistory] = useState<boolean>(false);
 
-  // Sync threads and active thread ID from localStorage
   useEffect(() => {
-    const syncThreads = () => {
+    let cancelled = false;
+
+    const syncThreads = async () => {
       if (typeof window === "undefined") return;
-      const listRaw = localStorage.getItem(threadsListKey(projectId));
-      const activeId = localStorage.getItem(activeThreadIdKey(projectId));
-      let currentList = [];
-      let currentActiveId = "";
+      await migrateLocalEveThreads(projectId);
+      if (cancelled) return;
 
-      if (listRaw) {
-        try {
-          currentList = JSON.parse(listRaw);
-        } catch {}
-      }
+      const index = await fetchThreadIndex(projectId).catch(() => ({
+        threads: [] as ThreadMeta[],
+        activeThreadId: "",
+      }));
+      if (cancelled) return;
 
-      if (activeId) {
-        currentActiveId = activeId;
-      }
+      let currentList = index.threads;
+      let currentActiveId = index.activeThreadId;
 
       // If no threads exist, generate a default one
       if (currentList.length === 0) {
@@ -851,32 +909,27 @@ const Example = () => {
           typeof crypto !== "undefined"
             ? crypto.randomUUID()
             : Math.random().toString(36).substring(2);
-        const defaultThread = { id: defaultId, title: "New Chat", createdAt: Date.now() };
-        currentList = [defaultThread];
+        currentList = [{ id: defaultId, title: "New Chat", createdAt: Date.now() }];
         currentActiveId = defaultId;
-        saveThreadMeta(threadsListKey(projectId), JSON.stringify(currentList), [defaultId]);
-        saveThreadMeta(activeThreadIdKey(projectId), defaultId, [defaultId]);
-      }
-
-      // Active id missing or pointing at a deleted thread: fall back to the first
-      // thread. An empty id leaves <EveThread> unmounted, which silently drops
-      // "somescript:attach-to-chat" events (no composer to receive them).
-      if (!currentList.some((t: { id: string }) => t.id === currentActiveId)) {
+        await saveThreadIndex(projectId, { threads: currentList, activeThreadId: currentActiveId });
+      } else if (!currentList.some((t) => t.id === currentActiveId)) {
+        // Active id missing or pointing at a deleted thread: fall back to the
+        // first thread. An empty id leaves <EveThread> unmounted, which
+        // silently drops "somescript:attach-to-chat" events (no composer to
+        // receive them).
         currentActiveId = currentList[0].id;
-        saveThreadMeta(
-          activeThreadIdKey(projectId),
-          currentActiveId,
-          currentList.map((t: { id: string }) => t.id),
-        );
+        await saveThreadIndex(projectId, { threads: currentList, activeThreadId: currentActiveId });
       }
 
+      if (cancelled) return;
       setThreads(currentList);
       setActiveThreadId(currentActiveId);
     };
 
-    syncThreads();
-    window.addEventListener("storage", syncThreads);
-    return () => window.removeEventListener("storage", syncThreads);
+    void syncThreads();
+    return () => {
+      cancelled = true;
+    };
   }, [projectId]);
 
   const handleNewChat = useCallback(() => {
@@ -884,23 +937,17 @@ const Example = () => {
       typeof crypto !== "undefined" ? crypto.randomUUID() : Math.random().toString(36).substring(2);
     const newThread = { id: newId, title: "New Chat", createdAt: Date.now() };
     const updatedList = [newThread, ...threads];
-    const liveIds = updatedList.map((t) => t.id);
-    saveThreadMeta(threadsListKey(projectId), JSON.stringify(updatedList), liveIds);
-    saveThreadMeta(activeThreadIdKey(projectId), newId, liveIds);
     setThreads(updatedList);
     setActiveThreadId(newId);
     setShowHistory(false);
+    void saveThreadIndex(projectId, { threads: updatedList, activeThreadId: newId });
   }, [threads, projectId]);
 
   const handleSwitchChat = useCallback(
     (id: string) => {
-      saveThreadMeta(
-        activeThreadIdKey(projectId),
-        id,
-        threads.map((t) => t.id),
-      );
       setActiveThreadId(id);
       setShowHistory(false);
+      void saveThreadIndex(projectId, { threads, activeThreadId: id });
     },
     [threads, projectId],
   );
@@ -909,7 +956,7 @@ const Example = () => {
     (id: string, e: React.MouseEvent) => {
       e.stopPropagation();
       const updatedList = threads.filter((t) => t.id !== id);
-      localStorage.removeItem(`eve-thread-${id}`);
+      void deleteCloudThread(projectId, id);
 
       let nextActiveId = activeThreadId;
       if (activeThreadId === id) {
@@ -926,13 +973,30 @@ const Example = () => {
         }
       }
 
-      const liveIds = updatedList.map((t) => t.id);
-      saveThreadMeta(threadsListKey(projectId), JSON.stringify(updatedList), liveIds);
-      saveThreadMeta(activeThreadIdKey(projectId), nextActiveId, liveIds);
       setThreads(updatedList);
       setActiveThreadId(nextActiveId);
+      void saveThreadIndex(projectId, { threads: updatedList, activeThreadId: nextActiveId });
     },
     [threads, activeThreadId, projectId],
+  );
+
+  // Eve names the thread after the first user message (see the title-write
+  // effect in hooks/use-eve-runtime.ts) — this is where that candidate title
+  // actually gets applied. Guarded so a user's manual rename (once that UI
+  // exists) is never clobbered by a late-arriving default title.
+  const handleTitleChange = useCallback(
+    (title: string) => {
+      setThreads((prev) => {
+        const idx = prev.findIndex((t) => t.id === activeThreadId);
+        if (idx === -1) return prev;
+        const current = prev[idx].title;
+        if (current !== "New Chat" && !current.startsWith("[projectId:")) return prev;
+        const updated = prev.map((t) => (t.id === activeThreadId ? { ...t, title } : t));
+        void saveThreadIndex(projectId, { threads: updated, activeThreadId });
+        return updated;
+      });
+    },
+    [activeThreadId, projectId],
   );
 
   // Resizable Panel Refs & States
@@ -2914,6 +2978,7 @@ const Example = () => {
                     key={activeThreadId}
                     threadId={activeThreadId}
                     projectId={projectId}
+                    onTitleChange={handleTitleChange}
                     openFile={selectedPath ? toProjectRelative(selectedPath) : null}
                   />
                 </div>

@@ -27,13 +27,8 @@ import type { EveMode } from "@/lib/eve-modes";
 import { filterOrphanedMessages } from "@/lib/eve-messages";
 import { Client } from "eve/client";
 import type { MessageStreamEvent, ClientSessionState } from "eve/client";
-import {
-  loadThreadHistory,
-  saveThreadHistory,
-  threadsListKey,
-  collapseAppendedRuns,
-  capOversizedPayloads,
-} from "@/lib/thread-history";
+import { collapseAppendedRuns, capOversizedPayloads } from "@/lib/thread-history";
+import { saveThreadSnapshot, type ThreadSnapshot } from "@/lib/eve-threads-client";
 import { notifyCreditsUpdated } from "@/hooks/use-credit-status";
 import { clipText, logEveAction, logEveError, logEveEvent } from "@/lib/eve-diagnostics";
 import * as Sentry from "@sentry/nextjs";
@@ -98,16 +93,16 @@ const CANCEL_BOUNDARY_GRACE_MS = 5_000;
  * event, which is what made this quadratic.
  *
  * capOversizedPayloads runs last: it is the backstop for a single event too
- * big to shrink any other way (a full compile log, a large file read), which
- * is what saveThreadHistory's own escalation has no answer for once it is
- * down to just the newest event.
+ * big to shrink any other way (a full compile log, a large file read) — cloud
+ * storage has no ~5MB origin quota to blow, but an unbounded blob is still
+ * wasteful to transfer and store.
  *
  * ponytail: this bounds what is *persisted*, not what eve holds in memory.
  * EveAgentStore keeps every raw `message.appended`, each carrying the whole
  * message so far, so a single long reply still costs O(n²) characters of RAM
  * for the duration of the session. Not fixable from here — it needs a
- * collapsing reducer inside eve. A reload starts small again, since
- * loadThreadHistory now replays the collapsed log.
+ * collapsing reducer inside eve. A reload starts small again, since the fetched
+ * snapshot replays the collapsed log.
  */
 const compactEvents = (events: readonly MessageStreamEvent[]) =>
   capOversizedPayloads(stripEventFileData(collapseAppendedRuns(events)));
@@ -215,7 +210,9 @@ export function useEveRuntime(
   threadId: string,
   projectId: string,
   mode: EveMode,
-  openFile?: string | null,
+  openFile: string | null | undefined,
+  initialData: ThreadSnapshot<MessageStreamEvent, ClientSessionState> | null,
+  onTitleChange: (title: string) => void,
 ) {
   const completedToolCalls = useRef<Set<string>>(new Set());
   // Separate from completedToolCalls: compile-project is mirrored into the editor
@@ -252,13 +249,13 @@ export function useEveRuntime(
   // watchdog firing) that lands after the turn already ended is a no-op instead
   // of cancelling whatever turn started since.
   const turnIdRef = useRef<string | null>(null);
-  // Session id whose cursor has already been pinned to localStorage; see the
+  // Session id whose cursor has already been pinned to cloud storage; see the
   // effect below. Keyed by id rather than a boolean so a reset that mints a new
   // session pins the new cursor too.
   const cursorPinnedRef = useRef<string | null>(null);
   // The thread title is derived from the *first* user message, so it only has
-  // to be written once. Without this latch the effect below did a synchronous
-  // localStorage read + JSON.parse on every single stream event.
+  // to be written once. Without this latch the effect below would re-derive it
+  // on every single stream event.
   const titleWrittenRef = useRef(false);
   // Read inside onNew, which assistant-ui may hold across renders — a ref keeps
   // the marker in sync with the live selection without rebuilding the runtime.
@@ -325,16 +322,11 @@ export function useEveRuntime(
     costUsd: number;
   } | null>(null);
 
-  // Load initial state synchronously on mount/remount. A blob written by a
-  // different eve client is replayed into this one's reducer and session, so a
-  // shape change between versions can wedge the whole thread; bump the stamp
-  // whenever eve is upgraded and the mismatched blob is dropped for a fresh
-  // session instead.
-  const [initialData] = useState(() =>
-    typeof window === "undefined"
-      ? null
-      : loadThreadHistory<MessageStreamEvent, ClientSessionState>(threadId, localStorage),
-  );
+  // initialData is fetched by the caller (EveThread) before this hook mounts —
+  // useEveAgent only reads initialEvents/initialSession once, at first render,
+  // so the fetch cannot happen inside this hook (see EveThread's loading gate).
+  // The server already dropped any blob written by an incompatible eve version
+  // (see readThreadSnapshot's HISTORY_VERSION gate), so this is never stale.
 
   // Same-origin, matching useEveAgent's own default host. Only used for the
   // ID-addressed session routes (cancel today, compact/clear if ever needed) —
@@ -450,11 +442,14 @@ export function useEveRuntime(
     // eve/react), so threadId/projectId here are never stale.
     onFinish: (snapshot) => {
       if (!snapshot.session?.sessionId) return;
-      if (
-        !saveThreadHistory(threadId, projectId, compactEvents(snapshot.events), snapshot.session)
-      ) {
-        logEveError("persist:quota-exceeded", { threadId, events: snapshot.events.length });
-      }
+      void saveThreadSnapshot(
+        projectId,
+        threadId,
+        compactEvents(snapshot.events),
+        snapshot.session,
+      ).then((ok) => {
+        if (!ok) logEveError("persist:failed", { threadId, events: snapshot.events.length });
+      });
     },
   });
 
@@ -922,7 +917,7 @@ export function useEveRuntime(
     const sessionId = agent.session?.sessionId;
     if (!sessionId || cursorPinnedRef.current === sessionId) return;
     cursorPinnedRef.current = sessionId;
-    saveThreadHistory(threadId, projectId, compactEvents(agent.events), agent.session);
+    void saveThreadSnapshot(projectId, threadId, compactEvents(agent.events), agent.session);
     // Same latch, so this is one call per session. sessionId is the join key
     // across every surface: it resolves a Sentry issue to an `eve traces` span
     // tree, to the server transcript in agent/hooks/transcript.ts, and to the
@@ -931,8 +926,10 @@ export function useEveRuntime(
   }, [threadId, projectId, agent.session, agent.events]);
 
   // Name the thread after its first user message. Latched by titleWrittenRef
-  // so the localStorage read + parse happens on the first turn and then never
-  // again, instead of on every stream event.
+  // so this only fires once per thread, instead of on every stream event.
+  // page.tsx owns the thread list (fetched from the cloud index), so it
+  // decides whether the current title is still the default worth replacing —
+  // this effect just reports the candidate title once it has one.
   useEffect(() => {
     if (titleWrittenRef.current) return;
     const firstUserMessage = agent.data?.messages?.find((m) => m.role === "user");
@@ -945,29 +942,9 @@ export function useEveRuntime(
     const cleanText = firstPart.text.replace(MARKER_PREFIX, "").trim();
     if (!cleanText) return;
 
-    try {
-      const threadListRaw = localStorage.getItem(threadsListKey(projectId));
-      if (!threadListRaw) return;
-      const list = JSON.parse(threadListRaw) as { id: string; title: string }[];
-      const threadIndex = list.findIndex((t) => t.id === threadId);
-      // Not in the list yet — page.tsx owns that write, so leave the latch
-      // open and retry on the next event rather than never titling it.
-      if (threadIndex === -1) return;
-      // Also repair threads whose title was previously saved as the raw
-      // "[projectId: ...]" marker before this fix.
-      const needsTitle =
-        list[threadIndex].title === "New Chat" || list[threadIndex].title.startsWith("[projectId:");
-      if (needsTitle) {
-        list[threadIndex].title =
-          cleanText.length > 25 ? cleanText.substring(0, 22) + "..." : cleanText;
-        localStorage.setItem(threadsListKey(projectId), JSON.stringify(list));
-        window.dispatchEvent(new Event("storage"));
-      }
-      titleWrittenRef.current = true;
-    } catch (e) {
-      console.error("Failed to update thread title", e);
-    }
-  }, [threadId, projectId, agent.data?.messages]);
+    titleWrittenRef.current = true;
+    onTitleChange(cleanText.length > 25 ? cleanText.substring(0, 22) + "..." : cleanText);
+  }, [threadId, projectId, agent.data?.messages, onTitleChange]);
 
   // Watch agent messages/events for completed tool calls
   useEffect(() => {

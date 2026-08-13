@@ -1,9 +1,11 @@
 /**
- * localStorage persistence for Eve chat threads.
- *
- * Kept apart from the runtime hook because the interesting part is the
- * recovery behaviour when the origin quota is exhausted, which is worth
- * testing on its own.
+ * Event-log hygiene shared by both the server-side thread store
+ * (lib/eve-threads-storage.ts) and the client runtime hook that produces the
+ * events (hooks/use-eve-runtime.ts): shrinking eve's streaming event log
+ * before it is persisted or transferred, and the version stamp that gates
+ * whether a saved snapshot can still be replayed. Persistence itself lives in
+ * lib/eve-threads-storage.ts (server) / lib/eve-threads-client.ts (browser
+ * fetch wrappers) — this file has no I/O of its own.
  */
 
 // Stamped into saved threads. Bump on any eve upgrade, or any change to what
@@ -62,12 +64,10 @@ export function collapseAppendedRuns<T>(events: readonly T[]): T[] {
  * Unlike the streaming duplication collapseAppendedRuns fixes, a tool result
  * is a single event with no cheaper form: write-file carries the whole new
  * file, read-file returns the whole document, compile-project returns the
- * full Tectonic log. Any one of those can alone exceed the ~5 MB origin
- * quota, and saveThreadHistory's escalation has nothing left to drop once
- * it is down to the single newest event — that is what produced the
- * `persist:quota-exceeded` diagnostic. Generous enough that a truncated tool
- * result is still useful on reload; small enough that no single event can
- * single-handedly exhaust the budget.
+ * full Tectonic log. Any one of those can be large enough to make transferring
+ * and storing it wasteful even without a hard quota to blow. Generous enough
+ * that a truncated tool result is still useful on reload; small enough that
+ * no single event can single-handedly bloat a save.
  */
 const MAX_PAYLOAD_STRING = 200_000;
 
@@ -96,158 +96,8 @@ export function capOversizedPayloads<T>(events: readonly T[]): T[] {
   return events.map((event) => capStrings(event)) as T[];
 }
 
-export const THREAD_KEY_PREFIX = "eve-thread-";
-export const threadKey = (id: string) => `${THREAD_KEY_PREFIX}${id}`;
-
-// Thread blobs (above) key by the thread's own UUID, which never collides
-// across projects — only the "which threads exist / which is active" pointers
-// need to be per-project, so a chat sidebar opened for one project doesn't
-// show another project's history.
-export const threadsListKey = (projectId: string) => `eve-threads-list-${projectId}`;
-export const activeThreadIdKey = (projectId: string) => `eve-active-thread-id-${projectId}`;
-
 export type ThreadSnapshot<E = unknown, S = unknown> = {
   version: string;
   events: E[];
   sessionState: S;
 };
-
-/**
- * Reads a saved thread, dropping any blob this client cannot replay.
- *
- * The type parameters are an assertion about a blob that came from JSON, not a
- * guarantee — `HISTORY_VERSION` is what actually gates replay compatibility,
- * and a stamp mismatch discards the blob before it reaches the caller.
- */
-export function loadThreadHistory<E = unknown, S = unknown>(
-  threadId: string,
-  storage: Storage,
-): ThreadSnapshot<E, S> | null {
-  const saved = storage.getItem(threadKey(threadId));
-  if (!saved) return null;
-  try {
-    const parsed = JSON.parse(saved);
-    return parsed?.version === HISTORY_VERSION ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-/** Drops saved blobs for threads the sidebar can no longer reach. */
-function pruneOrphanedThreads(keepKey: string, listKey: string, storage: Storage) {
-  let live: { id: string }[];
-  try {
-    live = JSON.parse(storage.getItem(listKey) ?? "[]");
-    if (!Array.isArray(live)) return;
-  } catch {
-    return; // Unreadable list — deleting on a guess would drop real threads.
-  }
-  const liveKeys = new Set(live.map((t) => threadKey(t.id)));
-  for (const key of Object.keys(storage)) {
-    if (key.startsWith(THREAD_KEY_PREFIX) && key !== keepKey && !liveKeys.has(key)) {
-      storage.removeItem(key);
-    }
-  }
-}
-
-/**
- * Writes the thread snapshot, recovering from a full localStorage rather than
- * giving up on it.
- *
- * The origin quota is a hard ~5MB and the event log grows with every tool
- * result — one Tectonic log or a read_file over a large .tex runs to hundreds
- * of KB — so a long session eventually cannot save at all. Worse, the write
- * runs on every turn, so once it starts failing it fails forever: the
- * conversation silently stops persisting and the console fills with the same
- * error.
- *
- * Recover in escalating steps, cheapest loss first: drop unreachable threads
- * (pure garbage), then this thread's own stale blob (about to be replaced
- * anyway), then the oldest events — what a reload needs least.
- *
- * Returns false only when even a single event will not fit.
- */
-export function saveThreadHistory(
-  threadId: string,
-  projectId: string,
-  events: readonly unknown[],
-  sessionState: unknown,
-  storage: Storage = localStorage,
-): boolean {
-  const key = threadKey(threadId);
-  const write = (evts: readonly unknown[]) =>
-    storage.setItem(key, JSON.stringify({ version: HISTORY_VERSION, events: evts, sessionState }));
-
-  try {
-    write(events);
-    return true;
-  } catch {
-    // Out of quota — escalate.
-  }
-
-  pruneOrphanedThreads(key, threadsListKey(projectId), storage);
-  try {
-    write(events);
-    return true;
-  } catch {
-    // Still over.
-  }
-
-  // Reclaim this thread's previous blob, usually the single largest entry,
-  // then keep halving off the front until the newest turns fit.
-  storage.removeItem(key);
-  let kept = events;
-  while (kept.length > 1) {
-    kept = kept.slice(Math.ceil(kept.length / 2));
-    try {
-      write(kept);
-      return true;
-    } catch {
-      // Keep shrinking.
-    }
-  }
-  return false;
-}
-
-/**
- * Writes a small piece of thread bookkeeping — the thread list or the
- * active-thread pointer — without ever throwing on a full origin.
- *
- * Both values are tiny by themselves, but setItem enforces the quota on the
- * whole origin: a single large eve-thread-* blob (see saveThreadHistory
- * above) is enough to make even a two-line write here throw
- * QuotaExceededError uncaught — which is what crashed page.tsx's syncThreads
- * effect. liveThreadIds comes from the caller rather than being read back
- * from storage: several callers are writing a list that has not been
- * persisted yet (a thread just created or just deleted), and pruning against
- * the old stored list would be pruning against stale data.
- *
- * Returns false, never throws, if even this fits nowhere — bookkeeping, not
- * chat content, and the caller's in-memory state already reflects reality
- * for this tab.
- */
-export function saveThreadMeta(
-  key: string,
-  value: string,
-  liveThreadIds: readonly string[],
-  storage: Storage = localStorage,
-): boolean {
-  try {
-    storage.setItem(key, value);
-    return true;
-  } catch {
-    // Out of quota — reclaim orphaned thread blobs and retry once.
-  }
-
-  const liveKeys = new Set(liveThreadIds.map(threadKey));
-  for (const k of Object.keys(storage)) {
-    if (k.startsWith(THREAD_KEY_PREFIX) && !liveKeys.has(k)) storage.removeItem(k);
-  }
-
-  try {
-    storage.setItem(key, value);
-    return true;
-  } catch {
-    return false;
-  }
-}

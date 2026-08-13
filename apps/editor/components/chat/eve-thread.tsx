@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { Loader2 } from "lucide-react";
 import { AssistantRuntimeProvider, useAui } from "@assistant-ui/react";
 import { Thread } from "@/components/assistant-ui/thread";
 import { useEveRuntime } from "@/hooks/use-eve-runtime";
@@ -8,6 +9,10 @@ import { EveAgentContext } from "@/components/chat/eve-agent-context";
 import { ModelModeContext } from "@/components/chat/model-mode-context";
 import { ContextUsageProvider } from "@/components/chat/context-usage";
 import { DEFAULT_MODE, isEveMode, type EveMode } from "@/lib/eve-modes";
+import { fetchThreadSnapshot, type ThreadSnapshot } from "@/lib/eve-threads-client";
+import type { MessageStreamEvent, ClientSessionState } from "eve/client";
+
+type EveThreadSnapshot = ThreadSnapshot<MessageStreamEvent, ClientSessionState>;
 import {
   HitlToolUI,
   AskQuestionToolUI,
@@ -161,14 +166,18 @@ function EveThreadInner({
   projectId,
   mode,
   openFile,
+  initialData,
+  onTitleChange,
 }: {
   threadId: string;
   projectId: string;
   mode: EveMode;
   openFile?: string | null;
+  initialData: EveThreadSnapshot | null;
+  onTitleChange: (title: string) => void;
 }) {
   const { runtime, agent, error, contextUsage, canContinue, continueTurn, dismissError } =
-    useEveRuntime(threadId, projectId, mode, openFile);
+    useEveRuntime(threadId, projectId, mode, openFile, initialData, onTitleChange);
 
   return (
     <EveAgentContext.Provider value={agent}>
@@ -221,11 +230,13 @@ export function EveThread({
   threadId,
   projectId,
   openFile,
+  onTitleChange,
 }: {
   threadId: string;
   projectId: string;
   /** Project-relative path of the open editor tab, so Eve can act on "this file". */
   openFile?: string | null;
+  onTitleChange: (title: string) => void;
 }) {
   // Last-picked mode is remembered globally (one key), defaulting to Lite.
   const [mode, setMode] = React.useState<EveMode>(() => {
@@ -237,6 +248,35 @@ export function EveThread({
     localStorage.setItem(MODE_STORAGE_KEY, mode);
   }, [mode]);
 
+  // Chat history now lives server-side (lib/eve-threads-storage.ts), not in
+  // localStorage — useEveAgent (inside useEveRuntime) only reads its
+  // initialEvents/initialSession once, at mount, so the fetch has to resolve
+  // *before* EveThreadInner mounts rather than inside the hook itself.
+  const [snapshot, setSnapshot] = React.useState<EveThreadSnapshot | null | "loading">("loading");
+  React.useEffect(() => {
+    let cancelled = false;
+    setSnapshot("loading");
+    fetchThreadSnapshot<MessageStreamEvent, ClientSessionState>(projectId, threadId)
+      .then((s) => {
+        if (!cancelled) setSnapshot(s);
+      })
+      .catch(() => {
+        if (!cancelled) setSnapshot(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, threadId]);
+
+  if (snapshot === "loading") {
+    return (
+      <div className="h-full flex items-center justify-center gap-2 text-xs font-mono text-muted-foreground">
+        <Loader2 className="size-4 animate-spin text-primary" />
+        <span>Loading conversation...</span>
+      </div>
+    );
+  }
+
   return (
     <ModelModeContext.Provider value={{ mode, setMode }}>
       <EveThreadInner
@@ -245,6 +285,8 @@ export function EveThread({
         projectId={projectId}
         mode={mode}
         openFile={openFile}
+        initialData={snapshot}
+        onTitleChange={onTitleChange}
       />
     </ModelModeContext.Provider>
   );
