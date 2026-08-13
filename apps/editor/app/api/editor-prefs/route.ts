@@ -1,6 +1,5 @@
 import { NextRequest } from "next/server";
-import { auth } from "@clerk/nextjs/server";
-import { requireProject, apiError, ApiError } from "@/lib/authz";
+import { requireProjectAndUser, apiError } from "@/lib/authz";
 import {
   readEditorPrefs,
   sanitizeEditorPrefs,
@@ -10,10 +9,8 @@ import { storage } from "@/lib/storage";
 
 export async function GET(req: NextRequest) {
   try {
-    const { userId } = await auth();
-    if (!userId) throw new ApiError(401, "Unauthorized");
     const { searchParams } = new URL(req.url);
-    const projectId = await requireProject(searchParams.get("projectId"));
+    const { projectId, userId } = await requireProjectAndUser(searchParams.get("projectId"));
     return Response.json({ prefs: await readEditorPrefs(userId, projectId) });
   } catch (error) {
     return apiError(error);
@@ -29,10 +26,8 @@ export async function GET(req: NextRequest) {
  */
 export async function PUT(req: NextRequest) {
   try {
-    const { userId } = await auth();
-    if (!userId) throw new ApiError(401, "Unauthorized");
     const body = await req.json();
-    const projectId = await requireProject(body.projectId);
+    const { projectId, userId } = await requireProjectAndUser(body.projectId);
 
     const existing = await readEditorPrefs(userId, projectId);
     const merged = sanitizeEditorPrefs({ ...existing, ...body.prefs });

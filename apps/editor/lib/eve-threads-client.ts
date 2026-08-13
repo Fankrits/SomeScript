@@ -7,13 +7,9 @@
 // into the client bundle.
 import type { ThreadIndex, ThreadMeta } from "./eve-threads-storage";
 import type { ThreadSnapshot } from "./thread-history";
+import { json } from "./fetch-json";
 
 export type { ThreadIndex, ThreadMeta, ThreadSnapshot };
-
-async function json<T>(res: Response): Promise<T> {
-  if (!res.ok) throw new Error(`${res.status} ${await res.text().catch(() => res.statusText)}`);
-  return res.json();
-}
 
 export async function fetchThreadIndex(projectId: string): Promise<ThreadIndex> {
   const { index } = await json<{ index: ThreadIndex }>(

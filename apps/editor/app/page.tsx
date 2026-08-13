@@ -163,7 +163,7 @@ import {
   migrateLocalThreads,
   type ThreadMeta,
 } from "@/lib/eve-threads-client";
-import { fetchEditorPrefs, saveEditorPrefs } from "@/lib/editor-prefs-client";
+import { fetchEditorPrefs, saveEditorPrefs, type EditorPrefs } from "@/lib/editor-prefs-client";
 import {
   versionKey,
   FILE_TREE_VERSION_FIELD,
@@ -703,6 +703,9 @@ const Example = () => {
   // (user, project) via lib/editor-prefs-storage.ts, same reasoning as the
   // per-project scoping this used to do in localStorage: switching projects
   // in the same browser must not leak one project's prefs into another.
+  // Also feeds the last-open-file restore effect further down, so that
+  // effect doesn't issue its own duplicate fetch of the same prefs blob.
+  const [initialPrefs, setInitialPrefs] = useState<EditorPrefs | null>(null);
   useEffect(() => {
     if (!projectId) return;
     let cancelled = false;
@@ -717,6 +720,7 @@ const Example = () => {
         autocompleteEnabled: prefs.autocompleteEnabled,
         bracketMatchingEnabled: prefs.bracketMatchingEnabled,
       }));
+      setInitialPrefs(prefs);
     });
     return () => {
       cancelled = true;
@@ -2171,16 +2175,15 @@ const Example = () => {
     void refreshWorkspace();
   }, [refreshWorkspace]);
 
-  // Reopen the file the user last had open in this project (cloud-stored via
-  // lib/editor-prefs-storage.ts, same as the settings toggles above).
+  // Reopen the file the user last had open in this project. Reuses the fetch
+  // from the settings-hydration effect above instead of re-fetching the same
+  // /api/editor-prefs blob.
   const didRestoreFile = useRef(false);
   useEffect(() => {
-    if (didRestoreFile.current || !projectId) return;
+    if (didRestoreFile.current || !initialPrefs) return;
     didRestoreFile.current = true;
-    void fetchEditorPrefs(projectId).then((prefs) => {
-      if (prefs?.lastOpenFile) void handleFileSelect(prefs.lastOpenFile);
-    });
-  }, [projectId, handleFileSelect]);
+    if (initialPrefs.lastOpenFile) void handleFileSelect(initialPrefs.lastOpenFile);
+  }, [initialPrefs, handleFileSelect]);
 
   // Reload current file when selectedPath changes — but not when handleFileSelect
   // set it, since that already fetched the content. Renames (which set selectedPath

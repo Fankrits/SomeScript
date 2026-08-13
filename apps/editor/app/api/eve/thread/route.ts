@@ -1,6 +1,5 @@
 import { NextRequest } from "next/server";
-import { auth } from "@clerk/nextjs/server";
-import { requireProject, apiError, ApiError } from "@/lib/authz";
+import { requireProjectAndUser, apiError, ApiError } from "@/lib/authz";
 import {
   readThreadSnapshot,
   sanitizeThreadSnapshot,
@@ -17,10 +16,8 @@ function requireThreadId(searchParams: URLSearchParams): string {
 
 export async function GET(req: NextRequest) {
   try {
-    const { userId } = await auth();
-    if (!userId) throw new ApiError(401, "Unauthorized");
     const { searchParams } = new URL(req.url);
-    const projectId = await requireProject(searchParams.get("projectId"));
+    const { projectId, userId } = await requireProjectAndUser(searchParams.get("projectId"));
     const threadId = requireThreadId(searchParams);
     return Response.json({ snapshot: await readThreadSnapshot(userId, projectId, threadId) });
   } catch (error) {
@@ -30,10 +27,8 @@ export async function GET(req: NextRequest) {
 
 export async function PUT(req: NextRequest) {
   try {
-    const { userId } = await auth();
-    if (!userId) throw new ApiError(401, "Unauthorized");
     const body = await req.json();
-    const projectId = await requireProject(body.projectId);
+    const { projectId, userId } = await requireProjectAndUser(body.projectId);
     if (!body.threadId) throw new ApiError(400, "Missing threadId");
 
     const snapshot = sanitizeThreadSnapshot({
@@ -52,10 +47,8 @@ export async function PUT(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
-    const { userId } = await auth();
-    if (!userId) throw new ApiError(401, "Unauthorized");
     const { searchParams } = new URL(req.url);
-    const projectId = await requireProject(searchParams.get("projectId"));
+    const { projectId, userId } = await requireProjectAndUser(searchParams.get("projectId"));
     const threadId = requireThreadId(searchParams);
     await storage.delete(projectId, threadPath(userId, threadId));
     return Response.json({ success: true });

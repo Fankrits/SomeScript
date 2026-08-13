@@ -2,13 +2,9 @@
 // `import type` so this file never pulls lib/storage.ts's Node/S3 imports
 // into the client bundle — same reasoning as lib/eve-threads-client.ts.
 import type { EditorPrefs } from "./editor-prefs-storage";
+import { json } from "./fetch-json";
 
 export type { EditorPrefs };
-
-async function json<T>(res: Response): Promise<T> {
-  if (!res.ok) throw new Error(`${res.status} ${await res.text().catch(() => res.statusText)}`);
-  return res.json();
-}
 
 export async function fetchEditorPrefs(projectId: string): Promise<EditorPrefs | null> {
   try {

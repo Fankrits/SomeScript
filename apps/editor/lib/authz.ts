@@ -37,6 +37,17 @@ export function getPool(): Pool {
  * "default" (the local sandbox) is allowed only outside production.
  */
 export async function requireProject(projectId: string | null | undefined): Promise<string> {
+  return (await requireProjectAndUser(projectId)).projectId;
+}
+
+/**
+ * Same as requireProject, but also returns the caller's userId — for routes
+ * whose storage is keyed per (user, project), e.g. editor prefs and eve
+ * threads, so they don't need a second, separate auth() call just to get it.
+ */
+export async function requireProjectAndUser(
+  projectId: string | null | undefined,
+): Promise<{ projectId: string; userId: string }> {
   if (!projectId) throw new ApiError(400, "Missing projectId");
 
   // Loaded lazily: @clerk/nextjs ships ESM with extensionless imports that Node's
@@ -49,7 +60,7 @@ export async function requireProject(projectId: string | null | undefined): Prom
   if (!userId) throw new ApiError(401, "Unauthorized");
 
   if (projectId === "default") {
-    if (process.env.NODE_ENV !== "production") return projectId;
+    if (process.env.NODE_ENV !== "production") return { projectId, userId };
     throw new ApiError(404, "Project not found");
   }
 
@@ -60,7 +71,7 @@ export async function requireProject(projectId: string | null | undefined): Prom
   if (!res.rows[0] || res.rows[0].workspace_id !== workspaceId) {
     throw new ApiError(404, "Project not found");
   }
-  return projectId;
+  return { projectId, userId };
 }
 
 /**
