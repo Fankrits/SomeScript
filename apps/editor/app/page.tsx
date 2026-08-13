@@ -163,6 +163,7 @@ import {
   migrateLocalThreads,
   type ThreadMeta,
 } from "@/lib/eve-threads-client";
+import { fetchEditorPrefs, saveEditorPrefs } from "@/lib/editor-prefs-client";
 import {
   versionKey,
   FILE_TREE_VERSION_FIELD,
@@ -698,30 +699,28 @@ const Example = () => {
   }, [searchState, currentCode]);
 
   // Personal editor preferences — NOT mainFilePath/compilerEngine, those are
-  // project properties and load from the server below. Scoped per project so
-  // switching projects in the same browser can't leak one project's prefs
-  // into another (a single global key here used to do exactly that).
+  // project properties and load from the server below. Cloud-stored per
+  // (user, project) via lib/editor-prefs-storage.ts, same reasoning as the
+  // per-project scoping this used to do in localStorage: switching projects
+  // in the same browser must not leak one project's prefs into another.
   useEffect(() => {
-    if (typeof window === "undefined" || !projectId) return;
-    const stored = localStorage.getItem(`somescript-editor-prefs-${projectId}`);
-    if (!stored) return;
-    try {
-      const parsed = JSON.parse(stored);
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- SSR-safe: prefs hydrate from localStorage after mount
+    if (!projectId) return;
+    let cancelled = false;
+    void fetchEditorPrefs(projectId).then((prefs) => {
+      if (cancelled || !prefs) return;
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- data fetch: prefs hydrate from the server after mount
       setSettings((prev) => ({
         ...prev,
-        tooltipsEnabled:
-          typeof parsed.tooltipsEnabled === "boolean" ? parsed.tooltipsEnabled : true,
-        vimModeEnabled: typeof parsed.vimModeEnabled === "boolean" ? parsed.vimModeEnabled : false,
-        foldingEnabled: typeof parsed.foldingEnabled === "boolean" ? parsed.foldingEnabled : true,
-        autocompleteEnabled:
-          typeof parsed.autocompleteEnabled === "boolean" ? parsed.autocompleteEnabled : true,
-        bracketMatchingEnabled:
-          typeof parsed.bracketMatchingEnabled === "boolean" ? parsed.bracketMatchingEnabled : true,
+        tooltipsEnabled: prefs.tooltipsEnabled,
+        vimModeEnabled: prefs.vimModeEnabled,
+        foldingEnabled: prefs.foldingEnabled,
+        autocompleteEnabled: prefs.autocompleteEnabled,
+        bracketMatchingEnabled: prefs.bracketMatchingEnabled,
       }));
-    } catch (e) {
-      console.error("Failed to parse editor preferences", e);
-    }
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [projectId]);
 
   // Project settings (mainFilePath, compilerEngine) — server-backed so every
@@ -794,17 +793,16 @@ const Example = () => {
     (newSettings: typeof settings) => {
       setSettings(newSettings);
 
-      if (typeof window !== "undefined" && projectId) {
-        localStorage.setItem(
-          `somescript-editor-prefs-${projectId}`,
-          JSON.stringify({
-            tooltipsEnabled: newSettings.tooltipsEnabled,
-            vimModeEnabled: newSettings.vimModeEnabled,
-            foldingEnabled: newSettings.foldingEnabled,
-            autocompleteEnabled: newSettings.autocompleteEnabled,
-            bracketMatchingEnabled: newSettings.bracketMatchingEnabled,
-          }),
-        );
+      if (projectId) {
+        // Partial update — lastOpenFile (written independently from
+        // handleFileSelect) is merged server-side, not overwritten here.
+        void saveEditorPrefs(projectId, {
+          tooltipsEnabled: newSettings.tooltipsEnabled,
+          vimModeEnabled: newSettings.vimModeEnabled,
+          foldingEnabled: newSettings.foldingEnabled,
+          autocompleteEnabled: newSettings.autocompleteEnabled,
+          bracketMatchingEnabled: newSettings.bracketMatchingEnabled,
+        });
       }
 
       fetch("/api/project-settings", {
@@ -1346,7 +1344,9 @@ const Example = () => {
 
       setSelectedPath(path);
       selectingPathRef.current = path;
-      localStorage.setItem(`somescript-last-file-${projectId}`, path);
+      // Partial update — merged server-side with the settings toggles saved
+      // independently from saveSettings, so neither clobbers the other.
+      if (projectId) void saveEditorPrefs(projectId, { lastOpenFile: path });
 
       const mode = getViewMode(path);
       setViewMode(mode);
@@ -2171,14 +2171,15 @@ const Example = () => {
     void refreshWorkspace();
   }, [refreshWorkspace]);
 
-  // Reopen the file the user last had open in this project (persisted like the layout).
+  // Reopen the file the user last had open in this project (cloud-stored via
+  // lib/editor-prefs-storage.ts, same as the settings toggles above).
   const didRestoreFile = useRef(false);
   useEffect(() => {
-    if (didRestoreFile.current) return;
+    if (didRestoreFile.current || !projectId) return;
     didRestoreFile.current = true;
-    const last = localStorage.getItem(`somescript-last-file-${projectId}`);
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot mount restore; ref-guarded, cannot cascade
-    if (last) void handleFileSelect(last);
+    void fetchEditorPrefs(projectId).then((prefs) => {
+      if (prefs?.lastOpenFile) void handleFileSelect(prefs.lastOpenFile);
+    });
   }, [projectId, handleFileSelect]);
 
   // Reload current file when selectedPath changes — but not when handleFileSelect
