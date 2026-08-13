@@ -44,7 +44,10 @@ test("readIndex round-trips a well-formed index", async () => {
 
 test("sanitizeIndex drops entries with no id or title", () => {
   expect(
-    sanitizeIndex({ threads: [{ title: "no id" }, { id: "2" }, "garbage", null], activeThreadId: "" }),
+    sanitizeIndex({
+      threads: [{ title: "no id" }, { id: "2" }, "garbage", null],
+      activeThreadId: "",
+    }),
   ).toEqual({ threads: [], activeThreadId: "" });
 });
 
@@ -75,7 +78,11 @@ test("sanitizeIndex defaults createdAt when missing or non-finite", () => {
 // --- sanitizeThreadSnapshot / readThreadSnapshot ------------------------------
 
 test("sanitizeThreadSnapshot accepts a well-formed snapshot", () => {
-  const snapshot = { version: HISTORY_VERSION, events: [{ type: "turn.completed" }], sessionState: {} };
+  const snapshot = {
+    version: HISTORY_VERSION,
+    events: [{ type: "turn.completed" }],
+    sessionState: {},
+  };
   expect(sanitizeThreadSnapshot(snapshot)).toEqual(snapshot);
 });
 
@@ -104,7 +111,11 @@ test("readThreadSnapshot returns null for a missing file", async () => {
 });
 
 test("readThreadSnapshot round-trips a well-formed snapshot", async () => {
-  const snapshot = { version: HISTORY_VERSION, events: [{ i: 1 }], sessionState: { sessionId: "s" } };
+  const snapshot = {
+    version: HISTORY_VERSION,
+    events: [{ i: 1 }],
+    sessionState: { sessionId: "s" },
+  };
   const s = { readFile: async () => JSON.stringify(snapshot) };
   expect(await readThreadSnapshot("u1", "p1", "t1", s)).toEqual(snapshot);
 });

@@ -1,9 +1,5 @@
 import { expect, test } from "bun:test";
-import {
-  setMainFile,
-  PROJECT_SETTINGS_PATH,
-  DEFAULT_PROJECT_SETTINGS,
-} from "./project-settings";
+import { setMainFile, PROJECT_SETTINGS_PATH, DEFAULT_PROJECT_SETTINGS } from "./project-settings";
 
 // Minimal in-memory stand-in for the two StorageProvider methods setMainFile
 // needs. Keyed by path only (single project) — good enough for these tests,
@@ -39,7 +35,10 @@ test("setMainFile rejects a .tex path that doesn't exist in the project", async 
 test("setMainFile writes settings, preserves compilerEngine, and reports the previous value", async () => {
   const files: Record<string, string> = {
     "thesis.tex": "\\documentclass{report}",
-    [PROJECT_SETTINGS_PATH]: JSON.stringify({ mainFilePath: "main.tex", compilerEngine: "xelatex" }),
+    [PROJECT_SETTINGS_PATH]: JSON.stringify({
+      mainFilePath: "main.tex",
+      compilerEngine: "xelatex",
+    }),
   };
   const result = await setMainFile("p1", "thesis.tex", fakeStorage(files));
 

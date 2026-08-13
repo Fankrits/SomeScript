@@ -1,10 +1,6 @@
 import { NextRequest } from "next/server";
 import { requireProjectAndUser, apiError } from "@/lib/authz";
-import {
-  readEditorPrefs,
-  sanitizeEditorPrefs,
-  editorPrefsPath,
-} from "@/lib/editor-prefs-storage";
+import { readEditorPrefs, sanitizeEditorPrefs, editorPrefsPath } from "@/lib/editor-prefs-storage";
 import { storage } from "@/lib/storage";
 
 export async function GET(req: NextRequest) {

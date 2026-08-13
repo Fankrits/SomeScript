@@ -39,7 +39,8 @@ export function sanitizeIndex(input: unknown): ThreadIndex {
     threads.push({
       id: t.id,
       title: t.title.slice(0, MAX_TITLE_LENGTH),
-      createdAt: typeof t.createdAt === "number" && Number.isFinite(t.createdAt) ? t.createdAt : Date.now(),
+      createdAt:
+        typeof t.createdAt === "number" && Number.isFinite(t.createdAt) ? t.createdAt : Date.now(),
     });
     if (threads.length >= MAX_THREADS) break;
   }
@@ -85,7 +86,9 @@ export async function readThreadSnapshot(
   s: Pick<StorageProvider, "readFile"> = storage,
 ): Promise<ThreadSnapshot | null> {
   try {
-    return sanitizeThreadSnapshot(JSON.parse(await s.readFile(projectId, threadPath(userId, threadId))));
+    return sanitizeThreadSnapshot(
+      JSON.parse(await s.readFile(projectId, threadPath(userId, threadId))),
+    );
   } catch {
     return null;
   }
