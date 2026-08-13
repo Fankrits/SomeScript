@@ -7,11 +7,11 @@
     "preview": "nuxt preview --extends docus"
   },
   "dependencies": {
-    "@takumi-rs/core": "^2.5.11",
+    "@takumi-rs/core": "^2.7.3",
     "@vercel/analytics": "^2.0.1",
     "@vercel/speed-insights": "^2.0.0",
     "docus": "5.12.3",
-    "katex": "^0.18.1",
+    "katex": "^0.18.4",
     "nuxt": "^4.5.2",
     "rehype-katex": "^7.0.1",
     "remark-math": "^6.0.0"

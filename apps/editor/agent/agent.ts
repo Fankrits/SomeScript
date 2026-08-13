@@ -1,5 +1,4 @@
 import { defineAgent, defineDynamic } from "eve";
-import { DEFAULT_MODE } from "../lib/eve-modes";
 import {
   primaryModelFor,
   fallbackModelsFor,
@@ -18,7 +17,12 @@ export default defineAgent({
   // maxOutputTokens, which is what would actually cut a loop short.
   limits: { maxOutputTokensPerSession: 2_000_000 },
   model: defineDynamic({
-    fallback: primaryModelFor(DEFAULT_MODE),
+    // eve 0.33+ dropped the compiled `fallback` for dynamic models entirely —
+    // `defineDynamic` for `model` now accepts only `events`, and every
+    // matching handler must return a concrete selection (a missing one fails
+    // the turn before model-dependent work begins). That's already true here:
+    // "step.started" always fires before the first model call, so there's no
+    // gap a fallback would have covered.
     events: {
       // Fires once per model step. The resolver is a regex over messages, so
       // re-running it per step is cheap, and it returns the same mode for every

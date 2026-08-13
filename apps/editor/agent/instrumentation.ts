@@ -33,28 +33,36 @@ function projectIdFromMessages(messages: readonly { role: string; content: unkno
  * runtimeContext into the AI SDK spans either way, so these tags land on the
  * local traces too.
  *
- * `recordInputs`/`recordOutputs` are deliberately left at eve's default of
- * `true` (tool-loop.js: `recordInputs: def?.recordInputs ?? true`).
+ * `recordInputs`/`recordOutputs` are set explicitly to `true` below. Through
+ * eve 0.31 they defaulted to `true` and this file relied on that default; eve
+ * 0.35 flipped the default to `false` ("Instrumentation now records trace
+ * metadata without model or tool inputs and outputs by default"), which would
+ * have silently blinded local traces again on upgrade — the same failure mode
+ * as the incident below, from a different cause. Pinning them explicitly
+ * survives eve changing its default a second time.
  *
- * They were briefly set to `false` here on privacy grounds, which was wrong:
- * it is the AI SDK that writes `ai.prompt.messages`, `ai.prompt.system`,
- * `ai.response.text` and `ai.response.tool_results` onto its spans, and eve's
- * local trace provider only re-projects what it finds there
- * (tracing/agent-otel-provider.js). Turning them off therefore deleted every
- * prompt and reply from `eve traces --verbose` — the one artifact that shows
- * what the model was actually fed and what it actually said.
+ * The original incident: they were briefly set to `false` here on privacy
+ * grounds, which was wrong. It is the AI SDK that writes `ai.prompt.messages`,
+ * `ai.prompt.system`, `ai.response.text` and `ai.response.tool_results` onto
+ * its spans, and eve's local trace provider only re-projects what it finds
+ * there (tracing/agent-otel-provider.js). Turning them off therefore deleted
+ * every prompt and reply from `eve traces --verbose` — the one artifact that
+ * shows what the model was actually fed and what it actually said.
  *
  * That is safe *only* because there is no `setup` below, so those spans have
  * exactly one destination: the local `.eve/traces` spool on this machine.
  * eve's own switch for that spool is EVE_TRACES_CONTENT
- * (`captureContent: process.env.EVE_TRACES_CONTENT !== "off"`), which is the
- * knob to reach for — it also gates agent/hooks/transcript.ts, so one variable
- * turns off content capture everywhere.
+ * (`captureContent: process.env.EVE_TRACES_CONTENT !== "off"`), which stays
+ * the runtime kill switch — it also gates agent/hooks/transcript.ts, so
+ * setting it to `off` still turns off content capture everywhere even with
+ * recordInputs/recordOutputs pinned true below.
  *
  * !! If you ever add a `setup` exporter, revisit this. The spans stop being
  * local-only that day, and full document text starts leaving the machine.
  */
 export default defineInstrumentation({
+  recordInputs: true,
+  recordOutputs: true,
   events: {
     /**
      * Tag every model call with the chat mode it resolved to and the model that
