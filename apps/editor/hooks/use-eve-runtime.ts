@@ -25,7 +25,6 @@ import {
 } from "@/lib/attachment-blocks";
 import type { EveMode } from "@/lib/eve-modes";
 import { filterOrphanedMessages } from "@/lib/eve-messages";
-import { Client } from "eve/client";
 import type { MessageStreamEvent, ClientSessionState } from "eve/client";
 import { collapseAppendedRuns, capOversizedPayloads } from "@/lib/thread-history";
 import { saveThreadSnapshot, type ThreadSnapshot } from "@/lib/eve-threads-client";
@@ -53,10 +52,10 @@ function buildContextMarker(
 // eve's NDJSON turn stream can go silent forever without erroring — no error,
 // no close, so agent.status never leaves "submitted"/"streaming" and the
 // composer spins forever. The cause is client-side and environment-independent:
-// readNdjsonStream (eve/dist/src/client/ndjson.js) awaits reader.read() with no
-// timeout, and followStreamIterable only reconnects when the body *throws*, so
-// an open-but-silent connection blocks the `for await` indefinitely. Open
-// upstream: https://github.com/vercel/eve/issues/1159.
+// readNdjsonStream (packages/eve/src/client/ndjson.ts) awaits reader.read()
+// with no timeout, and followStreamIterable's reconnect policy only re-fires
+// once the body *throws* or closes, so an open-but-silent connection blocks the
+// `for await` indefinitely. Open upstream: https://github.com/vercel/eve/issues/1159.
 //
 // That issue blames Vercel brotli-buffering the stream, but that doesn't apply
 // here — eve sends `application/x-ndjson`, which is not on Vercel's compression
@@ -64,26 +63,23 @@ function buildContextMarker(
 // in the path. So this backstop is needed in every environment.
 //
 // ponytail: app-level idle timer, delete once eve ships the real fix.
-// https://github.com/vercel/eve/pull/1186 adds a native `streamIdleTimeoutMs`
-// that reconnects from the last durable cursor mid-turn. Merged 2026-07-29 and
-// still NOT shipped as of 0.31.3, the version installed here — rechecked
-// against eve/dist/src/client/ndjson.js, whose readNdjsonStream still awaits
-// reader.read() with no timeout, and open-stream.js, whose reconnect policies
-// only fire when the body *throws*. Don't delete this on the version number
-// alone; reread those two files first. When a release containing it lands,
-// bump eve, delete this watchdog, and delete filterOrphanedMessages with it —
-// a resumed turn is never abandoned, so it leaves no orphans to filter.
+// https://github.com/vercel/eve/pull/1186 (merged 2026-07-29) landed a
+// streamReconnectPolicy/backoff framework, not the idle-read timeout its own
+// description promised — it only re-opens the connection once openStreamBody's
+// fetch throws or the body closes, so it still doesn't cover a connection that
+// stays open and silent. Re-confirmed by reading ndjson.ts/open-stream.ts
+// directly at eve 0.38.3 (this bump): reader.read() is still a bare, unbounded
+// await. #1159 itself is still open, with a second independent repro filed
+// against this exact codepath and an unmerged offer to add an opt-in
+// `streamReadIdleTimeoutMs`. Don't delete this watchdog on the version number
+// alone — reread those two files first. Once it's actually fixed, delete this
+// and delete filterOrphanedMessages with it: a resumed turn is never abandoned,
+// so it leaves no orphans to filter.
 //
 // 60s, not the 15s that issue's reporter used: their case was short
 // conversational replies, ours runs tectonic compiles and web searches through
 // tools. See isAwaitingTool below for why a flat timer isn't enough on its own.
 const STALL_TIMEOUT_MS = 60_000;
-
-// How long to wait for eve's `turn.cancelled` boundary after cancelling a
-// *stalled* turn before detaching the stream locally. Only the stall path needs
-// this: a healthy stream delivers the boundary in one round trip, but a silent
-// one may never deliver it at all, and the composer can't stay disabled forever.
-const CANCEL_BOUNDARY_GRACE_MS = 5_000;
 
 /**
  * Everything that shrinks the event log before it is written anywhere.
@@ -328,12 +324,6 @@ export function useEveRuntime(
   // The server already dropped any blob written by an incompatible eve version
   // (see readThreadSnapshot's HISTORY_VERSION gate), so this is never stale.
 
-  // Same-origin, matching useEveAgent's own default host. Only used for the
-  // ID-addressed session routes (cancel today, compact/clear if ever needed) —
-  // `sessions.attach` performs no I/O, so this is just a URL builder with the
-  // official route contract instead of a hand-inlined path.
-  const client = useMemo(() => new Client({ host: "" }), []);
-
   // The agent's tenancy check runs on this token, not on the [projectId: …]
   // marker: agent/channels/eve.ts verifies it and puts the caller's workspace on
   // the session, and the file tools check project ownership against that. Passed
@@ -454,8 +444,9 @@ export function useEveRuntime(
   });
 
   // useEveAgent hands back a fresh snapshot object per event, so a callback that
-  // closed over `agent` sees a stale status once it fires on a timer. The grace
-  // timer in abandonStalledTurn has to read the status as of when it fires.
+  // closed over `agent` sees a stale status once it fires on a timer. The
+  // STALL_TIMEOUT_MS watchdog below reads this to log the status as of when it
+  // actually fires, not as of whenever its effect last ran.
   const agentRef = useRef(agent);
   agentRef.current = agent;
 
@@ -729,11 +720,18 @@ export function useEveRuntime(
     [agent, projectId],
   );
 
-  const isBusy = agent.status === "submitted" || agent.status === "streaming";
+  const isBusy = (agent.status === "submitted" || agent.status === "streaming") && !canContinue;
   // agent.status only turns busy once eve accepts the turn, so the pre-send
   // async work in onNew has to be folded in here — otherwise the composer is
   // both cleared and idle-looking while that runs. Also gates isDisabled, so a
   // second message can't be submitted into the same in-flight onNew.
+  //
+  // `!canContinue` covers the stall path: if eve's stream never delivers the
+  // `turn.cancelled` boundary (the open-but-silent-connection bug documented at
+  // STALL_TIMEOUT_MS), agent.status can stay "streaming" forever even after
+  // abandonTurn() asks the server to stop. canContinue is already set the
+  // moment the watchdog gives up, so reusing it here un-disables the composer
+  // immediately instead of waiting on a status flip that may never come.
   const isPending = isBusy || isSending;
 
   // See filterOrphanedMessages for why the raw list can't go straight to the
@@ -747,56 +745,34 @@ export function useEveRuntime(
 
   // Giving up on the current turn, from anywhere.
   //
-  // eve turns are durable: agent.stop() only aborts the local fetch, so the
-  // server keeps running tools and writing project files underneath whatever
-  // happens next. The cancel is what actually stops the work.
-  //
-  // Deliberately does NOT call agent.stop() on the normal path. Per
-  // eve/docs/guides/frontend/overview.mdx — "Keep the stream open until the
-  // cancellation boundary arrives; do not use stop() for this interaction" —
-  // eve answers a cancel with `turn.cancelled` then `session.waiting`, and the
-  // reducer's `turn.cancelled` case is what flips still-streaming text and
-  // reasoning parts to `done`. Hanging up first is what used to leave messages
-  // frozen mid-stream forever. Status stays "streaming" until the boundary
-  // lands, which correctly keeps the composer disabled while the turn settles.
-  //
-  // The turnId guard makes a late abandon (a slow click, or the stall watchdog
-  // firing after the turn already ended) a no-op instead of killing a newer turn.
+  // eve turns are durable, so cancelling only asks the server to stop — the
+  // reply keeps streaming until eve confirms with `turn.cancelled` then
+  // `session.waiting`, and the reducer's `turn.cancelled` case is what flips
+  // still-streaming text and reasoning parts to `done`. agent.cancel()
+  // (eve/react, 0.38+) is the supported way to do this: it waits to identify
+  // the active turn if `turn.started` hasn't landed yet, sends one guarded
+  // cancellation request, and keeps the stream attached until the boundary
+  // arrives — eve now owns the "a late click/watchdog must not cancel a newer
+  // turn" guard, so this doesn't have to track a turnId to hand it one.
+  // (Before eve 0.38, the only client primitive was agent.stop(), a bare local
+  // abort that never told the server anything — this used to be a manual
+  // client.sessions.attach(sessionId).cancel({ turnId }) call to work around
+  // that. See [[eve-stalled-stream-issue-1159]] in memory.)
   const abandonTurn = useCallback(async () => {
-    const sessionId = agent.session?.sessionId;
-    const turnId = turnIdRef.current;
-    logEveAction("cancel:requested", { sessionId, turnId, status: agent.status });
-    if (!sessionId || !turnId) {
-      // Nothing addressable to cancel — fall back to detaching locally so the
-      // caller still gets out of a running state.
-      agent.stop();
-      return;
-    }
+    logEveAction("cancel:requested", {
+      sessionId: agent.session?.sessionId,
+      turnId: turnIdRef.current,
+      status: agent.status,
+    });
     try {
-      const result = await client.sessions.attach(sessionId).cancel({ turnId });
-      logEveAction("cancel:accepted", { turnId, result });
+      const result = await agent.cancel();
+      logEveAction("cancel:accepted", { result });
     } catch (e) {
       // Cancellation is advisory (eve counts `no_active_turn` as success) and
       // every caller is on a recovery path that must not break here.
-      logEveError("cancel:failed", { turnId, error: e instanceof Error ? e.message : String(e) });
-      agent.stop();
+      logEveError("cancel:failed", { error: e instanceof Error ? e.message : String(e) });
     }
-  }, [agent, client]);
-
-  // The stall path can't rely on the boundary arriving: the whole reason the
-  // watchdog fired is that the stream went silent, so `turn.cancelled` may
-  // never be delivered even though the server honoured the cancel. Give it a
-  // short grace period, then detach locally as a last resort. This is the only
-  // remaining path that can strand a mid-stream message, which is why
-  // filterOrphanedMessages still exists.
-  const abandonStalledTurn = useCallback(async () => {
-    await abandonTurn();
-    setTimeout(() => {
-      if (agentRef.current.status === "streaming" || agentRef.current.status === "submitted") {
-        agentRef.current.stop();
-      }
-    }, CANCEL_BOUNDARY_GRACE_MS);
-  }, [abandonTurn]);
+  }, [agent]);
 
   const runtime = useExternalStoreRuntime<EveMessage>({
     isRunning: isPending,
@@ -857,8 +833,13 @@ export function useEveRuntime(
   //
   // Compaction is the other legitimate silence, and unlike a tool it leaves no
   // trace in the message list — see compactingRef. This effect re-runs on every
-  // event (abandonStalledTurn is rebuilt from the new `agent` snapshot), so
-  // reading the ref here is enough to arm and disarm on the bracketing events.
+  // event (abandonTurn is rebuilt from the new `agent` snapshot), so reading
+  // the ref here is enough to arm and disarm on the bracketing events.
+  //
+  // setCanContinue(true) is what actually un-disables the composer here (see
+  // isBusy above) — it doesn't wait on abandonTurn's cancellation request to
+  // resolve, let alone on eve's stream delivering `turn.cancelled`, since a
+  // truly stalled connection may never deliver that boundary at all.
   useEffect(() => {
     if (!isBusy || isAwaitingTool || compactingRef.current) return;
     const timer = setTimeout(() => {
@@ -867,14 +848,14 @@ export function useEveRuntime(
         status: agentRef.current.status,
         turnId: turnIdRef.current,
       });
-      void abandonStalledTurn();
+      void abandonTurn();
       setSendError(
         "The assistant stopped responding. Continue to try picking up where it left off.",
       );
       setCanContinue(true);
     }, STALL_TIMEOUT_MS);
     return () => clearTimeout(timer);
-  }, [abandonStalledTurn, isAwaitingTool, isBusy]);
+  }, [abandonTurn, isAwaitingTool, isBusy]);
 
   // User-triggered recovery from the "stopped responding" banner: sends a
   // plain "continue" turn rather than replaying the original message
