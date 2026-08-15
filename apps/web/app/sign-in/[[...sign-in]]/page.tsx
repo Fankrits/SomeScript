@@ -78,9 +78,6 @@ export default async function SignInPage() {
                   card: "shadow-none border-none bg-transparent p-6 sm:p-8",
                   headerTitle: "text-foreground font-bold text-xl",
                   headerSubtitle: "text-muted-foreground text-sm font-light",
-                  socialButtonsBlockButton:
-                    "border border-border text-foreground hover:bg-secondary/40 transition-colors py-2 rounded-lg font-medium",
-                  socialButtonsBlockButtonText: "font-semibold text-sm",
                   dividerLine: "bg-border",
                   dividerText: "text-muted-foreground text-xs",
                   formFieldLabel: "text-foreground font-medium text-sm",
