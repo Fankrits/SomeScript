@@ -138,8 +138,8 @@ export function DashboardSidebar({
           <UserButton
             fallback={
               <div className="flex items-center gap-3">
-                <Skeleton className="h-4 w-24" />
                 <Skeleton className="h-8 w-8 rounded-full" />
+                <Skeleton className="h-4 w-24" />
               </div>
             }
             appearance={{
