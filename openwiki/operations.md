@@ -1,17 +1,37 @@
 ---
 type: Operations Guide
 title: Operations and compilation flow
-description: Compilation pipeline, file serving, search behavior, and operational environment for the SomeScript LaTeX editor.
-tags: [operations, compilation, somescript, editor]
+description: Compilation pipeline, Redis infrastructure, collaboration service, file serving, and operational environment for the SomeScript LaTeX editor.
+tags: [operations, compilation, somescript, editor, redis, collaboration]
 ---
 
 # Operations and compilation flow
 
-This page covers how workspace files are compiled into PDFs and how file storage is served back to the editor.
+This page covers how workspace files are compiled into PDFs, how Redis enables shared infrastructure, and how the collaboration service works.
+
+## Redis infrastructure
+
+`apps/editor/lib/redis.ts` provides a centralized ioredis v6 client with the following design:
+
+- **Lazy connect**: The client calls `.connect()` on creation but sets `lazyConnect: true` so connection errors don't crash startup.
+- **RESP2 protocol**: Pinned via `protocol: 2` (`e42ce67`) because the deployed Redis/Valkey version's RESP3 support is unverified.
+- **Permanent retry strategy**: `retryStrategy` caps backoff at 2s and retries forever — returning `null` would stop ioredis's reconnection loop permanently, trapping the app in in-memory fallback mode after a transient outage.
+- **Graceful fallback**: Every exported function (`redisGet`, `redisSet`, `redisHSet`, `redisHGetAll`, `redisHDel`) returns a falsy sentinel on error or disconnection, so callers can degrade to in-memory fallback without checking client status.
+
+### Fallbacks when Redis is unavailable
+
+| Feature | Fallback | Location |
+|---------|----------|----------|
+| Rate limiting | In-memory `Map<string, { tokens: number; last: number }>` (capped at `MAX_BUCKETS=10000`) | `apps/editor/lib/rate-limit.ts` |
+| Diff-sync hashes | In-memory `Map<string, string>` (capped at `MAX_FALLBACK_ENTRIES=10000`) | `apps/editor/lib/compile.ts` |
+| Compile output cache | Compiler falls through to running Tectonic | `apps/compiler/index.ts` |
+| Hocuspocus awareness | No Redis extension → single-replica operation | `apps/collaboration/server.ts` |
+
+Each fallback is bounded so a prolonged outage cannot grow it unboundedly.
 
 ## Compile flow
 
-The compile path starts in `apps/editor/app/api/compile/route.ts`.
+The compile path starts in `apps/editor/app/api/compile/route.ts`. The shared compile logic lives in `apps/editor/lib/compile.ts`, which is imported by both the API route and the Eve agent's `compile-project` tool. That module has three constraints: relative imports only (no `@/` alias), no `next/server`, and no `lib/rate-limit` (which top-level-imports Clerk), because the agent bundles into eve's Node runtime.
 
 ### Local mode
 
@@ -19,33 +39,36 @@ When `COMPILER_URL` points to localhost-style addresses, the editor defaults to 
 
 - the resolved project path
 - the relative path to the main `.tex` file
-- the `draft` flag
 
 The compiler service in `apps/compiler/index.ts` then runs Tectonic directly in the local project directory and streams logs back to the editor.
 
-### Upload mode
+### Upload mode (production path)
 
 When the compiler is remote, the editor uses `upload` mode:
 
 1. It lists the full workspace through `storage.listProjectFiles()`.
 2. It serializes text files directly and binary files as base64 payloads.
 3. It computes a SHA-256 project hash for the upload payload.
-4. It compares file hashes to a small in-memory cache so only changed files are sent when possible.
+4. It reads file hashes from Redis (`project:{projectId}:hashes`), falling back to an in-memory Map (capped at 10K entries), so only changed files are sent.
 5. It posts the changed files, deleted files, and project hash to the compiler service.
 6. If the compiler returns `requireFullSync`, the editor retries with a full workspace upload.
-7. On success, the returned PDF is written back to storage as `<main>.pdf`.
+7. On success, the returned PDF is written back to storage as `<stem>.pdf` under `.preview-cache/`.
 
-This is the main performance-sensitive path in the repo and it is currently shaped by the recent “LaTeX compilation speedup” work in `docs/superpowers/specs/2026-07-01-latex-compilation-speedup-design.md`.
+### Compile log persistence
+
+After each compile, the log is stored in Redis at `compile:log:{projectId}` (1-hour TTL) and as a fallback in a local file at `.somescript/compile-log.json`. The Eve agent reads it back via `apps/editor/agent/tools/read-compile-log.ts`. Logs are capped to the last 100KB (`MAX_STORED_LOG_BYTES`), preserving only the tail where errors live.
+
+### Compile error parsing
+
+`apps/editor/lib/compile-errors.ts` parses Tectonic's structured error format (`error: <file>:<line>: <message>`) with deduplication — the compiler runs twice on a cold cache, so the same error appears twice and is collapsed into one. Used by both the terminal log viewer UI and the agent's `compile-project` tool output.
+
+### Compile throttle
+
+The Eve agent's `compile-project` tool (`apps/editor/agent/tools/compile-project.ts`) applies its own per-process throttle (3-second window) separate from the API rate limiter. The API rate limiter (`apps/editor/lib/rate-limit.ts`) cannot be used from the agent bundle because it top-level-imports Clerk.
 
 ## Draft mode
 
-The editor passes `draft: true` to the compiler when the user is in fast-compile mode. Draft mode was refactored from a simple `-r 0` Tectonic flag to a graphics-draft-prefix approach (`apps/compiler/draft-mode.ts`):
-
-- Injects `\PassOptionsToPackage{draft}{graphicx}\PassOptionsToPackage{draft}{graphics}` before `\documentclass` to render images as empty boxes
-- The prefix is deliberately on line 1 with no trailing newline so SyncTeX line numbers stay aligned with the user's source
-- `applyDraftMode()` is idempotent both ways — strips an existing prefix when draft mode turns off, which is necessary because the upload workspace persists across compiles and a differential sync may not re-send the root file
-
-**Note**: Draft mode was removed in commit `9357fa7` — the `apps/compiler/draft-mode.ts` and `apps/compiler/draft-mode.test.ts` files were deleted, and the Tectonic binary was bumped to 0.17.0. The draft mode concept is preserved here for historical context.
+The editor used to pass `draft: true` to the compiler when the user was in fast-compile mode. Draft mode was removed in commit `9357fa7` — `apps/compiler/draft-mode.ts` and `apps/compiler/draft-mode.test.ts` were deleted, and the Tectonic binary was bumped to 0.17.0.
 
 ## Main file detection
 
@@ -85,6 +108,7 @@ Important details:
 - the compiler cleans stale workspaces older than 24 hours
 - upload-mode workspaces live under `workspaces/{projectId}/`
 - the service maintains an in-memory output cache keyed by project payload hash
+- the compiler can also use a **Redis distributed output cache** — when `REDIS_URL` is set, compiled PDFs are cached keyed by SHA-256 project hash for faster repeat compiles across instances (`4eee6f4`)
 - the service validates path traversal before reading or writing files
 - PDFs are returned base64-encoded in upload mode
 
@@ -99,81 +123,58 @@ Important details:
 - images are returned as binary with the correct image MIME type
 - when no file path is supplied, the route returns the project tree and relative project path
 
-### POST behavior
+## Collaboration service
 
-`POST /api/files` supports:
+`apps/collaboration/` is a standalone Bun service running Hocuspocus v4. It provides real-time co-editing via a Y.js CRDT WebSocket connection.
 
-- switching the active project path
-- creating files or directories
-- saving file contents
-- moving files or directories
-- deleting files or directories
+### Architecture
 
-On project path switch, the route seeds a default `main.tex` if the project does not already contain one.
+```
+Bun.serve → crossws (Bun adapter) → Hocuspocus server
+```
 
-### File upload
+Hocuspocus v4 split networking into a separate `Server` wrapper that hardcodes `crossws/adapters/node` (Bun-incompatible). This service drives the Bun-native path instead: the `Hocuspocus` class directly, bridged to `Bun.serve` via crossws's own Bun adapter.
 
-`POST /api/files/upload` (`apps/editor/app/api/files/upload/route.ts`) supports batch file upload via `multipart/form-data`:
+### Room model
 
-- Rate limited to 20 requests per 60 seconds
-- Max upload size: 250 MB (compressed)
-- Files are deduplicated via `dedupeUploadName()` — appends `-1`, `-2`, etc. before the extension on collision
-- All upload batch sizes are validated before writing any file to prevent partial uploads
+Rooms are named `project:<projectId>`. Each project gets one Y.Doc with:
 
-## Search behavior
+- A `Y.Text` per file, keyed `file:<relative-path>` — the CRDT-backed text buffer
+- A hidden `Y.Map` called `__lastWritten` storing content hashes of last-persisted files, preventing cross-replica clobber
+- Awareness state for cursors, selections, active file, and version tokens (file tree, tasks, project settings)
 
-The search route at `apps/editor/app/api/search/route.ts` skips binary files and only scans text-like files. That keeps search aligned with editor expectations and avoids accidentally decoding PDFs or images as text.
+### Persistence model
 
-The route has both search and replace behavior, so future changes need to preserve:
+- Text files remain the source of truth for the compiler
+- Binary Y.Doc state is stored at `.somescript/collab-state.bin` (excluded from file tree and compile)
+- On changes, files are persisted to storage via `spliceText()` — a prefix/suffix splice rather than full replace — preserving unrelated CRDT positions and peer cursors
+- Persistence is debounced to batch writes
+- `notifyCollabPathsChanged()` (`apps/editor/lib/collab-notify.ts`) is called by agent tools (write-file, edit-file) and `/api/files` so the collaboration server does not revert out-of-band edits on the next autosave debounce
 
-- zero-width regex handling
-- whole-word validation
-- line-range filtering
-- replacement counts per file
+### Version tokens for live refresh
 
-## Operational environment
+File tree, tasks, and project settings use **awareness version tokens** (not CRDT merge semantics) to signal peer refreshes. Each writer stamps an opaque token on its own awareness after a successful save; other peers diff the composite key and refetch on change. Defined in `apps/editor/lib/file-tree-sync.ts`.
 
-Several environment-dependent behaviors show up in the source:
+### Cross-service ownership check
 
-- `COMPILER_URL` and `COMPILER_MODE` control how the editor reaches the compiler
-- `REDIS_URL` configures shared Redis for rate limiting, file diff hashes, and compile caches
-- `AWS_*` settings configure S3-backed storage
-- `CLERK_WEBHOOK_SECRET` secures auth webhooks in `apps/web/app/api/webhooks/clerk/route.ts`
-- the active project path is stored in a temp config file, not in the database
+The collaboration server reuses `apps/editor/lib/storage.ts` for persistence and performs its own PostgreSQL ownership check (`SELECT workspace_id FROM projects WHERE id = $1`) before allowing a connection, matching the same predicate `apps/editor/lib/authz.ts` enforces on REST API routes.
 
-The repo does not currently expose a single centralized ops guide, so this page is the main canonical home for compilation and file-serving behavior.
+### Key environment variables
 
-## Railway Redis Deployment & Scaling Guide (1,000 - 10,000+ Concurrent Users)
+| Variable | Purpose |
+|----------|---------|
+| `DATABASE_URL` | PostgreSQL for project ownership verification |
+| `REDIS_URL` | Hocuspocus Redis extension (cross-replica awareness sync) |
+| `CLERK_SECRET_KEY` | Clerk JWT verification for WebSocket auth |
+| `CLERK_AUTHORIZED_PARTIES` | Comma-separated CSP authorized parties |
+| `COLLAB_INTERNAL_SECRET` | Shared secret for editor→collab WebSocket auth |
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | S3 storage permissions |
 
-To scale the SomeScript editor and compiler across multiple Railway instances:
+### Testing
 
-1. **Add Redis Database on Railway:**
-   - In your Railway project canvas, click **+ New** -> **Database** -> **Add Redis**.
-   - Railway will generate a `REDIS_URL` variable (formatted as `redis://default:password@host:port`).
-
-2. **Connect Editor & Compiler Services:**
-   - In Railway Service Settings for `apps/editor`: Add Environment Variable `REDIS_URL=${{Redis.REDIS_URL}}`.
-   - In Railway Service Settings for `apps/compiler`: Add Environment Variable `REDIS_URL=${{Redis.REDIS_URL}}`.
-
-3. **Horizontal Scaling:**
-   - Increase Railway replica count for `apps/editor` (e.g., 3-5 replicas).
-   - Increase Railway replica count for `apps/compiler` (e.g., 2-4 replicas).
-   - Shared Redis guarantees synchronized rate limits, file diff hashes, and PDF compile caches across all nodes.
-
-4. **Memory:** every key this app writes carries a TTL, but the compile cache stores full base64 PDFs, so an unbounded Redis (the default) can fill up before TTLs expire — once it's full, `noeviction` (Redis's default policy) starts rejecting writes for every feature sharing the instance, not just the cache. Set a memory limit and `volatile-lru` eviction on the Railway Redis service (equivalent to the `docker-compose.yml` local setup) rather than relying on TTLs alone.
-
-## Source references
-
-- `apps/editor/app/api/compile/route.ts`
-- `apps/editor/app/api/files/route.ts`
-- `apps/editor/app/api/search/route.ts`
-- `apps/editor/app/api/synctex/route.ts`
-- `apps/editor/app/api/health/route.ts`
-- `apps/editor/lib/rate-limit.ts`
-- `apps/editor/lib/redis.ts`
-- `apps/editor/lib/storage.ts`
-- `apps/editor/lib/authz.ts`
-- `apps/compiler/index.ts`
-- `apps/compiler/draft-mode.ts`
-- `apps/compiler/scripts/build-synctex.sh`
-
+| Test file | What it covers |
+|---|---|
+| `apps/editor/hooks/use-collaboration.ts` (collocated tests) | Editor-side collaboration hook; remote cursor/selection normalization |
+| `apps/editor/lib/collab-binding.test.ts` | Regression: prevents collaboration binding from blanking an open file when Y.Text is empty |
+| `apps/collaboration/splice.test.ts` | CRDT-safe text splice logic |
+| `apps/editor/lib/file-tree-sync.test.ts` | Version token key computation |
