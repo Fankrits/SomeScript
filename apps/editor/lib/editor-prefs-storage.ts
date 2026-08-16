@@ -38,8 +38,7 @@ export function sanitizeEditorPrefs(input: unknown): EditorPrefs {
       typeof raw.autocompleteEnabled === "boolean" ? raw.autocompleteEnabled : true,
     bracketMatchingEnabled:
       typeof raw.bracketMatchingEnabled === "boolean" ? raw.bracketMatchingEnabled : true,
-    autoCompileEnabled:
-      typeof raw.autoCompileEnabled === "boolean" ? raw.autoCompileEnabled : true,
+    autoCompileEnabled: typeof raw.autoCompileEnabled === "boolean" ? raw.autoCompileEnabled : true,
     lastOpenFile:
       typeof raw.lastOpenFile === "string" ? raw.lastOpenFile.slice(0, MAX_PATH_LENGTH) : null,
   };
