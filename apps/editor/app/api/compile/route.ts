@@ -2,6 +2,7 @@ import { requireProject, apiError, ApiError, projectDirFor } from "@/lib/authz";
 import { NextRequest } from "next/server";
 import { checkRate } from "@/lib/rate-limit";
 import { compileUpload, compilerHeaders, compilerMode, compilerUrl } from "@/lib/compile";
+import { flushCollabProject } from "@/lib/collab-notify";
 
 export async function POST(req: NextRequest) {
   try {
@@ -18,6 +19,12 @@ export async function POST(req: NextRequest) {
       // Tectonic's output straight to the browser, and its localProjectPath comes
       // from process.cwd(), which is wrong inside eve's tool runtime. The agent's
       // compile-project tool is upload-only for both reasons.
+      //
+      // Doesn't go through compileUpload, so it needs its own flush: a collaborator's
+      // edits can still be sitting in the Hocuspocus room, not yet debounce-flushed
+      // to the disk Tectonic is about to read.
+      await flushCollabProject(projectId);
+
       const response = await fetch(`${compilerUrl()}/compile`, {
         method: "POST",
         headers: compilerHeaders(),

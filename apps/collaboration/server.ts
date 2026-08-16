@@ -326,13 +326,14 @@ const hocuspocus = new Hocuspocus({
 // only ever invoked by the Node-only `Server` wrapper this file doesn't use),
 // so this route is wired directly into the Bun.serve fetch handler below
 // instead, using web-standard Request/Response.
-async function handleApplyRequest(request: Request): Promise<Response> {
-  const fail = (status: number, message: string) =>
-    new Response(JSON.stringify({ error: message }), {
-      status,
-      headers: { "Content-Type": "application/json" },
-    });
+function fail(status: number, message: string): Response {
+  return new Response(JSON.stringify({ error: message }), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
 
+async function handleApplyRequest(request: Request): Promise<Response> {
   if (!collabInternalSecret) return fail(503, "Collaboration server misconfigured: COLLAB_INTERNAL_SECRET is not set");
   if (request.headers.get("x-collab-secret") !== collabInternalSecret) return fail(401, "Unauthorized");
 
@@ -403,6 +404,58 @@ async function handleApplyRequest(request: Request): Promise<Response> {
   return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
 }
 
+// Internal HTTP endpoint: force this project's pending debounced onStoreDocument
+// write to run NOW, so a compile started right after a live edit reads current
+// bytes instead of racing Hocuspocus's own debounce (default 2s / capped at 10s
+// under continuous typing — see defaultConfiguration in @hocuspocus/server, unset
+// here). Deliberately not Hocuspocus's own flushPendingStores(): that flushes
+// EVERY loaded room on the instance, not just this project, and — being a bare
+// forEach over executeNow() — does not await the underlying storage writes, so
+// it can return before the write actually lands. openDirectConnection + disconnect()
+// is the same pattern /apply already uses above: scoped to one document, and
+// disconnect() awaits storeDocumentHooks(..., immediately=true) directly, which
+// is exactly what a debounce-bypassing synchronous store needs. If real clients
+// are still connected, disconnecting the transient direct connection alone
+// doesn't unload the room — only the store hook runs.
+//
+// Same trust model as /apply: service-to-service, shared-secret auth.
+async function handleFlushRequest(request: Request): Promise<Response> {
+  if (!collabInternalSecret) return fail(503, "Collaboration server misconfigured: COLLAB_INTERNAL_SECRET is not set");
+  if (request.headers.get("x-collab-secret") !== collabInternalSecret) return fail(401, "Unauthorized");
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return fail(400, "Invalid JSON body");
+  }
+  const { projectId } = (body ?? {}) as { projectId?: unknown };
+  if (typeof projectId !== "string") return fail(400, "Expected { projectId: string }");
+  if (projectId !== "default" && !UUID_RE.test(projectId)) return fail(400, "Invalid projectId");
+
+  const documentName = `project:${projectId}`;
+  // `documents` has no .d.ts entry (same Map flushPendingStores() itself walks
+  // internally) — skip rather than throw if a future Hocuspocus version renames
+  // or removes it; a compile then just falls back to racing the debounce like
+  // it does today, not a crash.
+  if (!(hocuspocus as any).documents?.has(documentName)) {
+    return new Response(JSON.stringify({ ok: true, flushed: false }), {
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  try {
+    const connection = await hocuspocus.openDirectConnection(documentName, {});
+    await connection.disconnect();
+  } catch (err) {
+    console.error(`[collab] flush failed for ${projectId}:`, err);
+  }
+
+  return new Response(JSON.stringify({ ok: true, flushed: true }), {
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
 process.on("uncaughtException", (err: any) => {
   if (err?.code === "EADDRINUSE" || err?.syscall === "listen" || String(err?.message || "").includes("in use")) {
     console.log(`[COLLABORATION] Port ${port} is already in use (e.g. running in Docker). Skipping local collaboration startup.`);
@@ -465,6 +518,9 @@ try {
       }
       if (request.method === "POST" && new URL(request.url).pathname === "/apply") {
         return handleApplyRequest(request);
+      }
+      if (request.method === "POST" && new URL(request.url).pathname === "/flush") {
+        return handleFlushRequest(request);
       }
       return new Response("Welcome to Hocuspocus!");
     },

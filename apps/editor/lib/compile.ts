@@ -2,6 +2,7 @@ import { createHash } from "crypto";
 import { ApiError } from "./authz";
 import { storage, FileNode } from "./storage";
 import { redisHGetAll, redisHMSet, redisHDel, redisSet } from "./redis";
+import { flushCollabProject } from "./collab-notify";
 
 // This module is imported by BOTH the Next route (app/api/compile/route.ts) and
 // the Eve agent tool (agent/tools/compile-project.ts). Eve bundles it into its own
@@ -178,6 +179,10 @@ export async function compileUpload(opts: {
   const { projectId, path: fileRelativePath, signal } = opts;
   const url = compilerUrl();
   const headers = compilerHeaders();
+
+  // Must happen before the first storage read below: a collaborator's edits can
+  // still be sitting in the Hocuspocus room, not yet debounce-flushed to disk.
+  await flushCollabProject(projectId);
 
   const projectTree = await storage.listProjectFiles(projectId);
   const allFiles = await getAllStorageFiles(projectId, projectTree);
