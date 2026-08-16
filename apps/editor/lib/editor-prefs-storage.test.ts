@@ -25,6 +25,7 @@ test("readEditorPrefs round-trips a well-formed blob", async () => {
     foldingEnabled: false,
     autocompleteEnabled: false,
     bracketMatchingEnabled: false,
+    autoCompileEnabled: false,
     lastOpenFile: "main.tex",
   };
   const s = { readFile: async () => JSON.stringify(stored) };
@@ -56,6 +57,7 @@ test("sanitizeEditorPrefs keeps well-formed boolean fields intact", () => {
     foldingEnabled: false,
     autocompleteEnabled: false,
     bracketMatchingEnabled: false,
+    autoCompileEnabled: false,
   });
   expect(prefs).toMatchObject({
     tooltipsEnabled: false,
@@ -63,6 +65,7 @@ test("sanitizeEditorPrefs keeps well-formed boolean fields intact", () => {
     foldingEnabled: false,
     autocompleteEnabled: false,
     bracketMatchingEnabled: false,
+    autoCompileEnabled: false,
   });
 });
 

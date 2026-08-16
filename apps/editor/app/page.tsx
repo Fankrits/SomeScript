@@ -515,6 +515,7 @@ const Example = () => {
     foldingEnabled: boolean;
     autocompleteEnabled: boolean;
     bracketMatchingEnabled: boolean;
+    autoCompileEnabled: boolean;
   }>({
     mainFilePath: "main.tex",
     compilerEngine: "tectonic",
@@ -523,6 +524,7 @@ const Example = () => {
     foldingEnabled: true,
     autocompleteEnabled: true,
     bracketMatchingEnabled: true,
+    autoCompileEnabled: true,
   });
 
   const { user: clerkUser } = useUser();
@@ -719,6 +721,7 @@ const Example = () => {
         foldingEnabled: prefs.foldingEnabled,
         autocompleteEnabled: prefs.autocompleteEnabled,
         bracketMatchingEnabled: prefs.bracketMatchingEnabled,
+        autoCompileEnabled: prefs.autoCompileEnabled,
       }));
       setInitialPrefs(prefs);
     });
@@ -806,6 +809,7 @@ const Example = () => {
           foldingEnabled: newSettings.foldingEnabled,
           autocompleteEnabled: newSettings.autocompleteEnabled,
           bracketMatchingEnabled: newSettings.bracketMatchingEnabled,
+          autoCompileEnabled: newSettings.autoCompileEnabled,
         });
       }
 
@@ -1961,15 +1965,18 @@ const Example = () => {
 
   // resolveMainFile with the detectMainFile fallback folded in, plus the
   // user-facing error when neither finds anything to compile.
-  const resolveOrToastMainFile = useCallback(async (): Promise<string | null> => {
-    const mainPath = resolveMainFile() ?? (await detectMainFile());
-    if (!mainPath) {
-      toast.error(
-        "No main file specified. This project has multiple .tex files and none is named main.tex or Main.tex — set the Main Entry File in the Settings tab.",
-      );
-    }
-    return mainPath;
-  }, [resolveMainFile, detectMainFile]);
+  const resolveOrToastMainFile = useCallback(
+    async (silent = false): Promise<string | null> => {
+      const mainPath = resolveMainFile() ?? (await detectMainFile());
+      if (!mainPath && !silent) {
+        toast.error(
+          "No main file specified. This project has multiple .tex files and none is named main.tex or Main.tex — set the Main Entry File in the Settings tab.",
+        );
+      }
+      return mainPath;
+    },
+    [resolveMainFile, detectMainFile],
+  );
 
   // Compiles one already-resolved path and streams its log into the terminal.
   // A pure "run this compile" primitive — callers own picking compilePath and
@@ -2086,16 +2093,22 @@ const Example = () => {
   // runCompile itself stays a silent "compile this path" primitive so an
   // expected intermediate failure (e.g. the open file can't stand alone) never
   // flashes an error before the main-file fallback gets a chance to succeed.
-  const surfaceCompileFailure = useCallback((result: { compilePath: string; log: string }) => {
-    const errs = parseCompileErrors(result.log, result.compilePath);
-    setCompileErrors(errs);
-    setHasCompileError(true);
-    toast.error(
-      errs[0]
-        ? `Compile failed \u2014 line ${errs[0].line}: ${errs[0].message}`
-        : "Compile failed \u2014 see terminal for details",
-    );
-  }, []);
+  const surfaceCompileFailure = useCallback(
+    (result: { compilePath: string; log: string }, silent = false) => {
+      const errs = parseCompileErrors(result.log, result.compilePath);
+      setCompileErrors(errs);
+      setHasCompileError(true);
+      // Auto-compile runs silently in the background \u2014 errors still land in the
+      // gutter and the terminal badge, just without a toast on every idle pause.
+      if (silent) return;
+      toast.error(
+        errs[0]
+          ? `Compile failed \u2014 line ${errs[0].line}: ${errs[0].message}`
+          : "Compile failed \u2014 see terminal for details",
+      );
+    },
+    [],
+  );
 
   // Single Compile action: try the currently open .tex file as its own root
   // document first (fast, precise — e.g. a self-contained chapter); only fall
@@ -2103,44 +2116,70 @@ const Example = () => {
   // open. Skips the redundant re-run when the open file already *is* the main
   // file. isCompiling is owned here (not inside runCompile) so the button
   // stays disabled across both attempts, not just each one individually.
-  const handleCompileLatex = useCallback(async () => {
-    if (isCompiling) return;
-    setIsCompiling(true);
-    try {
-      const currentPath =
-        selectedPath && selectedPath.endsWith(".tex") ? toProjectRelative(selectedPath) : null;
+  const handleCompileLatex = useCallback(
+    async (silent = false) => {
+      if (isCompiling) return;
+      setIsCompiling(true);
+      try {
+        const currentPath =
+          selectedPath && selectedPath.endsWith(".tex") ? toProjectRelative(selectedPath) : null;
 
-      let result = currentPath ? await runCompile(currentPath) : null;
+        let result = currentPath ? await runCompile(currentPath) : null;
 
-      if (!result || result.pdfPath === null) {
-        const mainPath = await resolveOrToastMainFile();
-        if (mainPath && mainPath !== currentPath) {
-          result = await runCompile(mainPath);
+        if (!result || result.pdfPath === null) {
+          const mainPath = await resolveOrToastMainFile(silent);
+          if (mainPath && mainPath !== currentPath) {
+            result = await runCompile(mainPath);
+          }
         }
-      }
 
-      if (!result || result.pdfPath === null) {
-        if (result) surfaceCompileFailure(result);
-        return;
+        if (!result || result.pdfPath === null) {
+          if (result) surfaceCompileFailure(result, silent);
+          return;
+        }
+        setPdfUrl(
+          withProject(
+            `${window.location.origin}/api/files?path=${encodeURIComponent(result.pdfPath)}&t=${Date.now()}`,
+          ),
+        );
+        setCompiledPath(result.compilePath);
+      } finally {
+        setIsCompiling(false);
       }
-      setPdfUrl(
-        withProject(
-          `${window.location.origin}/api/files?path=${encodeURIComponent(result.pdfPath)}&t=${Date.now()}`,
-        ),
-      );
-      setCompiledPath(result.compilePath);
-    } finally {
-      setIsCompiling(false);
+    },
+    [
+      isCompiling,
+      selectedPath,
+      toProjectRelative,
+      runCompile,
+      resolveOrToastMainFile,
+      withProject,
+      surfaceCompileFailure,
+    ],
+  );
+
+  // Auto-compile after the user pauses editing for a bit — not on every
+  // keystroke. Deliberately does NOT mirror the autosave effect's `if
+  // (contentBound) return` bail: compiling still needs to happen in
+  // collaborative mode, and the compile route flushes the Hocuspocus room to
+  // disk itself before Tectonic reads, so it doesn't depend on local
+  // autosave having run first. Silent so a mid-edit syntax error (e.g. an
+  // unclosed brace while still typing) doesn't toast on every idle pause —
+  // failures still surface via the gutter markers and terminal badge.
+  useEffect(() => {
+    if (
+      !settings.autoCompileEnabled ||
+      !selectedPath ||
+      loadedPathRef.current !== selectedPath ||
+      editedCode === currentCode
+    ) {
+      return;
     }
-  }, [
-    isCompiling,
-    selectedPath,
-    toProjectRelative,
-    runCompile,
-    resolveOrToastMainFile,
-    withProject,
-    surfaceCompileFailure,
-  ]);
+
+    const timer = setTimeout(() => void handleCompileLatex(true), 3000);
+
+    return () => clearTimeout(timer);
+  }, [settings.autoCompileEnabled, selectedPath, editedCode, currentCode, handleCompileLatex]);
 
   // Always the project's main file, never "whatever's open" — a download is
   // the finished project, not whichever chapter happens to be open.
@@ -2603,7 +2642,7 @@ const Example = () => {
           {/* Compile Button — current file first, falls back to the project's main file */}
           {getTexFiles(fileTree).length > 0 && (
             <button
-              onClick={handleCompileLatex}
+              onClick={() => handleCompileLatex()}
               disabled={isCompiling}
               title="Compiles the open file; falls back to the project's main file if it can't compile alone"
               className="rounded-md border bg-muted/20 hover:bg-muted text-muted-foreground/80 hover:text-foreground px-2 sm:px-3 h-[36px] text-xs font-semibold cursor-pointer disabled:opacity-50 transition-colors flex items-center gap-1.5 shadow-sm"
@@ -3173,6 +3212,31 @@ const Example = () => {
                   checked={settings.bracketMatchingEnabled}
                   onChange={(e) =>
                     saveSettings({ ...settings, bracketMatchingEnabled: e.target.checked })
+                  }
+                  className="mt-0.5 size-4 rounded border-border text-primary focus:ring-primary cursor-pointer"
+                />
+              </div>
+
+              <hr className="border-border/60" />
+
+              <div className="flex items-start justify-between gap-3">
+                <div className="space-y-0.5">
+                  <label
+                    htmlFor="auto-compile-toggle"
+                    className="text-xs font-semibold text-muted-foreground"
+                  >
+                    Auto-Compile
+                  </label>
+                  <div className="text-[11px] text-muted-foreground leading-relaxed">
+                    Automatically compile a few seconds after you stop editing.
+                  </div>
+                </div>
+                <input
+                  id="auto-compile-toggle"
+                  type="checkbox"
+                  checked={settings.autoCompileEnabled}
+                  onChange={(e) =>
+                    saveSettings({ ...settings, autoCompileEnabled: e.target.checked })
                   }
                   className="mt-0.5 size-4 rounded border-border text-primary focus:ring-primary cursor-pointer"
                 />

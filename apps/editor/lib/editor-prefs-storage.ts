@@ -6,6 +6,8 @@ export interface EditorPrefs {
   foldingEnabled: boolean;
   autocompleteEnabled: boolean;
   bracketMatchingEnabled: boolean;
+  /** Auto-compile after the user pauses editing. Off = manual (button/Eve) only. */
+  autoCompileEnabled: boolean;
   /** Project-relative path of the file to reopen on next visit, or null. */
   lastOpenFile: string | null;
 }
@@ -16,6 +18,7 @@ export const DEFAULT_EDITOR_PREFS: EditorPrefs = {
   foldingEnabled: true,
   autocompleteEnabled: true,
   bracketMatchingEnabled: true,
+  autoCompileEnabled: true,
   lastOpenFile: null,
 };
 
@@ -35,6 +38,8 @@ export function sanitizeEditorPrefs(input: unknown): EditorPrefs {
       typeof raw.autocompleteEnabled === "boolean" ? raw.autocompleteEnabled : true,
     bracketMatchingEnabled:
       typeof raw.bracketMatchingEnabled === "boolean" ? raw.bracketMatchingEnabled : true,
+    autoCompileEnabled:
+      typeof raw.autoCompileEnabled === "boolean" ? raw.autoCompileEnabled : true,
     lastOpenFile:
       typeof raw.lastOpenFile === "string" ? raw.lastOpenFile.slice(0, MAX_PATH_LENGTH) : null,
   };
