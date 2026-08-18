@@ -126,12 +126,7 @@ export function DashboardSidebar({
       </div>
 
       <div className="flex flex-col gap-4 pt-4 border-t border-sidebar-border">
-        <div className="flex items-center justify-between px-2 text-xs sm:text-sm">
-          <span className="text-muted-foreground">AI credits</span>
-          <span className="font-semibold text-foreground">{credits.toLocaleString()}</span>
-        </div>
-
-        <UpgradeDialog autoOpenLocked={workspaceLocked} currentPlan={plan} />
+        <UpgradeDialog autoOpenLocked={workspaceLocked} currentPlan={plan} credits={credits} />
 
         {/* User Info / Profile Avatar */}
         <div className="pt-2 flex items-center gap-3">

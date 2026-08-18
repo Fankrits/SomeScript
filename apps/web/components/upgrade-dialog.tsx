@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Sheet,
@@ -61,10 +61,13 @@ type CheckoutState = { clientSecret: string; label: string };
 export function UpgradeDialog({
   autoOpenLocked = false,
   currentPlan = "free",
+  credits,
 }: {
   autoOpenLocked?: boolean;
   /** The workspace's active plan, so the sheet marks the right card instead of always Free. */
   currentPlan?: string;
+  /** Renders the AI-credit balance as a second trigger that jumps straight to the packs. */
+  credits?: number;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(autoOpenLocked);
@@ -73,6 +76,19 @@ export function UpgradeDialog({
   const [loadingPack, setLoadingPack] = useState<CreditPackId | null>(null);
   const [checkout, setCheckout] = useState<CheckoutState | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [jumpToPacks, setJumpToPacks] = useState(false);
+  const packsRef = useRef<HTMLDivElement>(null);
+
+  // The packs sit below three plan cards, so opening from the credit balance has to
+  // scroll or it lands on the plans and looks like the wrong panel. rAF because the
+  // sheet content mounts and animates in on the same tick the state flips.
+  useEffect(() => {
+    if (open && jumpToPacks && !checkout) {
+      requestAnimationFrame(() => {
+        packsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
+  }, [open, jumpToPacks, checkout]);
 
   const reset = () => {
     setCheckout(null);
@@ -120,12 +136,28 @@ export function UpgradeDialog({
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
-        if (!next) reset();
+        if (!next) {
+          reset();
+          setJumpToPacks(false);
+        }
       }}
     >
+      {credits !== undefined && (
+        <SheetTrigger asChild>
+          <button
+            onClick={() => setJumpToPacks(true)}
+            className="flex items-center justify-between rounded-lg px-2 py-1 text-xs transition-colors hover:bg-secondary/60 sm:text-sm"
+          >
+            <span className="text-muted-foreground">AI credits</span>
+            <span className="font-semibold text-foreground">{credits.toLocaleString()}</span>
+          </button>
+        </SheetTrigger>
+      )}
+
       <SheetTrigger asChild>
         <Button
           variant="outline"
+          onClick={() => setJumpToPacks(false)}
           className="w-full justify-start gap-2 border-border bg-card text-foreground rounded-lg"
         >
           <ArrowUpCircle className="h-4 w-4" />
@@ -259,7 +291,7 @@ export function UpgradeDialog({
                 ))}
               </div>
 
-              <div className="mt-6 border-t border-border pt-5">
+              <div ref={packsRef} className="mt-6 border-t border-border pt-5">
                 <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
                   <Coins className="h-4 w-4" />
                   Need more AI credits?
