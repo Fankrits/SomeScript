@@ -175,6 +175,42 @@ async function creditTopUp(session: Stripe.Checkout.Session, eventId: string): P
   });
 }
 
+/**
+ * A `mode: "setup"` Checkout Session only attaches the payment method to the
+ * customer — it does not promote it. Without this the customer "updates" their card
+ * in-app and every future invoice still charges the old one. Both writes are needed:
+ * `invoice_settings` covers new subscriptions, the subscription's own
+ * `default_payment_method` overrides it for the existing one.
+ */
+async function promoteSetupCard(session: Stripe.Checkout.Session): Promise<void> {
+  const setupIntentId =
+    typeof session.setup_intent === "string" ? session.setup_intent : session.setup_intent?.id;
+  const customerId = typeof session.customer === "string" ? session.customer : session.customer?.id;
+  if (!setupIntentId || !customerId) return;
+
+  const setupIntent = await stripe.setupIntents.retrieve(setupIntentId);
+  const paymentMethod =
+    typeof setupIntent.payment_method === "string"
+      ? setupIntent.payment_method
+      : setupIntent.payment_method?.id;
+  if (!paymentMethod) return;
+
+  await stripe.customers.update(customerId, {
+    invoice_settings: { default_payment_method: paymentMethod },
+  });
+
+  const workspaceId = session.metadata?.workspaceId;
+  if (!workspaceId) return;
+  const local = await db.query.subscriptions.findFirst({
+    where: eq(subscriptions.workspaceId, workspaceId),
+  });
+  if (local?.stripeSubscriptionId) {
+    await stripe.subscriptions.update(local.stripeSubscriptionId, {
+      default_payment_method: paymentMethod,
+    });
+  }
+}
+
 export async function POST(req: Request): Promise<Response> {
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
   if (!webhookSecret) {
@@ -204,6 +240,8 @@ export async function POST(req: Request): Promise<Response> {
         const session = event.data.object;
         if (session.mode === "payment") {
           await creditTopUp(session, event.id);
+        } else if (session.mode === "setup") {
+          await promoteSetupCard(session);
         }
         // Subscription mode is handled by customer.subscription.created/updated below,
         // which carries the same subscription_data.metadata set at Checkout creation.

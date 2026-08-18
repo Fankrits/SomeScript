@@ -18,7 +18,7 @@ import { trackEvent, upgradeSession } from "@/components/analytics/clarity";
 // ever not, no delay here would help anyway since the event never arrives at all.
 const WEBHOOK_SETTLE_DELAY_MS = 1500;
 
-function ConfirmForm({ onSuccess }: { onSuccess: () => void }) {
+function ConfirmForm({ onSuccess, submitLabel }: { onSuccess: () => void; submitLabel: string }) {
   const checkoutState = useCheckoutElements();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,11 +56,13 @@ function ConfirmForm({ onSuccess }: { onSuccess: () => void }) {
     setTimeout(onSuccess, WEBHOOK_SETTLE_DELAY_MS);
   };
 
+  const successLabel = submitLabel === "Pay" ? "Payment successful" : "Card saved";
+
   if (succeeded) {
     return (
       <div className="flex flex-col items-center gap-3 py-8 text-center">
         <CheckCircle2 className="h-10 w-10 text-primary" />
-        <p className="text-sm font-medium text-foreground">Payment successful</p>
+        <p className="text-sm font-medium text-foreground">{successLabel}</p>
         <p className="text-xs text-muted-foreground">Updating your workspace…</p>
       </div>
     );
@@ -71,7 +73,7 @@ function ConfirmForm({ onSuccess }: { onSuccess: () => void }) {
       <PaymentElement options={{ fields: { billingDetails: { name: "always" } } }} />
       {error && <p className="text-sm text-destructive">{error}</p>}
       <Button type="submit" disabled={!checkout.canConfirm || submitting} className="w-full">
-        {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Pay"}
+        {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : submitLabel}
       </Button>
       {/* checkout.canConfirm only flips true once every required field (incl. name above)
           reports complete — without this, a stuck-incomplete Payment Element just makes
@@ -89,16 +91,19 @@ function ConfirmForm({ onSuccess }: { onSuccess: () => void }) {
 export function CheckoutForm({
   clientSecret,
   onSuccess,
+  submitLabel = "Pay",
 }: {
   clientSecret: string;
   onSuccess: () => void;
+  /** "Pay" for a charge; "Save card" for a `mode: "setup"` session, which charges nothing. */
+  submitLabel?: string;
 }) {
   return (
     <CheckoutElementsProvider
       stripe={getStripe()}
       options={{ clientSecret, elementsOptions: { appearance: { theme: "stripe" } } }}
     >
-      <ConfirmForm onSuccess={onSuccess} />
+      <ConfirmForm onSuccess={onSuccess} submitLabel={submitLabel} />
     </CheckoutElementsProvider>
   );
 }

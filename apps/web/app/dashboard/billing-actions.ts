@@ -122,20 +122,127 @@ export async function createTopUpCheckout(
 }
 
 /**
- * Creates a Stripe Billing Portal session (self-serve card management, invoice
- * history, cancel) and returns the URL to redirect to. Lazily creates the Stripe
- * customer if this workspace has never checked out — a free workspace should be
- * able to add a card in advance, not just after its first upgrade attempt.
+ * Same `ui_mode: "elements"` Checkout Session in `mode: "setup"` — the in-app
+ * replacement for the Billing Portal's "update card" screen. Reusing Checkout
+ * rather than hand-rolling a SetupIntent + `<Elements>` tree means the existing
+ * CheckoutForm mounts it unchanged. The resulting payment method is promoted to
+ * the customer's (and the live subscription's) default by the webhook's
+ * `checkout.session.completed` / `mode === "setup"` branch.
+ *
+ * Lazily creates the Stripe customer if this workspace has never checked out — a
+ * free workspace should be able to add a card in advance.
  */
-export async function createPortalSession(): Promise<{ url: string }> {
+export async function createCardSetupCheckout(): Promise<{ clientSecret: string }> {
   const { workspaceId, email } = await getActiveWorkspace();
   const customerId = await getOrCreateStripeCustomer(workspaceId, email);
 
-  const session = await stripe.billingPortal.sessions.create({
+  const session = await stripe.checkout.sessions.create({
+    ui_mode: "elements",
+    mode: "setup",
+    currency: "usd",
     customer: customerId,
     return_url: `${APP_URL}/dashboard`,
+    metadata: { workspaceId, type: "card_update" },
   });
-  return { url: session.url };
+
+  if (!session.client_secret)
+    throw new Error("Stripe did not return a Checkout Session client secret");
+  return { clientSecret: session.client_secret };
+}
+
+export type BillingCard = {
+  brand: string;
+  last4: string;
+  expMonth: number;
+  expYear: number;
+} | null;
+
+export type BillingInvoice = {
+  id: string;
+  number: string | null;
+  created: Date;
+  amountUsd: number;
+  status: string;
+  pdfUrl: string | null;
+};
+
+/**
+ * The two things the Billing Portal was being redirected to for: the default card
+ * and recent invoices. Read straight from Stripe rather than mirrored into Postgres
+ * — invoices are display-only here, and a stale local copy would be worse than a
+ * live read on a panel that's opened rarely.
+ */
+export async function getBillingDetails(): Promise<{
+  card: BillingCard;
+  invoices: BillingInvoice[];
+}> {
+  const { workspaceId } = await getActiveWorkspace();
+  const sub = await db.query.subscriptions.findFirst({
+    where: eq(subscriptions.workspaceId, workspaceId),
+  });
+  // No customer yet = never checked out. Nothing to show, and creating one just to
+  // render an empty panel would litter Stripe with customers for every free workspace.
+  if (!sub?.stripeCustomerId) return { card: null, invoices: [] };
+
+  const [customer, invoices] = await Promise.all([
+    stripe.customers.retrieve(sub.stripeCustomerId, {
+      expand: ["invoice_settings.default_payment_method"],
+    }),
+    stripe.invoices.list({ customer: sub.stripeCustomerId, limit: 12 }),
+  ]);
+
+  // Checkout's subscription flow attaches the card to the Subscription, and only
+  // createCardSetupCheckout's webhook promotes it onto the customer — so reading
+  // invoice_settings alone reports "None" for anyone who paid through Checkout and
+  // never touched the card since. Fall back to whatever card is actually attached.
+  let defaultPm =
+    !customer.deleted && typeof customer.invoice_settings?.default_payment_method === "object"
+      ? customer.invoice_settings.default_payment_method
+      : null;
+
+  if (!defaultPm) {
+    const attached = await stripe.paymentMethods.list({
+      customer: sub.stripeCustomerId,
+      type: "card",
+      limit: 1,
+    });
+    defaultPm = attached.data[0] ?? null;
+  }
+
+  return {
+    card: defaultPm?.card
+      ? {
+          brand: defaultPm.card.brand,
+          last4: defaultPm.card.last4,
+          expMonth: defaultPm.card.exp_month,
+          expYear: defaultPm.card.exp_year,
+        }
+      : null,
+    invoices: invoices.data.map((inv) => ({
+      id: inv.id ?? "",
+      number: inv.number,
+      created: new Date(inv.created * 1000),
+      amountUsd: inv.amount_paid / 100,
+      status: inv.status ?? "unknown",
+      pdfUrl: inv.invoice_pdf ?? null,
+    })),
+  };
+}
+
+/**
+ * Cancel at period end, or undo that. Never an immediate cancel: the workspace has
+ * paid through the period, and `assertWorkspaceActive` would lock it out the moment
+ * the webhook lands. Stripe emits `customer.subscription.updated` either way, so the
+ * local row follows from the webhook rather than being written twice.
+ */
+export async function setSubscriptionCancel(cancel: boolean): Promise<void> {
+  const { workspaceId } = await getActiveWorkspace();
+  const sub = await db.query.subscriptions.findFirst({
+    where: eq(subscriptions.workspaceId, workspaceId),
+  });
+  if (!sub?.stripeSubscriptionId) throw new Error("No active subscription to change");
+
+  await stripe.subscriptions.update(sub.stripeSubscriptionId, { cancel_at_period_end: cancel });
 }
 
 /**
