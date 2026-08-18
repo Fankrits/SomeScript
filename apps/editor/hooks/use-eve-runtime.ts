@@ -29,7 +29,13 @@ import type { MessageStreamEvent, ClientSessionState } from "eve/client";
 import { collapseAppendedRuns, capOversizedPayloads } from "@/lib/thread-history";
 import { saveThreadSnapshot, type ThreadSnapshot } from "@/lib/eve-threads-client";
 import { notifyCreditsUpdated } from "@/hooks/use-credit-status";
-import { clipText, logEveAction, logEveError, logEveEvent, logEveWarn } from "@/lib/eve-diagnostics";
+import {
+  clipText,
+  logEveAction,
+  logEveError,
+  logEveEvent,
+  logEveWarn,
+} from "@/lib/eve-diagnostics";
 import * as Sentry from "@sentry/nextjs";
 
 // Context markers prefixed to the outgoing user message in onNew. The model (and

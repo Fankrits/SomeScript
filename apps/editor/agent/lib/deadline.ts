@@ -30,7 +30,10 @@ export const TOOL_FETCH_TIMEOUT_MS = 30_000;
  * Both primitives are native and need no dependency; the Vercel runtime is
  * Node 24 (see the deploy's `[nitro:vercel] Using nodejs24.x runtime` line).
  */
-export function withDeadline(signal?: AbortSignal, ms: number = TOOL_FETCH_TIMEOUT_MS): AbortSignal {
+export function withDeadline(
+  signal?: AbortSignal,
+  ms: number = TOOL_FETCH_TIMEOUT_MS,
+): AbortSignal {
   const deadline = AbortSignal.timeout(ms);
   return signal ? AbortSignal.any([signal, deadline]) : deadline;
 }
