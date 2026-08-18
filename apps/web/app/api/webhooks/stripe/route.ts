@@ -41,7 +41,13 @@ async function upsertSubscriptionFromStripe(
       status: mapStripeStatus(sub.status),
       stripeSubscriptionId: sub.id,
       currentPeriodEnd: item ? new Date(item.current_period_end * 1000) : null,
-      cancelAtPeriodEnd: sub.cancel_at ? new Date(sub.cancel_at * 1000) : null,
+      // Gated on cancel_at_period_end, the flag setSubscriptionCancel actually writes.
+      // `cancel_at` alone is not that signal — Stripe populates it for scheduled ends
+      // the customer never asked for, which reads back as "already cancelling" and
+      // hides the Cancel action behind a Resume that undoes nothing.
+      cancelAtPeriodEnd: sub.cancel_at_period_end
+        ? new Date((sub.cancel_at ?? item?.current_period_end ?? 0) * 1000)
+        : null,
       updatedAt: new Date(),
     })
     .where(eq(subscriptions.workspaceId, workspaceId));

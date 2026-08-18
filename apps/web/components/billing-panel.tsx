@@ -172,6 +172,34 @@ export function BillingPanel() {
         </span>
       </div>
 
+      {plan !== "free" && status !== "canceled" && (
+        <div className="flex items-center justify-between border-b border-gray-100 py-4">
+          <span className="text-sm text-gray-700">
+            {cancelAtPeriodEnd ? "Subscription ends at period end" : "Cancel subscription"}
+          </span>
+          {cancelAtPeriodEnd ? (
+            <LinkButton onClick={() => handleCancel(false)} disabled={busy}>
+              Resume
+            </LinkButton>
+          ) : confirmingCancel ? (
+            <span className="flex items-center gap-3">
+              <button
+                onClick={() => handleCancel(true)}
+                disabled={busy}
+                className="text-sm font-medium text-red-600 hover:underline disabled:opacity-50"
+              >
+                {busy ? "Cancelling…" : "Confirm"}
+              </button>
+              <LinkButton onClick={() => setConfirmingCancel(false)}>Keep</LinkButton>
+            </span>
+          ) : (
+            <LinkButton onClick={() => setConfirmingCancel(true)} disabled={busy}>
+              Cancel plan
+            </LinkButton>
+          )}
+        </div>
+      )}
+
       <div className="border-b border-gray-100 py-4 last:border-b-0">
         <span className="text-sm text-gray-700">Invoices</span>
         {invoices.length === 0 ? (
@@ -206,34 +234,6 @@ export function BillingPanel() {
           </ul>
         )}
       </div>
-
-      {plan !== "free" && status !== "canceled" && (
-        <div className="flex items-center justify-between py-4">
-          <span className="text-sm text-gray-700">
-            {cancelAtPeriodEnd ? "Subscription ends at period end" : "Cancel subscription"}
-          </span>
-          {cancelAtPeriodEnd ? (
-            <LinkButton onClick={() => handleCancel(false)} disabled={busy}>
-              Resume
-            </LinkButton>
-          ) : confirmingCancel ? (
-            <span className="flex items-center gap-3">
-              <button
-                onClick={() => handleCancel(true)}
-                disabled={busy}
-                className="text-sm font-medium text-red-600 hover:underline disabled:opacity-50"
-              >
-                {busy ? "Cancelling…" : "Confirm"}
-              </button>
-              <LinkButton onClick={() => setConfirmingCancel(false)}>Keep</LinkButton>
-            </span>
-          ) : (
-            <LinkButton onClick={() => setConfirmingCancel(true)} disabled={busy}>
-              Cancel plan
-            </LinkButton>
-          )}
-        </div>
-      )}
 
       {error && <p className="pt-2 text-sm text-red-600">{error}</p>}
     </div>
