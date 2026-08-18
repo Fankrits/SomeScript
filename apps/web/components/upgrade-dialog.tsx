@@ -58,7 +58,14 @@ type PaidPlanId = "pro" | "team";
 type CreditPackId = (typeof CREDIT_PACKS)[number]["id"];
 type CheckoutState = { clientSecret: string; label: string };
 
-export function UpgradeDialog({ autoOpenLocked = false }: { autoOpenLocked?: boolean }) {
+export function UpgradeDialog({
+  autoOpenLocked = false,
+  currentPlan = "free",
+}: {
+  autoOpenLocked?: boolean;
+  /** The workspace's active plan, so the sheet marks the right card instead of always Free. */
+  currentPlan?: string;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(autoOpenLocked);
   const [cadence, setCadence] = useState<BillingCadence>("monthly");
@@ -182,14 +189,26 @@ export function UpgradeDialog({ autoOpenLocked = false }: { autoOpenLocked?: boo
                 {PLANS.map((p) => (
                   <div
                     key={p.id}
-                    className={`rounded-xl border p-4 ${p.highlight ? "border-primary" : "border-border"}`}
+                    className={`rounded-xl border p-4 ${
+                      p.id === currentPlan
+                        ? "border-primary bg-primary/[0.03]"
+                        : p.highlight
+                          ? "border-primary"
+                          : "border-border"
+                    }`}
                   >
                     <div className="flex items-center justify-between gap-3">
                       <span className="font-semibold text-foreground">{p.name}</span>
-                      {p.highlight && (
+                      {p.id === currentPlan ? (
                         <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary">
-                          Most popular
+                          Current
                         </span>
+                      ) : (
+                        p.highlight && (
+                          <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary">
+                            Most popular
+                          </span>
+                        )
                       )}
                     </div>
                     <div className="mt-1 flex items-baseline gap-1">
@@ -213,9 +232,13 @@ export function UpgradeDialog({ autoOpenLocked = false }: { autoOpenLocked?: boo
                       ))}
                     </ul>
                     <div className="mt-4">
-                      {p.id === "free" ? (
+                      {p.id === currentPlan ? (
                         <div className="flex h-9 items-center justify-center rounded-lg border border-dashed border-border text-xs font-medium text-muted-foreground">
-                          Your current foundation
+                          Current plan
+                        </div>
+                      ) : p.id === "free" ? (
+                        <div className="flex h-9 items-center justify-center rounded-lg border border-dashed border-border text-xs font-medium text-muted-foreground">
+                          Downgrade from Billing
                         </div>
                       ) : (
                         <Button

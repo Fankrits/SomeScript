@@ -131,7 +131,7 @@ export function DashboardSidebar({
           <span className="font-semibold text-foreground">{credits.toLocaleString()}</span>
         </div>
 
-        <UpgradeDialog autoOpenLocked={workspaceLocked} />
+        <UpgradeDialog autoOpenLocked={workspaceLocked} currentPlan={plan} />
 
         {/* User Info / Profile Avatar */}
         <div className="pt-2 flex items-center gap-3">
