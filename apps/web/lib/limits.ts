@@ -1,20 +1,24 @@
 import { clerkClient } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
-import { subscriptions, workspaces, projects, creditBalances } from "@/db/schema";
+import {
+  subscriptions,
+  workspaces,
+  projects,
+  creditBalances,
+  creditTransactions,
+} from "@/db/schema";
 import { eq, and, ne, count } from "drizzle-orm";
-import { PLAN_LIMITS, maxMembersFor, type Plan } from "@/lib/plans";
+import { PLAN_LIMITS, PERSONAL_WORKSPACE_CREDITS, maxMembersFor, type Plan } from "@/lib/plans";
+import { nextPeriodResetAt } from "@/lib/credits";
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const PERIOD_MS = 30 * MS_PER_DAY;
 
-/** Syncs this workspace's Clerk org member cap to match its current plan/seats. */
-export async function syncWorkspaceMemberLimit(
-  workspaceId: string,
-  plan: Plan,
-  seats: number | null,
-): Promise<void> {
+/** Syncs this workspace's Clerk org member cap to match its current plan. */
+export async function syncWorkspaceMemberLimit(workspaceId: string, plan: Plan): Promise<void> {
   const client = await clerkClient();
   await client.organizations.updateOrganization(workspaceId, {
-    maxAllowedMemberships: maxMembersFor(plan, seats),
+    maxAllowedMemberships: maxMembersFor(plan),
   });
 }
 
@@ -40,6 +44,75 @@ async function isFreeEligibleWorkspace(workspaceId: string, ownerId: string): Pr
   return !otherOrg;
 }
 
+/** `db`, or a transaction handle from `db.transaction()` — both satisfy the calls below. */
+type Executor = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * The allowance this workspace is due each period. Free personal workspaces get the
+ * reduced solo grant; everything else gets its plan's figure. The ownerId lookup is
+ * why this is only called once a reset is actually due, not on every read.
+ */
+async function monthlyGrantFor(
+  workspaceId: string,
+  plan: Plan,
+  executor: Executor,
+): Promise<number> {
+  if (plan !== "free") return PLAN_LIMITS[plan].monthlyAiCredits;
+
+  const workspace = await executor.query.workspaces.findFirst({
+    where: eq(workspaces.id, workspaceId),
+  });
+  return workspace?.ownerId === workspaceId
+    ? PERSONAL_WORKSPACE_CREDITS
+    : PLAN_LIMITS.free.monthlyAiCredits;
+}
+
+/**
+ * Refills the monthly AI allowance if the period has elapsed.
+ *
+ * Lazy-on-read rather than a cron: it's O(1) per *active* workspace instead of a
+ * nightly sweep of every workspace, needs no cron entry or authenticated cron
+ * endpoint, and it covers free workspaces — which have no Stripe subscription and
+ * so no invoice event that could ever have triggered a refill. Callers run it
+ * before reading or spending a balance.
+ *
+ * `purchasedBalance` is deliberately untouched: top-ups are paid for and carry
+ * over, which is the distinction the two-pool schema exists to express.
+ */
+export async function applyMonthlyReset(
+  workspaceId: string,
+  plan: Plan,
+  executor: Executor = db,
+): Promise<void> {
+  const balance = await executor.query.creditBalances.findFirst({
+    where: eq(creditBalances.workspaceId, workspaceId),
+  });
+  // No row yet: nothing has been spent, so the plan default already applies (see
+  // defaultIncludedBalance in the credits route). Seeding one here would race the
+  // upsert paths for no benefit.
+  if (!balance) return;
+
+  const now = new Date();
+  if (now < balance.periodResetAt) return;
+
+  const grant = await monthlyGrantFor(workspaceId, plan, executor);
+  await executor
+    .update(creditBalances)
+    .set({
+      includedBalance: grant,
+      periodResetAt: nextPeriodResetAt(balance.periodResetAt, now),
+      updatedAt: now,
+    })
+    .where(eq(creditBalances.workspaceId, workspaceId));
+
+  await executor.insert(creditTransactions).values({
+    workspaceId,
+    delta: grant - balance.includedBalance,
+    reason: "monthly_grant",
+    description: `Monthly ${plan} allowance: ${grant} credits`,
+  });
+}
+
 /**
  * Seeds a newly created workspace's subscription + credit rows. The owner's first
  * workspace (personal, or first organization) starts free and active. Every
@@ -54,18 +127,24 @@ async function isFreeEligibleWorkspace(workspaceId: string, ownerId: string): Pr
  */
 export async function seedWorkspaceDefaults(workspaceId: string, ownerId: string): Promise<void> {
   const isFree = await isFreeEligibleWorkspace(workspaceId, ownerId);
+  const isPersonal = workspaceId === ownerId;
 
   await db
     .insert(subscriptions)
     .values(isFree ? { workspaceId } : { workspaceId, plan: "pro", status: "past_due" })
     .onConflictDoNothing();
 
+  // A personal workspace has no membership mechanism at all, so it can't be the
+  // collaborative free tier — it gets a reduced solo grant, and the full free
+  // allowance belongs to the one free organization. See PERSONAL_WORKSPACE_CREDITS.
+  const grant = isPersonal ? PERSONAL_WORKSPACE_CREDITS : PLAN_LIMITS.free.monthlyAiCredits;
+
   await db
     .insert(creditBalances)
     .values({
       workspaceId,
-      includedBalance: isFree ? PLAN_LIMITS.free.monthlyAiCredits : 0,
-      periodResetAt: new Date(Date.now() + 30 * MS_PER_DAY),
+      includedBalance: isFree ? grant : 0,
+      periodResetAt: new Date(Date.now() + PERIOD_MS),
     })
     .onConflictDoNothing();
 
@@ -73,8 +152,8 @@ export async function seedWorkspaceDefaults(workspaceId: string, ownerId: string
   // all real use by assertWorkspaceActive and gets its real member cap set by the
   // Stripe webhook once checkout completes. Skip entirely for personal workspaces
   // (workspaceId === ownerId) — there's no Clerk organization to update there.
-  if (isFree && workspaceId !== ownerId) {
-    await syncWorkspaceMemberLimit(workspaceId, "free", null);
+  if (isFree && !isPersonal) {
+    await syncWorkspaceMemberLimit(workspaceId, "free");
   }
 }
 

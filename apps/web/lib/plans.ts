@@ -2,42 +2,67 @@ import type { subscriptionPlanEnum } from "@/db/schema";
 
 export type Plan = (typeof subscriptionPlanEnum.enumValues)[number];
 
-// monthlyAiCredits are placeholders — tune against real Eve/Claude API cost per
-// request once that's measured. Everything else here is a hard product decision.
+// Members and projects are packaging, not cost: a member is ~$0.02 of Clerk MRU
+// plus ~$0.05 of infra, and Clerk bills per *organization* ($1/MRO) regardless of
+// its size. AI tokens are the only real variable cost, and monthlyAiCredits meters
+// them exactly — see CREDIT_COST_USD. That asymmetry is why Team is a flat band
+// rather than per-seat: charging per head would bill twice for the same tokens.
 export const PLAN_LIMITS: Record<
   Plan,
-  { maxProjects: number; maxMembers: number; maxOwnedWorkspaces: number; monthlyAiCredits: number }
+  { maxProjects: number; maxMembers: number; monthlyAiCredits: number }
 > = {
-  free: { maxProjects: 10, maxMembers: 3, maxOwnedWorkspaces: 1, monthlyAiCredits: 200 },
-  pro: { maxProjects: Infinity, maxMembers: 3, maxOwnedWorkspaces: 1, monthlyAiCredits: 2000 },
-  team: {
-    maxProjects: Infinity,
-    maxMembers: Infinity,
-    maxOwnedWorkspaces: 1,
-    monthlyAiCredits: 5000,
-  }, // members capped by `seats` on the subscription row, not here
+  free: { maxProjects: 10, maxMembers: 3, monthlyAiCredits: 300 },
+  pro: { maxProjects: Infinity, maxMembers: 3, monthlyAiCredits: 2000 },
+  team: { maxProjects: Infinity, maxMembers: 15, monthlyAiCredits: 5000 },
 };
 
-// Below Pro's flat per-workspace price for 3 members, so Team only makes sense at 3+ seats.
-export const TEAM_MIN_SEATS = 3;
+/**
+ * The personal (non-org) workspace is auto-created for every user and is not a
+ * Clerk organization, so it has no membership mechanism at all — syncWorkspaceMemberLimit
+ * skips it. Granting it the full free allowance handed each user two free credit
+ * pools (personal + first org). It stays usable as a solo scratchpad on a reduced
+ * grant; the collaborative free tier is the organization.
+ */
+export const PERSONAL_WORKSPACE_CREDITS = 100;
 
 /** Clerk's `maxAllowedMemberships`/`createOrganizationsLimit`: 0 means unlimited. */
 function toClerkLimit(max: number): number {
   return max === Infinity ? 0 : max;
 }
 
-/** Team's member cap is whatever the workspace pays for in seats, not a fixed PLAN_LIMITS number. */
-export function maxMembersFor(plan: Plan, seats: number | null): number {
-  if (plan === "team") return seats ?? TEAM_MIN_SEATS;
+/** Every plan's member cap is a flat number now — Team is a band, not a seat count. */
+export function maxMembersFor(plan: Plan): number {
   return toClerkLimit(PLAN_LIMITS[plan].maxMembers);
 }
 
-// One-time top-up purchases, applied to credit_balances.purchasedBalance. Not a
-// subscription — Stripe one-time payment products once billing is wired up.
+export type BillingCadence = "monthly" | "annual";
+
+/**
+ * Annual is ~17% off and replaces the student discount outright: it needs no
+ * verification subsystem, and students are the most annual-friendly buyers there
+ * are — their need is bounded by a degree, not a month.
+ */
+export const PLAN_PRICING: Record<
+  "pro" | "team",
+  Record<BillingCadence, { priceUsd: number; perMonthUsd: number }>
+> = {
+  pro: {
+    monthly: { priceUsd: 12, perMonthUsd: 12 },
+    annual: { priceUsd: 120, perMonthUsd: 10 },
+  },
+  team: {
+    monthly: { priceUsd: 29, perMonthUsd: 29 },
+    annual: { priceUsd: 290, perMonthUsd: 24 },
+  },
+};
+
+// One-time top-up purchases, applied to credit_balances.purchasedBalance. No $5
+// pack: Stripe's 2.9% + $0.30 is 9% of a $5 charge, so the smallest rung was the
+// worst-margin one. The ladder discounts from $0.0075 to $0.005 per credit.
 export const CREDIT_PACKS = [
-  { id: "pack_500", credits: 500, priceUsd: 5 },
   { id: "pack_2000", credits: 2000, priceUsd: 15 },
   { id: "pack_5000", credits: 5000, priceUsd: 30 },
+  { id: "pack_12000", credits: 12000, priceUsd: 60 },
 ] as const;
 
 // Mirrors apps/editor/lib/eve-modes.ts's EveMode. Not imported directly — the two
@@ -45,12 +70,24 @@ export const CREDIT_PACKS = [
 // 3-string union; keep both in sync by hand if a mode is ever added or renamed.
 export type EveMode = "lite" | "pro" | "expert";
 
-// Credits per 1,000 output tokens, ~70% margin over real per-mode cost ($3/$8/$16 per 1M).
-export const EVE_MODE_CREDIT_COST: Record<EveMode, number> = {
-  lite: 1,
-  pro: 3,
-  expert: 5,
-};
+/**
+ * One credit is $0.002 of real model spend. Credits sell for $0.005–$0.0075 on the
+ * pack ladder, so this fixes gross margin at ~66% in the worst case (a plan's whole
+ * allowance drained) and 85–90% blended.
+ *
+ * This replaced a per-mode credits-per-1k-output-tokens table whose rates encoded
+ * model prices 7–20x out of date and ignored input tokens entirely — where most of
+ * the spend actually is. Billing from the cost the gateway reports means there is
+ * no table to go stale the next time a model is swapped.
+ */
+export const CREDIT_COST_USD = 0.002;
+
+/**
+ * Used only when a model call reports no cost, which should not happen — the AI
+ * Gateway returns it on every generation. Set at the most expensive mode's output
+ * rate so the fallback can never undercharge; computeCreditCost logs when it fires.
+ */
+export const FALLBACK_CREDITS_PER_1K_OUTPUT = 8;
 
 export const MODE_ACCESS_BY_PLAN: Record<Plan, readonly EveMode[]> = {
   free: ["lite"],

@@ -11,7 +11,9 @@
         "DATABASE_URL",
         "EDITOR_URL",
         "STRIPE_PRICE_PRO",
+        "STRIPE_PRICE_PRO_ANNUAL",
         "STRIPE_PRICE_TEAM",
+        "STRIPE_PRICE_TEAM_ANNUAL",
         "STRIPE_SECRET_KEY",
         "STRIPE_WEBHOOK_SECRET",
         "VERCEL_ENV"

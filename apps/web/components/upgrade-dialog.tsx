@@ -12,7 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { CheckoutForm } from "@/components/checkout-form";
 import { createSubscriptionCheckout, createTopUpCheckout } from "@/app/dashboard/billing-actions";
-import { CREDIT_PACKS, PLAN_LIMITS, TEAM_MIN_SEATS } from "@/lib/plans";
+import { CREDIT_PACKS, PLAN_LIMITS, PLAN_PRICING } from "@/lib/plans";
 import { ArrowLeft, ArrowUpCircle, Check, Coins, Loader2 } from "lucide-react";
 
 const PLANS = [
@@ -31,7 +31,7 @@ const PLANS = [
   {
     id: "pro" as const,
     name: "Pro",
-    price: "$12",
+    price: `$${PLAN_PRICING.pro.monthly.priceUsd}`,
     cadence: "/mo",
     highlight: true,
     bullets: [
@@ -44,10 +44,10 @@ const PLANS = [
   {
     id: "team" as const,
     name: "Team",
-    price: "$18",
-    cadence: `/seat/mo, ${TEAM_MIN_SEATS}-seat min`,
+    price: `$${PLAN_PRICING.team.monthly.priceUsd}`,
+    cadence: "/mo flat",
     bullets: [
-      "Per-seat members",
+      `Up to ${PLAN_LIMITS.team.maxMembers} members, flat price`,
       "Unlimited projects",
       `${PLAN_LIMITS.team.monthlyAiCredits.toLocaleString()} AI credits/mo`,
       "All AI modes",

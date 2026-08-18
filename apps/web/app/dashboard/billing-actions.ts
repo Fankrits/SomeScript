@@ -5,13 +5,19 @@ import { db } from "@/lib/db";
 import { subscriptions, creditBalances } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { stripe } from "@/lib/stripe";
-import { CREDIT_PACKS, TEAM_MIN_SEATS, PLAN_LIMITS, type Plan } from "@/lib/plans";
+import { CREDIT_PACKS, PLAN_LIMITS, type BillingCadence, type Plan } from "@/lib/plans";
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 
-const PRICE_IDS: Record<"pro" | "team", string> = {
-  pro: process.env.STRIPE_PRICE_PRO ?? "",
-  team: process.env.STRIPE_PRICE_TEAM ?? "",
+const PRICE_IDS: Record<"pro" | "team", Record<BillingCadence, string>> = {
+  pro: {
+    monthly: process.env.STRIPE_PRICE_PRO ?? "",
+    annual: process.env.STRIPE_PRICE_PRO_ANNUAL ?? "",
+  },
+  team: {
+    monthly: process.env.STRIPE_PRICE_TEAM ?? "",
+    annual: process.env.STRIPE_PRICE_TEAM_ANNUAL ?? "",
+  },
 };
 
 async function getActiveWorkspace(): Promise<{ workspaceId: string; email: string }> {
@@ -54,9 +60,13 @@ async function getOrCreateStripeCustomer(workspaceId: string, email: string): Pr
  */
 export async function createSubscriptionCheckout(
   plan: "pro" | "team",
+  cadence: BillingCadence = "monthly",
 ): Promise<{ clientSecret: string }> {
-  const priceId = PRICE_IDS[plan];
-  if (!priceId) throw new Error(`Missing STRIPE_PRICE_${plan.toUpperCase()} env var`);
+  const priceId = PRICE_IDS[plan][cadence];
+  if (!priceId) {
+    const suffix = cadence === "annual" ? "_ANNUAL" : "";
+    throw new Error(`Missing STRIPE_PRICE_${plan.toUpperCase()}${suffix} env var`);
+  }
 
   const { workspaceId, email } = await getActiveWorkspace();
   const customerId = await getOrCreateStripeCustomer(workspaceId, email);
@@ -65,7 +75,9 @@ export async function createSubscriptionCheckout(
     ui_mode: "elements",
     mode: "subscription",
     customer: customerId,
-    line_items: [{ price: priceId, quantity: plan === "team" ? TEAM_MIN_SEATS : 1 }],
+    // Always 1: Team is a flat band up to PLAN_LIMITS.team.maxMembers, not a seat
+    // count, so nothing here multiplies by headcount.
+    line_items: [{ price: priceId, quantity: 1 }],
     return_url: `${APP_URL}/dashboard?checkout=success`,
     metadata: { workspaceId, plan },
     subscription_data: { metadata: { workspaceId, plan } },
@@ -135,7 +147,6 @@ export async function createPortalSession(): Promise<{ url: string }> {
 export async function getBillingSummary(): Promise<{
   plan: Plan;
   status: "active" | "trialing" | "past_due" | "canceled";
-  seats: number | null;
   currentPeriodEnd: Date | null;
   cancelAtPeriodEnd: Date | null;
   credits: number;
@@ -154,7 +165,6 @@ export async function getBillingSummary(): Promise<{
   return {
     plan,
     status: sub?.status ?? "active",
-    seats: sub?.seats ?? null,
     currentPeriodEnd: sub?.currentPeriodEnd ?? null,
     cancelAtPeriodEnd: sub?.cancelAtPeriodEnd ?? null,
     credits: included + purchased,

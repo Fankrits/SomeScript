@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { getBillingSummary, createPortalSession } from "@/app/dashboard/billing-actions";
+import { PLAN_LIMITS } from "@/lib/plans";
 import { Loader2 } from "lucide-react";
 
 const PLAN_LABEL: Record<string, string> = { free: "Free", pro: "Pro", team: "Team" };
@@ -52,16 +53,19 @@ export function BillingPanel() {
   if (error && !summary) return <p className="p-4 text-sm text-red-600">{error}</p>;
   if (!summary) return <Loader2 className="m-4 h-5 w-5 animate-spin text-gray-400" />;
 
-  const { plan, status, seats, currentPeriodEnd, cancelAtPeriodEnd, credits, purchasedCredits } =
-    summary;
+  const { plan, status, currentPeriodEnd, cancelAtPeriodEnd, credits, purchasedCredits } = summary;
 
   return (
     <div className="flex flex-col">
       <Row label="Plan">{PLAN_LABEL[plan] ?? plan}</Row>
+      <Row label="Members">
+        {PLAN_LIMITS[plan].maxMembers === Infinity
+          ? "Unlimited"
+          : `Up to ${PLAN_LIMITS[plan].maxMembers}`}
+      </Row>
       {plan !== "free" && (
         <Row label="Status">
           {STATUS_LABEL[status] ?? status}
-          {seats ? ` · ${seats} seats` : ""}
         </Row>
       )}
       {currentPeriodEnd && (

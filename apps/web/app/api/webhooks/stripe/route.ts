@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { subscriptions, creditBalances, creditTransactions } from "@/db/schema";
 import { eq, sql } from "drizzle-orm";
 import { syncWorkspaceMemberLimit } from "@/lib/limits";
-import { PLAN_LIMITS } from "@/lib/plans";
+import { PLAN_LIMITS, type Plan } from "@/lib/plans";
 
 // Stripe's full status enum has a few values our own `subscription_status` doesn't
 // need to distinguish — everything that isn't "paying fine" collapses to past_due
@@ -18,7 +18,10 @@ function mapStripeStatus(
   return "past_due";
 }
 
-async function upsertSubscriptionFromStripe(sub: Stripe.Subscription): Promise<void> {
+async function upsertSubscriptionFromStripe(
+  sub: Stripe.Subscription,
+  eventId: string,
+): Promise<void> {
   const workspaceId = sub.metadata.workspaceId;
   const plan = sub.metadata.plan;
   if (!workspaceId || (plan !== "pro" && plan !== "team")) {
@@ -27,14 +30,15 @@ async function upsertSubscriptionFromStripe(sub: Stripe.Subscription): Promise<v
   }
 
   const item = sub.items.data[0];
-  const seats = plan === "team" ? (item?.quantity ?? null) : null;
+  const previous = await db.query.subscriptions.findFirst({
+    where: eq(subscriptions.workspaceId, workspaceId),
+  });
 
   await db
     .update(subscriptions)
     .set({
       plan,
       status: mapStripeStatus(sub.status),
-      seats,
       stripeSubscriptionId: sub.id,
       currentPeriodEnd: item ? new Date(item.current_period_end * 1000) : null,
       cancelAtPeriodEnd: sub.cancel_at ? new Date(sub.cancel_at * 1000) : null,
@@ -42,10 +46,57 @@ async function upsertSubscriptionFromStripe(sub: Stripe.Subscription): Promise<v
     })
     .where(eq(subscriptions.workspaceId, workspaceId));
 
-  await syncWorkspaceMemberLimit(workspaceId, plan, seats);
+  // Only on an actual plan change: `customer.subscription.updated` also fires for
+  // card updates and renewals, and re-granting on those would hand out a fresh
+  // allowance every time the customer touched their payment method.
+  if (previous?.plan !== plan) {
+    await grantPlanAllowance(workspaceId, plan, eventId);
+  }
+
+  await syncWorkspaceMemberLimit(workspaceId, plan);
 }
 
-async function downgradeToFree(sub: Stripe.Subscription): Promise<void> {
+/**
+ * Resets the included allowance to the new plan's figure and restarts the period.
+ * Idempotent against webhook redelivery via the same `stripeEventId` unique index
+ * creditTopUp relies on — Stripe retries, and a redelivered upgrade must not grant twice.
+ */
+async function grantPlanAllowance(workspaceId: string, plan: Plan, eventId: string): Promise<void> {
+  const grant = PLAN_LIMITS[plan].monthlyAiCredits;
+
+  await db.transaction(async (tx) => {
+    const inserted = await tx
+      .insert(creditTransactions)
+      .values({
+        workspaceId,
+        delta: grant,
+        reason: "monthly_grant",
+        description: `Plan change to ${plan}: ${grant} credits`,
+        stripeEventId: eventId,
+      })
+      .onConflictDoNothing({ target: creditTransactions.stripeEventId })
+      .returning({ id: creditTransactions.id });
+    if (inserted.length === 0) return;
+
+    await tx
+      .insert(creditBalances)
+      .values({
+        workspaceId,
+        includedBalance: grant,
+        periodResetAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      })
+      .onConflictDoUpdate({
+        target: creditBalances.workspaceId,
+        set: {
+          includedBalance: grant,
+          periodResetAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+          updatedAt: new Date(),
+        },
+      });
+  });
+}
+
+async function downgradeToFree(sub: Stripe.Subscription, eventId: string): Promise<void> {
   const workspaceId = sub.metadata.workspaceId;
   if (!workspaceId) {
     console.error("[stripe webhook] canceled subscription missing workspaceId metadata:", sub.id);
@@ -57,13 +108,14 @@ async function downgradeToFree(sub: Stripe.Subscription): Promise<void> {
     .set({
       plan: "free",
       status: "canceled",
-      seats: null,
       cancelAtPeriodEnd: null,
       updatedAt: new Date(),
     })
     .where(eq(subscriptions.workspaceId, workspaceId));
 
-  await syncWorkspaceMemberLimit(workspaceId, "free", null);
+  // Down to the free allowance, not left holding the paid one.
+  await grantPlanAllowance(workspaceId, "free", eventId);
+  await syncWorkspaceMemberLimit(workspaceId, "free");
 }
 
 async function creditTopUp(session: Stripe.Checkout.Session, eventId: string): Promise<void> {
@@ -159,10 +211,10 @@ export async function POST(req: Request): Promise<Response> {
       }
       case "customer.subscription.created":
       case "customer.subscription.updated":
-        await upsertSubscriptionFromStripe(event.data.object);
+        await upsertSubscriptionFromStripe(event.data.object, event.id);
         break;
       case "customer.subscription.deleted":
-        await downgradeToFree(event.data.object);
+        await downgradeToFree(event.data.object, event.id);
         break;
     }
     return new Response("Webhook processed successfully", { status: 200 });

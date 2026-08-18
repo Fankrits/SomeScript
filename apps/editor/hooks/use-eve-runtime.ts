@@ -157,25 +157,34 @@ class SimplePdfAttachmentAdapter implements AttachmentAdapter {
  * all (eve has no server-side post-turn hook — see agent/agent.ts), so this is
  * the authoritative deduction, not the pre-flight check in onNew.
  *
+ * `costUsd` is what the AI Gateway actually charged for the call, and it is what
+ * the server prices the turn from — input, cached and output tokens all included,
+ * at the model's real rate. `outputTokens` rides along only as the fallback the
+ * server bills on if cost is ever missing.
+ *
  * ponytail: client-reported, so a dropped tab or network between a step
- * completing and this POST leaves that step unbilled. Bounded to one step, not
- * systematically exploitable. Upgrade path if it ever matters: server-side OTel
- * span capture via eve's defineInstrumentation setup() hook (registerOTel).
+ * completing and this POST leaves that step unbilled, and a modified client can
+ * under-report. Bounded to one step, not systematically exploitable. Upgrade path:
+ * an `agent/hooks/billing.ts` subscribing to `step.completed` via defineHook —
+ * hooks fire server-side after durable event acceptance, carry the same usage
+ * object, and reach Postgres through getPool() in lib/authz.ts. That deletes this
+ * function entirely; it does NOT need an OTel exporter (see agent/instrumentation.ts
+ * for why adding a `setup` there would be a mistake).
  */
-function recordStepUsage(mode: EveMode, outputTokens: number) {
+function recordStepUsage(mode: EveMode, usage: { costUsd?: number; outputTokens: number }) {
   fetch("/api/eve/credits", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ mode, outputTokens }),
+    body: JSON.stringify({ mode, ...usage }),
   })
     .then((res) => {
-      logEveAction("credits:recorded", { mode, outputTokens, ok: res.ok, status: res.status });
+      logEveAction("credits:recorded", { mode, ...usage, ok: res.ok, status: res.status });
       if (res.ok) notifyCreditsUpdated();
     })
     .catch((e) =>
       logEveError("credits:failed", {
         mode,
-        outputTokens,
+        ...usage,
         error: e instanceof Error ? e.message : String(e),
       }),
     );
@@ -410,7 +419,10 @@ export function useEveRuntime(
           //
           // The retry branch is deliberately not billed: only one of the two
           // attempts reaches the conversation.
-          recordStepUsage(sentModeRef.current, usage.outputTokens);
+          recordStepUsage(sentModeRef.current, {
+            costUsd: usage.costUsd,
+            outputTokens: usage.outputTokens,
+          });
         }
 
         if (usage?.inputTokens === undefined) return;

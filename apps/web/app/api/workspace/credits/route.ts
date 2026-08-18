@@ -2,7 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
 import { creditBalances, creditTransactions } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import { getWorkspaceSubscription } from "@/lib/limits";
+import { getWorkspaceSubscription, applyMonthlyReset } from "@/lib/limits";
 import { MODE_ACCESS_BY_PLAN, PLAN_LIMITS, type EveMode, type Plan } from "@/lib/plans";
 import { computeCreditCost, drainCredits } from "@/lib/credits";
 
@@ -26,6 +26,7 @@ export async function GET(): Promise<Response> {
   const workspaceId = orgId || userId;
 
   const { plan, status } = await getWorkspaceSubscription(workspaceId);
+  await applyMonthlyReset(workspaceId, plan);
   const balance = await db.query.creditBalances.findFirst({
     where: eq(creditBalances.workspaceId, workspaceId),
   });
@@ -53,14 +54,20 @@ export async function POST(req: Request): Promise<Response> {
   const body = await req.json().catch(() => null);
   const mode = body?.mode;
   const outputTokens = Number(body?.outputTokens);
+  const rawCostUsd = Number(body?.costUsd);
+  const costUsd = Number.isFinite(rawCostUsd) && rawCostUsd > 0 ? rawCostUsd : undefined;
   if (!isEveMode(mode) || !Number.isFinite(outputTokens) || outputTokens <= 0) {
     return Response.json({ error: "Invalid mode or outputTokens" }, { status: 400 });
   }
 
-  const cost = computeCreditCost(mode, outputTokens);
+  const cost = computeCreditCost({ costUsd, outputTokens });
   const { plan, status } = await getWorkspaceSubscription(workspaceId);
 
   await db.transaction(async (tx) => {
+    // Before spending: a turn that lands after the period rolled over should draw
+    // from the new allowance, not the exhausted one.
+    await applyMonthlyReset(workspaceId, plan, tx);
+
     const balance = await tx.query.creditBalances.findFirst({
       where: eq(creditBalances.workspaceId, workspaceId),
     });
@@ -95,7 +102,9 @@ export async function POST(req: Request): Promise<Response> {
       workspaceId,
       delta: -cost,
       reason: "usage",
-      description: `AI usage (${mode}): ${outputTokens} output tokens`,
+      description: `AI usage (${mode}): ${outputTokens} output tokens${
+        costUsd === undefined ? "" : `, $${costUsd.toFixed(6)}`
+      }`,
     });
   });
 
