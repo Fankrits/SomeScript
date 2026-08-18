@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { CheckoutForm } from "@/components/checkout-form";
 import { createSubscriptionCheckout, createTopUpCheckout } from "@/app/dashboard/billing-actions";
 import { CREDIT_PACKS, PLAN_LIMITS, PLAN_PRICING, type BillingCadence } from "@/lib/plans";
-import { ArrowLeft, ArrowUpCircle, Check, Coins, Loader2 } from "lucide-react";
+import { ArrowLeft, ArrowUpCircle, Check, Loader2 } from "lucide-react";
 
 /** Every figure comes from lib/plans.ts so the sheet can't drift from what's enforced. */
 const PLANS = [
@@ -292,10 +292,7 @@ export function UpgradeDialog({
               </div>
 
               <div ref={packsRef} className="mt-6 border-t border-border pt-5">
-                <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                  <Coins className="h-4 w-4" />
-                  Need more AI credits?
-                </div>
+                <div className="text-sm font-semibold text-foreground">Need more AI credits?</div>
                 <div className="mt-3 flex flex-col gap-2">
                   {CREDIT_PACKS.map((pack) => (
                     <Button
