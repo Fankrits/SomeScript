@@ -345,6 +345,13 @@ class S3StorageProvider implements StorageProvider {
         secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "",
       },
       forcePathStyle: process.env.S3_FORCE_PATH_STYLE === "true", // true for local RustFS/MinIO, false for Railway Object Storage / R2 / managed S3
+      // The SDK defaults both of these to 0, meaning "wait forever". Every Eve
+      // file tool goes through this client, and a tool that hangs freezes the
+      // whole turn behind a spinner the stall watchdog has deliberately stood
+      // down for (see agent/lib/deadline.ts). Failing at 30s is recoverable;
+      // never failing is not. maxAttempts stays at the SDK default of 3, so a
+      // blip still retries — this only bounds how long one attempt may hang.
+      requestHandler: { connectionTimeout: 5_000, requestTimeout: 30_000 },
     });
     this.bucket = process.env.AWS_BUCKET_NAME || "latex-editor";
   }

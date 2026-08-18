@@ -29,7 +29,7 @@ import type { MessageStreamEvent, ClientSessionState } from "eve/client";
 import { collapseAppendedRuns, capOversizedPayloads } from "@/lib/thread-history";
 import { saveThreadSnapshot, type ThreadSnapshot } from "@/lib/eve-threads-client";
 import { notifyCreditsUpdated } from "@/hooks/use-credit-status";
-import { clipText, logEveAction, logEveError, logEveEvent } from "@/lib/eve-diagnostics";
+import { clipText, logEveAction, logEveError, logEveEvent, logEveWarn } from "@/lib/eve-diagnostics";
 import * as Sentry from "@sentry/nextjs";
 
 // Context markers prefixed to the outgoing user message in onNew. The model (and
@@ -254,6 +254,13 @@ export function useEveRuntime(
   // watchdog firing) that lands after the turn already ended is a no-op instead
   // of cancelling whatever turn started since.
   const turnIdRef = useRef<string | null>(null);
+  // True once a terminal failure has arrived as a stream *event* for the current
+  // turn. eve's store calls onError for those too, right after onEvent (see
+  // `#S` in client/eve-agent-store.js), and the event branch has the upstream
+  // code and message that onError's generic Error does not — so this keeps the
+  // vaguer transport message from overwriting the specific one. Cleared by both
+  // send paths, since a fresh turn starts with no failure attributed to it.
+  const failureFromEventRef = useRef(false);
   // Session id whose cursor has already been pinned to cloud storage; see the
   // effect below. Keyed by id rather than a boolean so a reset that mints a new
   // session pins the new cursor too.
@@ -346,6 +353,43 @@ export function useEveRuntime(
     auth: { bearer: async () => (await getToken()) ?? "" },
     initialEvents: initialData?.events,
     initialSession: initialData?.sessionState,
+    // The only place a *transport* failure is visible. Everything else here
+    // reads the event stream, and a stream that dies never delivers one:
+    // eve's store catches the throw, sets status to "error" and calls this
+    //
+    //   isAbortError(t) ? (status = 'ready', …)
+    //                   : (this.#l = toError(t), status = 'error', …, onError(this.#l))
+    //   — client/eve-agent-store.js
+    //
+    // Left unwired (as it was), a 401 from proxy.ts or a dropped connection
+    // produced nothing at all: "error" is outside isBusy's
+    // ("submitted"|"streaming") set, so the composer re-enabled and the stall
+    // watchdog disarmed, while onEvent never fired to set a message. The
+    // spinner just stopped, no banner, nothing in Sentry. That is the "the AI
+    // is stuck" report, and the reason production had zero diagnostics for it.
+    //
+    // The live trigger seen in production: Clerk's session `touch` fails, the
+    // token stops refreshing, `bearer` below resolves to "", and proxy.ts
+    // answers /eve/* with a 401.
+    //
+    // Continue rather than a dead end: eve sessions are durable, so the turn
+    // may still be running server-side with output worth picking up — and a
+    // Continue that fails re-raises this banner instead of failing silently.
+    onError: (error) => {
+      // Consumed, not just read: the store gates the event-derived call on
+      // `this.#l === void 0`, so only the first failure of a session re-reports
+      // here and a later one would leave this latched on forever. The thrown
+      // transport path has no such gate, which is the case that matters.
+      if (failureFromEventRef.current) {
+        failureFromEventRef.current = false;
+        return;
+      }
+      turnIdRef.current = null;
+      compactingRef.current = false;
+      logEveError("stream:failed", { name: error.name, message: error.message });
+      setSendError(`The assistant lost its connection: ${error.message}`);
+      setCanContinue(true);
+    },
     // Turn-boundary bookkeeping for abandonTurn's cancel guard, the
     // context-meter reading, and diagnostics. All O(1) per event.
     onEvent: (event) => {
@@ -367,6 +411,8 @@ export function useEveRuntime(
       if (event.type === "turn.failed" || event.type === "session.failed") {
         turnIdRef.current = null;
         compactingRef.current = false;
+        // Claim this failure before eve's store re-reports it through onError.
+        failureFromEventRef.current = true;
         const { code, message } = event.data;
         setSendError(
           `The assistant stopped: ${message || "the model stream failed"}${code ? ` (${code})` : ""}`,
@@ -388,22 +434,41 @@ export function useEveRuntime(
         compactingRef.current = false;
       } else if (event.type === "step.completed") {
         // eve re-runs a step in place after a transient model-call failure
-        // (runModelCallWithRetries in harness/tool-loop.js), discarding the
-        // first attempt and emitting nothing to say so — no step.failed, and
-        // step.started is suppressed on retries. A repeated stepIndex within a
-        // turn is the only client-visible trace it leaves. Worth an error-level
-        // record: it costs a wasted model call, re-executes tools that already
+        // (runModelCallWithRetries in harness/tool-loop.js — 3 attempts, 500ms
+        // then 1s), discarding the first attempt and emitting nothing to say
+        // so: no step.failed, and step.started is suppressed on retries. A
+        // repeated stepIndex within a turn is the only client-visible trace it
+        // leaves. It costs a wasted model call, re-executes tools that already
         // ran, and is the mechanism behind duplicated replies (see
         // dropRetriedRuns in lib/eve-messages.ts).
+        //
+        // Warn, not error: eve absorbs this and the turn carries on, so it is
+        // evidence rather than an incident — at error level it opened a Sentry
+        // issue and printed a red console error for a failure that had already
+        // healed, which is exactly the noise that sends you chasing the wrong
+        // thing. A retry that does *not* recover surfaces as step.failed /
+        // turn.failed, which are still errors.
+        //
+        // Note which failures reach here: classifyModelCallError (0.38.3,
+        // harness/model-call-error.js) only routes `retry` through the retry
+        // loop — an isRetryable error, a transient-tagged one, or HTTP
+        // 408/409/429/5xx. An empty model response is `recoverable`, not
+        // `retry`, so it parks the session for the user instead of re-running.
         const stepKey = `${event.data.turnId}:${event.data.stepIndex}`;
         const isRetry = seenSteps.current.has(stepKey);
         seenSteps.current.add(stepKey);
 
         const usage = event.data.usage;
         if (isRetry) {
-          logEveError("step:retried", {
+          logEveWarn("step:retried", {
             turnId: event.data.turnId,
             stepIndex: event.data.stepIndex,
+            // The discriminator when reading one of these back: a genuine
+            // re-emission carries a new `sequence`, whereas the same sequence
+            // twice would mean a duplicate delivery got past the store's
+            // dedupe and this is a false positive, not a real retry.
+            sequence: event.data.sequence,
+            finishReason: event.data.finishReason,
             // Identical input tokens across attempts confirm the discarded
             // attempt's output never entered the conversation.
             inputTokens: usage?.inputTokens,
@@ -614,6 +679,9 @@ export function useEveRuntime(
   const onNew = useCallback(
     async (message: AppendMessage) => {
       setIsSending(true);
+      // A new turn owns its own failures; anything attributed to the last one
+      // must not silence onError for this one.
+      failureFromEventRef.current = false;
       try {
         // Pre-flight credit/mode-access check. This is a UX gate, not the security
         // boundary — a client that skips it still gets billed (and can go negative)
@@ -877,6 +945,9 @@ export function useEveRuntime(
   const continueTurn = useCallback(() => {
     setSendError(null);
     setCanContinue(false);
+    // Same reason as onNew: this is a new turn, so the previous turn's failure
+    // must not suppress onError if this one dies at the transport layer too.
+    failureFromEventRef.current = false;
     logEveAction("continue", { sessionId: agent.session?.sessionId });
     agent.send("continue").catch((e) => {
       logEveError("continue:failed", { error: e instanceof Error ? e.message : String(e) });

@@ -115,6 +115,20 @@ export function logEveAction(kind: string, data?: unknown) {
   record("info", kind, data);
 }
 
+/**
+ * Something recovered on its own, but is worth a trail.
+ *
+ * The level is the whole point: `record` only opens a Sentry issue for
+ * `error`, so a warn keeps the console line, the ring buffer entry and the
+ * breadcrumb — everything you need when reading back a session — without
+ * paging anyone for a failure eve already absorbed. `step:retried` is the
+ * motivating case: eve re-runs the step and the turn carries on, so it is
+ * evidence, not an incident.
+ */
+export function logEveWarn(kind: string, data?: unknown) {
+  record("warn", kind, data);
+}
+
 export function logEveError(kind: string, data?: unknown) {
   record("error", kind, data);
 }

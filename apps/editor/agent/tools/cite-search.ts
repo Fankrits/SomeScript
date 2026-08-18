@@ -1,5 +1,6 @@
 import { defineTool } from "eve/tools";
 import { z } from "zod";
+import { TOOL_FETCH_TIMEOUT_MS, isAbortLike, withDeadline } from "../lib/deadline";
 
 // Crossref is the canonical citation source; DOI content-negotiation returns
 // official BibTeX so we never hand-roll a BibTeX encoder (CLAUDE.md policy).
@@ -15,10 +16,17 @@ type CrossrefWork = {
 };
 
 // DOI -> BibTeX via content negotiation (follows the doi.org redirect). No key.
-async function fetchBibtex(doi: string): Promise<string | null> {
+//
+// Deadlined like every other outbound call here, and for a sharper reason: this
+// runs once per result inside a Promise.all, so without a ceiling a single
+// wedged DOI holds up the whole search — all-or-nothing is exactly the shape
+// that hangs a turn. The catch already degrades to null, which renders as
+// "(BibTeX unavailable for this DOI)", so a timeout costs one entry, not the run.
+async function fetchBibtex(doi: string, signal?: AbortSignal): Promise<string | null> {
   try {
     const res = await fetch(`https://doi.org/${doi}`, {
       headers: { Accept: "application/x-bibtex", "User-Agent": UA },
+      signal: withDeadline(signal),
     });
     if (!res.ok) return null;
     const text = (await res.text()).trim();
@@ -41,14 +49,17 @@ export default defineTool({
       .optional()
       .describe("How many results to return (default 3)"),
   }),
-  async execute({ query, rows = 3 }) {
+  async execute({ query, rows = 3 }, ctx) {
     try {
       const url = new URL("https://api.crossref.org/works");
       url.searchParams.set("query.bibliographic", query);
       url.searchParams.set("rows", String(Math.min(rows, 5)));
       url.searchParams.set("select", "title,author,published,DOI,container-title");
 
-      const res = await fetch(url, { headers: { "User-Agent": UA } });
+      const res = await fetch(url, {
+        headers: { "User-Agent": UA },
+        signal: withDeadline(ctx.abortSignal),
+      });
       if (!res.ok) return `Crossref search failed (HTTP ${res.status}).`;
 
       const items: CrossrefWork[] = (await res.json())?.message?.items ?? [];
@@ -65,7 +76,7 @@ export default defineTool({
               .filter(Boolean)
               .join(", ") ?? "";
           const venue = w["container-title"]?.[0] ?? "";
-          const bibtex = doi ? await fetchBibtex(doi) : null;
+          const bibtex = doi ? await fetchBibtex(doi, ctx.abortSignal) : null;
           const header = [`${title} (${year})`, authors && `— ${authors}`, venue && `— ${venue}`]
             .filter(Boolean)
             .join(" ");
@@ -77,6 +88,9 @@ export default defineTool({
 
       return `Found ${items.length} result(s) for "${query}":\n\n${entries.join("\n\n---\n\n")}`;
     } catch (e) {
+      if (isAbortLike(e)) {
+        return `Crossref search timed out after ${TOOL_FETCH_TIMEOUT_MS / 1000}s. Try a narrower query, or cite from a source already in the project's .bib.`;
+      }
       return `Error searching Crossref: ${e instanceof Error ? e.message : String(e)}`;
     }
   },

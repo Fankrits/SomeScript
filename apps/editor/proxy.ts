@@ -14,7 +14,13 @@ export default clerkMiddleware(async (auth, req) => {
     return;
   }
 
-  await auth.protect();
+  // `auth.protect()` with no signInUrl rewrites a signed-out page request to a
+  // bare 404 (x-clerk-auth-reason: protect-rewrite) — which is what
+  // https://editor.somescript.com/ served to logged-out visitors. Sign-in lives
+  // on the web app, so point there explicitly and carry the return path.
+  const signIn = new URL("/sign-in", process.env.NEXT_PUBLIC_WEB_URL ?? req.nextUrl.origin);
+  signIn.searchParams.set("redirect_url", req.url);
+  await auth.protect({ unauthenticatedUrl: signIn.toString() });
 
   const res = NextResponse.next();
   // Mirrors next.config.ts's CSP (both set this header — a browser enforces
@@ -40,8 +46,15 @@ export default clerkMiddleware(async (auth, req) => {
 
 export const config = {
   matcher: [
-    // Skip Next.js internals and all static files
-    "/((?!_next|[^?]*\\.(?:html|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest|wasm)).*)",
+    // Skip Next.js internals and all static files.
+    //
+    // `monitoring` is Sentry's tunnelRoute (next.config.ts). It has to be
+    // excluded here or the auth.protect() above rewrites the browser's error
+    // envelope POST to a 404 — verified in production — so client-side
+    // reporting dies exactly when the Clerk session does, which is the one
+    // moment the report matters. Sentry's own note in next.config.ts warns
+    // that the tunnel route must not be matched by middleware.
+    "/((?!_next|monitoring|[^?]*\\.(?:html|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest|wasm)).*)",
     // Always run for API routes
     "/(api|trpc)(.*)",
     // Always run for Clerk-specific frontend API routes
