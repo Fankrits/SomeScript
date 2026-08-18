@@ -7,7 +7,7 @@ import {
   creditBalances,
   creditTransactions,
 } from "@/db/schema";
-import { eq, and, ne, count } from "drizzle-orm";
+import { eq, and, ne, count, isNull } from "drizzle-orm";
 import { PLAN_LIMITS, PERSONAL_WORKSPACE_CREDITS, maxMembersFor, type Plan } from "@/lib/plans";
 import { nextPeriodResetAt } from "@/lib/credits";
 
@@ -179,7 +179,7 @@ export async function assertProjectLimit(workspaceId: string): Promise<void> {
   const [row] = await db
     .select({ n: count() })
     .from(projects)
-    .where(eq(projects.workspaceId, workspaceId));
+    .where(and(eq(projects.workspaceId, workspaceId), isNull(projects.deletedAt)));
   if ((row?.n ?? 0) >= max) {
     throw new Error(`Free plan is limited to ${max} projects per workspace. Upgrade to add more.`);
   }

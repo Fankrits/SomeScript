@@ -4,7 +4,7 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
 import { projects, workspaces, users } from "@/db/schema";
 import { revalidatePath } from "next/cache";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull, isNotNull } from "drizzle-orm";
 import { assertProjectLimit, assertWorkspaceActive, seedWorkspaceDefaults } from "@/lib/limits";
 import { formString, formFile } from "@/lib/utils";
 
@@ -70,6 +70,7 @@ export async function ensureWorkspaceExists(orgId: string | null, userId: string
 }
 
 import { editorFetch } from "@/lib/editor-api";
+import { hardDeleteProject } from "@/lib/trash";
 
 // Next.js redacts thrown Error messages from Server Functions in production
 // builds (see node_modules/next/dist/docs/01-app/01-getting-started/10-error-handling.md
@@ -214,6 +215,7 @@ export async function renameProject(
   revalidatePath("/dashboard");
 }
 
+/** Moves a project to the trash. Files are kept until it's purged. */
 export async function deleteProject(projectId: string): Promise<{ error: string } | void> {
   const { userId, orgId } = await auth();
 
@@ -223,30 +225,79 @@ export async function deleteProject(projectId: string): Promise<{ error: string 
 
   const workspaceId = orgId || userId;
 
+  const trashed = await db
+    .update(projects)
+    .set({ deletedAt: new Date() })
+    .where(
+      and(
+        eq(projects.id, projectId),
+        eq(projects.workspaceId, workspaceId),
+        isNull(projects.deletedAt),
+      ),
+    )
+    .returning({ id: projects.id });
+
+  if (trashed.length === 0) return { error: "Project not found" };
+
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/trash");
+}
+
+export async function restoreProject(projectId: string): Promise<{ error: string } | void> {
+  const { userId, orgId } = await auth();
+
+  if (!userId) {
+    return { error: "Unauthorized" };
+  }
+
+  const workspaceId = orgId || userId;
+
+  try {
+    await assertWorkspaceActive(workspaceId);
+    await assertProjectLimit(workspaceId);
+  } catch (error: any) {
+    return { error: error.message || "Failed to restore project" };
+  }
+
+  const restored = await db
+    .update(projects)
+    .set({ deletedAt: null })
+    .where(
+      and(
+        eq(projects.id, projectId),
+        eq(projects.workspaceId, workspaceId),
+        isNotNull(projects.deletedAt),
+      ),
+    )
+    .returning({ id: projects.id });
+
+  if (restored.length === 0) return { error: "Project not found" };
+
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/trash");
+}
+
+/** Permanently deletes a trashed project, ahead of its retention window. */
+export async function purgeProject(projectId: string): Promise<{ error: string } | void> {
+  const { userId, orgId } = await auth();
+
+  if (!userId) {
+    return { error: "Unauthorized" };
+  }
+
+  const workspaceId = orgId || userId;
+
   const project = await db.query.projects.findFirst({
-    where: and(eq(projects.id, projectId), eq(projects.workspaceId, workspaceId)),
+    where: and(
+      eq(projects.id, projectId),
+      eq(projects.workspaceId, workspaceId),
+      isNotNull(projects.deletedAt),
+    ),
   });
   if (!project) return { error: "Project not found" };
 
-  // Delete files first: the editor's ownership check needs the DB row to still exist.
-  // If the editor is unreachable we still remove the row; orphaned storage is
-  // reclaimed manually (see docs/ops-checklist.md).
-  try {
-    const res = await editorFetch("/api/project/delete", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ projectId }),
-    });
-    if (!res.ok) {
-      console.error("Editor file deletion failed:", await res.text());
-    }
-  } catch (error) {
-    console.error("Error calling editor service to delete project files:", error);
-  }
-
-  await db
-    .delete(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.workspaceId, workspaceId)));
+  await hardDeleteProject(projectId);
 
   revalidatePath("/dashboard");
+  revalidatePath("/dashboard/trash");
 }

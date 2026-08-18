@@ -59,7 +59,7 @@ async function assertProjectAccess(projectId: string, workspace: string): Promis
   }
   if (!UUID_RE.test(projectId)) throw new Error("Project not found");
   if (!pool) throw new Error("Collaboration server misconfigured: DATABASE_URL is not set");
-  const res = await pool.query("SELECT workspace_id FROM projects WHERE id = $1", [projectId]);
+  const res = await pool.query("SELECT workspace_id FROM projects WHERE id = $1 AND deleted_at IS NULL", [projectId]);
   if (!res.rows[0] || res.rows[0].workspace_id !== workspace) {
     throw new Error("Forbidden: caller's workspace does not own this project");
   }

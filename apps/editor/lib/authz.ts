@@ -36,8 +36,11 @@ export function getPool(): Pool {
  * Validates that the caller is signed in and owns projectId (via its workspace).
  * "default" (the local sandbox) is allowed only outside production.
  */
-export async function requireProject(projectId: string | null | undefined): Promise<string> {
-  return (await requireProjectAndUser(projectId)).projectId;
+export async function requireProject(
+  projectId: string | null | undefined,
+  opts?: { includeTrashed?: boolean },
+): Promise<string> {
+  return (await requireProjectAndUser(projectId, opts)).projectId;
 }
 
 /**
@@ -47,6 +50,9 @@ export async function requireProject(projectId: string | null | undefined): Prom
  */
 export async function requireProjectAndUser(
   projectId: string | null | undefined,
+  // Trashed projects are invisible to every route but the purge, which has to
+  // reach their files precisely because they are trashed.
+  opts?: { includeTrashed?: boolean },
 ): Promise<{ projectId: string; userId: string }> {
   if (!projectId) throw new ApiError(400, "Missing projectId");
 
@@ -67,7 +73,12 @@ export async function requireProjectAndUser(
   if (!isUuid(projectId)) throw new ApiError(404, "Project not found");
 
   const workspaceId = orgId || userId;
-  const res = await getPool().query("SELECT workspace_id FROM projects WHERE id = $1", [projectId]);
+  const res = await getPool().query(
+    opts?.includeTrashed
+      ? "SELECT workspace_id FROM projects WHERE id = $1"
+      : "SELECT workspace_id FROM projects WHERE id = $1 AND deleted_at IS NULL",
+    [projectId],
+  );
   if (!res.rows[0] || res.rows[0].workspace_id !== workspaceId) {
     throw new ApiError(404, "Project not found");
   }
@@ -99,7 +110,10 @@ export async function resolveToolProject(
   if (!isUuid(projectId)) throw new ApiError(404, "Project not found");
   if (!workspaceId) throw new ApiError(401, "Unauthorized");
 
-  const res = await getPool().query("SELECT workspace_id FROM projects WHERE id = $1", [projectId]);
+  const res = await getPool().query(
+    "SELECT workspace_id FROM projects WHERE id = $1 AND deleted_at IS NULL",
+    [projectId],
+  );
   if (!res.rows[0] || res.rows[0].workspace_id !== workspaceId) {
     throw new ApiError(404, "Project not found");
   }

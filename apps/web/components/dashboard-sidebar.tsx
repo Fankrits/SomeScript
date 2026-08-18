@@ -5,7 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { UserButton, OrganizationSwitcher } from "@clerk/nextjs";
-import { CreditCard, Folder, X, PanelLeft, LayoutTemplate } from "lucide-react";
+import { CreditCard, Folder, X, PanelLeft, LayoutTemplate, Trash2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { UpgradeDialog } from "@/components/upgrade-dialog";
@@ -31,6 +31,7 @@ export function DashboardSidebar({
 
   const isProjects = pathname === "/dashboard";
   const isTemplates = pathname.startsWith("/dashboard/templates");
+  const isTrash = pathname.startsWith("/dashboard/trash");
 
   const sidebarContent = (
     <div className="flex flex-col h-full justify-between">
@@ -121,6 +122,18 @@ export function DashboardSidebar({
           >
             <LayoutTemplate className="h-4 w-4" />
             Templates
+          </Link>
+          <Link
+            href="/dashboard/trash"
+            onClick={() => setMobileOpen(false)}
+            className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+              isTrash
+                ? "bg-primary/10 text-primary border border-primary/10"
+                : "text-muted-foreground hover:text-foreground hover:bg-secondary/60 border border-transparent"
+            }`}
+          >
+            <Trash2 className="h-4 w-4" />
+            Trash
           </Link>
         </nav>
       </div>

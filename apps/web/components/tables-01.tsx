@@ -142,7 +142,7 @@ export default function ProjectsTable({ projects, editorUrl }: ProjectsTableProp
       if (result?.error) {
         toast.error(result.error);
       } else {
-        toast.success("Project deleted successfully");
+        toast.success("Project moved to Trash");
       }
     } catch (error: any) {
       console.error(error);
@@ -505,9 +505,10 @@ export default function ProjectsTable({ projects, editorUrl }: ProjectsTableProp
       <AlertDialog open={deleteId !== null} onOpenChange={(open) => !open && setDeleteId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete project</AlertDialogTitle>
+            <AlertDialogTitle>Move to Trash</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete this project? This action cannot be undone.
+              This moves the project to the Trash, where it stays for 7 days before it's removed
+              permanently. You can restore it until then.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

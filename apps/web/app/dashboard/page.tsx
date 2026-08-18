@@ -1,7 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
 import { projects } from "@/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { and, eq, desc, isNull } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { NewProjectDialog } from "@/components/new-project-dialog";
 import { ImportProjectDialog } from "@/components/import-project-dialog";
@@ -21,7 +21,7 @@ export default async function DashboardPage() {
 
   // Fetch projects belonging to this workspace
   const workspaceProjects = await db.query.projects.findMany({
-    where: eq(projects.workspaceId, workspaceId),
+    where: and(eq(projects.workspaceId, workspaceId), isNull(projects.deletedAt)),
     orderBy: [desc(projects.updatedAt)],
     limit: 200,
   });

@@ -39,6 +39,9 @@ export const projects = pgTable(
       .notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
+    // Trash: set on delete, row (and its files) purged after TRASH_RETENTION_DAYS.
+    // Every read of a live project must filter `deletedAt IS NULL`.
+    deletedAt: timestamp("deleted_at"),
   },
   (table) => [index("projects_workspace_id_idx").on(table.workspaceId)],
 );
