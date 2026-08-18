@@ -78,6 +78,9 @@ export async function createSubscriptionCheckout(
     // Always 1: Team is a flat band up to PLAN_LIMITS.team.maxMembers, not a seat
     // count, so nothing here multiplies by headcount.
     line_items: [{ price: priceId, quantity: 1 }],
+    saved_payment_method_options: {
+      allow_redisplay_filters: ["always", "limited", "unspecified"],
+    },
     return_url: `${APP_URL}/dashboard?checkout=success`,
     metadata: { workspaceId, plan },
     subscription_data: { metadata: { workspaceId, plan } },
@@ -112,6 +115,13 @@ export async function createTopUpCheckout(
         quantity: 1,
       },
     ],
+    // Without this the customer re-types a card they already have on file: Checkout
+    // only redisplays saved methods marked `allow_redisplay: "always"`, and a card
+    // saved by a subscription checkout is marked "limited" (merchant-initiated). This
+    // is the filter Stripe documents for surfacing it in a customer-initiated purchase.
+    saved_payment_method_options: {
+      allow_redisplay_filters: ["always", "limited", "unspecified"],
+    },
     return_url: `${APP_URL}/dashboard?checkout=success`,
     metadata: { workspaceId, type: "credit_pack", packId: pack.id, credits: String(pack.credits) },
   });

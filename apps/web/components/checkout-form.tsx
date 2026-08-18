@@ -70,14 +70,18 @@ function ConfirmForm({ onSuccess, submitLabel }: { onSuccess: () => void; submit
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-      <PaymentElement options={{ fields: { billingDetails: { name: "always" } } }} />
+      {/* Billing fields left on Stripe's "auto": forcing name "always" made a *saved*
+          card unpayable — most stored payment methods carry no name, and the Element
+          renders no name input for one, so the required field could never be satisfied
+          and canConfirm stayed false with the Pay button dead. */}
+      <PaymentElement />
       {error && <p className="text-sm text-destructive">{error}</p>}
       <Button type="submit" disabled={!checkout.canConfirm || submitting} className="w-full">
         {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : submitLabel}
       </Button>
-      {/* checkout.canConfirm only flips true once every required field (incl. name above)
-          reports complete — without this, a stuck-incomplete Payment Element just makes
-          the button silently unclickable with zero indication why. */}
+      {/* checkout.canConfirm only flips true once every required field reports complete
+          — without this, a stuck-incomplete Payment Element just makes the button
+          silently unclickable with zero indication why. */}
       {!checkout.canConfirm && !submitting && (
         <p className="text-center text-xs text-muted-foreground">
           Complete the payment details above to continue.
