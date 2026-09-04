@@ -1,4 +1,6 @@
 import { expect, test } from "bun:test";
+import { defaultMessageReducer } from "eve/client";
+import type { MessageStreamEvent } from "eve/client";
 import { filterOrphanedMessages } from "./eve-messages";
 import type { EveMessage, EveMessagePart } from "eve/react";
 
@@ -115,4 +117,98 @@ test("leaves a healthy multi-step reply untouched", () => {
 test("keeps tool parts that repeat within one step", () => {
   const messages = [user("q1", "complete"), reply([tool("c1"), tool("c2"), tool("c3")])];
   expect(filterOrphanedMessages(messages)).toEqual(messages);
+});
+
+/**
+ * The real eve reducer, driven with the events a HITL question actually
+ * produces, so what this pins is eve's projection and not our idea of it.
+ *
+ * The shape that matters: in `conversation` mode eve *completes* the parked
+ * turn — `emitTurnEpilogue` in harness/tool-loop.js emits turn.completed then
+ * session.waiting at the park — so answering starts a *new* turn with its own
+ * assistant message, and the answered one is no longer the last.
+ */
+function projectHitlExchange() {
+  const reducer = defaultMessageReducer();
+  const parked = [
+    { type: "turn.started", data: { sequence: 0, turnId: "turn_0" } },
+    {
+      type: "message.received",
+      data: { message: "make the intro shorter", sequence: 0, turnId: "turn_0" },
+    },
+    { type: "step.started", data: { modelId: "m", sequence: 0, stepIndex: 0, turnId: "turn_0" } },
+    {
+      type: "message.completed",
+      data: {
+        finishReason: "tool-calls",
+        message: "I can trim it two ways.",
+        sequence: 0,
+        stepIndex: 0,
+        turnId: "turn_0",
+      },
+    },
+    {
+      type: "input.requested",
+      data: {
+        requests: [
+          {
+            requestId: "req_1",
+            kind: "question",
+            prompt: "Which one?",
+            options: [
+              { id: "a", label: "Tighten" },
+              { id: "b", label: "Rewrite" },
+            ],
+            action: {
+              kind: "tool-call",
+              callId: "call_1",
+              toolName: "ask_question",
+              input: { prompt: "Which one?" },
+            },
+          },
+        ],
+        sequence: 0,
+        stepIndex: 0,
+        turnId: "turn_0",
+      },
+    },
+    { type: "turn.completed", data: { sequence: 0, turnId: "turn_0" } },
+    { type: "session.waiting", data: {} },
+  ] as unknown as MessageStreamEvent[];
+
+  // The answer itself is a client-side projection event: it never appears in
+  // `agent.events`, which is why a reload shows the message the UI just lost.
+  const answer = {
+    type: "client.input.responded",
+    data: { createdAt: 0, responses: [{ requestId: "req_1", optionId: "a" }] },
+  } as unknown as MessageStreamEvent;
+
+  const resumed = [
+    { type: "turn.started", data: { sequence: 1, turnId: "turn_1" } },
+    { type: "step.started", data: { modelId: "m", sequence: 1, stepIndex: 0, turnId: "turn_1" } },
+    {
+      type: "message.appended",
+      data: {
+        messageDelta: "Tightening it now.",
+        messageSoFar: "Tightening it now.",
+        sequence: 1,
+        stepIndex: 0,
+        turnId: "turn_1",
+      },
+    },
+  ] as unknown as MessageStreamEvent[];
+
+  let data = reducer.initial();
+  for (const event of [...parked, answer, ...resumed]) data = reducer.reduce(data, event);
+  return { events: [...parked, ...resumed], messages: data.messages as EveMessage[] };
+}
+
+test("keeps the answered turn's reply when a HITL question resumes into a new turn", () => {
+  const { events, messages } = projectHitlExchange();
+
+  expect(filterOrphanedMessages(messages, events).map((m) => m.id)).toEqual([
+    "turn_0:user",
+    "turn_0:assistant",
+    "turn_1:assistant",
+  ]);
 });

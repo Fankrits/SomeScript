@@ -1,4 +1,5 @@
 import type { EveMessage, EveMessagePart } from "eve/react";
+import type { MessageStreamEvent } from "eve/client";
 
 /**
  * Kept apart from the runtime hook because the ordering bug it fixes is
@@ -18,14 +19,40 @@ import type { EveMessage, EveMessagePart } from "eve/react";
  * Only the *last* message of each role can legitimately still be
  * failed/streaming (a currently in-flight turn, or a terminal stall awaiting
  * "Continue"); any earlier one was superseded and is dropped.
+ *
+ * `status` alone can't carry that judgement, which is why `events` is here:
+ * eve's reducer *recomputes* a message's status from whatever part it upserts
+ * last (`upsertPart`: anything but a finished text part means "streaming"), so
+ * a turn that completed hours ago regresses to "streaming" the moment another
+ * part lands on it. Answering a HITL prompt does exactly that — the
+ * `client.input.responded` projection rewrites the ask_question part in place —
+ * and since eve *completes* a parked turn and resumes into a new one, the
+ * answered message stopped being the last assistant and vanished mid-reply,
+ * taking the reply above the question with it. A turn eve has already settled
+ * is not an abandoned turn, whatever the message says about itself.
  */
-export function filterOrphanedMessages(all: readonly EveMessage[]): EveMessage[] {
+export function filterOrphanedMessages(
+  all: readonly EveMessage[],
+  events: readonly MessageStreamEvent[] = [],
+): EveMessage[] {
+  const settled = new Set(
+    events.flatMap((e) =>
+      e.type === "turn.completed" || e.type === "turn.failed" || e.type === "turn.cancelled"
+        ? [e.data.turnId]
+        : [],
+    ),
+  );
   const lastUserIdx = all.findLastIndex((m) => m.role === "user");
   const lastAssistantIdx = all.findLastIndex((m) => m.role === "assistant");
   return all
     .filter((m, i) => {
       if (m.role === "user" && m.metadata?.status === "failed" && i !== lastUserIdx) return false;
-      if (m.role === "assistant" && m.metadata?.status === "streaming" && i !== lastAssistantIdx)
+      if (
+        m.role === "assistant" &&
+        m.metadata?.status === "streaming" &&
+        !settled.has(m.metadata.turnId ?? "") &&
+        i !== lastAssistantIdx
+      )
         return false;
       return true;
     })

@@ -825,8 +825,8 @@ export function useEveRuntime(
   // that would otherwise render as a duplicated question with a stray
   // assistant reply sandwiched above the resend.
   const visibleMessages = useMemo(
-    () => filterOrphanedMessages(agent.data.messages as EveMessage[]),
-    [agent.data.messages],
+    () => filterOrphanedMessages(agent.data.messages as EveMessage[], agent.events),
+    [agent.data.messages, agent.events],
   );
 
   // Giving up on the current turn, from anywhere.
