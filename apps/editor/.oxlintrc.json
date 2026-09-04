@@ -1,1 +1,9 @@
-{"rules":{"typescript/consistent-return":"warn","typescript/no-unsafe-type-assertion":"warn","typescript/no-unnecessary-boolean-literal-compare":"warn","typescript/no-unnecessary-type-assertion":"warn","typescript/restrict-template-expressions":"warn"}}
+{
+  "rules": {
+    "typescript/consistent-return": "warn",
+    "typescript/no-unsafe-type-assertion": "warn",
+    "typescript/no-unnecessary-boolean-literal-compare": "warn",
+    "typescript/no-unnecessary-type-assertion": "warn",
+    "typescript/restrict-template-expressions": "warn"
+  }
+}
