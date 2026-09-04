@@ -14,7 +14,7 @@
     "format:check": "turbo run format:check"
   },
   "devDependencies": {
-    "turbo": "^2.10.10"
+    "turbo": "^2.10.12"
   },
   "overrides": {
     "@codemirror/view": "6.43.8"
