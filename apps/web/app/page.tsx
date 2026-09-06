@@ -16,9 +16,6 @@ const FeaturesBento = dynamic(() =>
 const HowItWorks = dynamic(() =>
   import("@/components/sections/how-it-works").then((mod) => mod.HowItWorks),
 );
-const Testimonials = dynamic(() =>
-  import("@/components/sections/testimonials").then((mod) => mod.Testimonials),
-);
 const Faq = dynamic(() => import("@/components/sections/faq").then((mod) => mod.Faq));
 
 export default async function Home() {
@@ -71,7 +68,6 @@ export default async function Home() {
       <main className="flex-1 flex flex-col relative w-full z-10">
         <FeaturesBento />
         <HowItWorks />
-        <Testimonials />
         <Faq />
         <FinalCta />
       </main>
