@@ -10,9 +10,9 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1143.0",
     "@clerk/backend": "^3.21.0",
-    "@hocuspocus/extension-logger": "4.6.0",
-    "@hocuspocus/extension-redis": "4.6.0",
-    "@hocuspocus/server": "4.6.0",
+    "@hocuspocus/extension-logger": "4.7.0",
+    "@hocuspocus/extension-redis": "4.7.0",
+    "@hocuspocus/server": "4.7.0",
     "crossws": "^0.4.12",
     "ioredis": "^6.0.0",
     "pg": "^8.23.1",
