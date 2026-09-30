@@ -62,7 +62,7 @@
     "date-fns": "^4.4.0",
     "diff": "^9.0.0",
     "embla-carousel-react": "^8.6.0",
-    "eve": "^0.51.1",
+    "eve": "^0.68.0",
     "input-otp": "^1.5.0",
     "ioredis": "^6.0.0",
     "jszip": "^3.10.2",
