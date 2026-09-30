@@ -36,7 +36,7 @@
     "@paper-design/shaders-react": "^0.0.81",
     "@react-three/drei": "^10.7.9",
     "@react-three/fiber": "^9.8.1",
-    "@sentry/nextjs": "^10.75.3",
+    "@sentry/nextjs": "^11.1.0",
     "@shadcn/react": "^0.3.1",
     "@shadergradient/react": "^2.4.20",
     "@stripe/react-stripe-js": "^6.12.0",
