@@ -189,8 +189,9 @@ jobs:
           appimage="$(ls "$BUNDLE_DIR"/appimage/*_"${VERSION}"_amd64.AppImage)" || { ls -la "$BUNDLE_DIR/appimage"; exit 1; }
           chmod +x "$appimage"
           mkdir "$RUNNER_TEMP/appimage" && cd "$RUNNER_TEMP/appimage" && "$OLDPWD/$appimage" --appimage-extract > /dev/null
-          for exe in somescript-desktop tectonic synctex; do
-            test -x "squashfs-root/usr/bin/$exe" || { echo "::error::AppImage lacks $exe"; exit 1; }
+          test -x squashfs-root/usr/bin/somescript-desktop || { echo "::error::AppImage lacks the app"; exit 1; }
+          for exe in tectonic synctex; do
+            test -x "squashfs-root/usr/lib/SomeScript/bin/$exe" || { echo "::error::AppImage lacks $exe"; exit 1; }
           done
           test -n "$(find squashfs-root -path '*/templates/blank/main.tex' -print -quit)" || { echo "::error::AppImage lacks the templates"; exit 1; }
 

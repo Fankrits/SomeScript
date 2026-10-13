@@ -22,7 +22,7 @@ permissions:
 
 jobs:
   verify:
-    name: ${{ github.event.deployment.environment }} is ${{ github.event.deployment_status.state }}
+    name: Verify production deploy
     # Vercel names environments "Production – <project>" and Railway "<service> / production".
     # Previews and in-progress states are ignored.
     if: >-

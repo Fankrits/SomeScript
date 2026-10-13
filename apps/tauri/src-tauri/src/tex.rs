@@ -44,16 +44,18 @@ impl TexTools {
     }
 
     /// Finds the sidecars: env override -> next to the app binary (where Tauri bundles
-    /// `externalBin`) -> `src-tauri/binaries/<name>-<triple>` in dev -> PATH.
-    pub fn locate() -> Self {
+    /// `externalBin`) -> `<resource dir>/bin` (Linux, where `/usr/bin/synctex` would collide with
+    /// TeX Live's own package, so the sidecars ship as resources) -> `src-tauri/binaries/<name>-<triple>`
+    /// in dev -> PATH.
+    pub fn locate(resource_dir: Option<&Path>) -> Self {
         Self::new(
-            find_tool("tectonic", "TECTONIC_BIN"),
-            find_tool("synctex", "SYNCTEX_BIN"),
+            find_tool("tectonic", "TECTONIC_BIN", resource_dir),
+            find_tool("synctex", "SYNCTEX_BIN", resource_dir),
         )
     }
 }
 
-fn find_tool(name: &str, env_var: &str) -> PathBuf {
+fn find_tool(name: &str, env_var: &str, resource_dir: Option<&Path>) -> PathBuf {
     if let Some(p) = std::env::var_os(env_var) {
         return p.into();
     }
@@ -65,7 +67,12 @@ fn find_tool(name: &str, env_var: &str) -> PathBuf {
     let beside_app = std::env::current_exe()
         .ok()
         .and_then(|p| Some(p.parent()?.join(&exe)));
-    if let Some(p) = beside_app.filter(|p| p.is_file()) {
+    let in_resources = resource_dir.map(|d| d.join("bin").join(&exe));
+    if let Some(p) = beside_app
+        .into_iter()
+        .chain(in_resources)
+        .find(|p| p.is_file())
+    {
         return p;
     }
     if cfg!(debug_assertions) {
@@ -433,6 +440,27 @@ mod tests {
         h:133.768372\nv:134.874207\nW:343.711060\nH:7.023649\nbefore:\noffset:-1\nmiddle:\nafter:\nSyncTeX result end\n";
 
     #[test]
+    fn finds_sidecars_in_the_resource_dir() {
+        let res = tempfile::tempdir().unwrap();
+        let name = if cfg!(windows) {
+            "ss-test-tool.exe"
+        } else {
+            "ss-test-tool"
+        };
+        std::fs::create_dir(res.path().join("bin")).unwrap();
+        std::fs::write(res.path().join("bin").join(name), "x").unwrap();
+        assert_eq!(
+            find_tool("ss-test-tool", "SS_TEST_TOOL_NOT_SET", Some(res.path())),
+            res.path().join("bin").join(name)
+        );
+        // Not there: fall back to the bare name for PATH lookup.
+        assert_eq!(
+            find_tool("ss-test-tool", "SS_TEST_TOOL_NOT_SET", None),
+            PathBuf::from(name)
+        );
+    }
+
+    #[test]
     fn parses_real_synctex_cli_output() {
         let blocks = parse_synctex_output(VIEW_OUTPUT);
         assert_eq!(blocks.len(), 1);
@@ -666,7 +694,7 @@ echo "note: Writing $out/$stem.pdf"
     #[tokio::test]
     #[ignore = "needs real tectonic and synctex binaries"]
     async fn real_tectonic_and_synctex_round_trip() {
-        let tools = Arc::new(TexTools::locate());
+        let tools = Arc::new(TexTools::locate(None));
         let dir = tempfile::tempdir().unwrap();
         let p = Project::open(dir.path().to_path_buf()).unwrap();
         p.write(

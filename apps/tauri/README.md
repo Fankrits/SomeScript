@@ -80,21 +80,25 @@ bun run desktop:sidecars && bun run desktop:build      # .app + .dmg under src-t
 ```
 
 `desktop:build` merges `src-tauri/tauri.bundle.conf.json` (sidecars + templates). It is separate from
-`tauri.conf.json` so `cargo test` and `tauri dev` don't need the binaries. Builds are **unsigned** until
-Apple Developer ID secrets are configured (see `.github/workflows/desktop.yml`); macOS shows a Gatekeeper
-warning for unsigned apps. Only macOS Apple Silicon has a verified Tectonic checksum so far; add other
-platforms in `scripts/fetch-sidecars.sh` (Linux needs the glibc build: musl breaks Thai/CJK line breaking).
+`tauri.conf.json` so `cargo test` and `tauri dev` don't need the binaries. CI builds for macOS (Apple Silicon and
+Intel), Windows x64 and Linux x64; `scripts/fetch-sidecars.sh` pins a SHA-256 per platform for the official Tectonic
+build (Linux needs the glibc build, not musl, which breaks Thai/CJK line breaking, and it needs glibc 2.39+).
+Builds are **unsigned** until signing secrets are configured: macOS shows a Gatekeeper warning, Windows a SmartScreen
+warning. Windows/Linux on ARM are not built.
 
 Before anything is published, CI checks the bundle itself (see `docs/ci-cd.md`):
 
 ```sh
-bun run desktop:verify                                  # sidecars beside the executable, only system libraries, templates, licenses
-sh scripts/smoke-bundle.sh <path to SomeScript.app> --compile   # starts it headless in a clean env and drives the HTTP surface
+bun run desktop:verify                                  # sidecars beside the executable, expected libraries only, templates, licenses
+sh scripts/smoke-bundle.sh <SomeScript.app | somescript-desktop[.exe]> --compile   # starts it headless in a clean env and drives the HTTP surface
 ```
+
+`verify-bundle.sh` and `smoke-bundle.sh` take a macOS `.app`, a Linux tree from `dpkg-deb -x`, or a Windows install
+directory (run them from Git Bash there). On Linux the smoke test starts Xvfb if there is no display.
 
 A release is a tag: `desktop-vX.Y.Z` on a commit that is on `main` (`scripts/check-version.mjs` requires the tag,
 `Cargo.toml`, `tauri.conf.json` and `package.json` to agree). The _Desktop release_ workflow builds, verifies and
-smoke-tests the bundle, then creates a **draft** GitHub release with the DMG, a zipped `.app` and checksums.
+smoke-tests every platform, then creates a **draft** GitHub release with the installers and one `SHA256SUMS.txt`.
 
 Licenses of everything bundled are in `src-tauri/THIRD_PARTY_LICENSES.md`.
 

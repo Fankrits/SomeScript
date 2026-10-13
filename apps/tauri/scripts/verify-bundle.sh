@@ -17,25 +17,36 @@ ext=""
 if [ -d "$app/Contents/MacOS" ]; then
   kind=macos
   bindir="$app/Contents/MacOS"
+  toolsdir="$bindir"
   resdir="$app/Contents/Resources"
 elif [ -f "$app/somescript-desktop.exe" ]; then
   kind=windows
   ext=".exe"
   bindir="$app"
+  toolsdir="$bindir"
   resdir="$app"
 elif [ -x "$app/usr/bin/somescript-desktop" ]; then
   kind=linux
   bindir="$app/usr/bin"
-  resdir="$app/usr/lib"
+  resdir="$app/usr/lib/SomeScript"
+  toolsdir="$resdir/bin" # not /usr/bin: that would collide with TeX Live's synctex package
 else
   echo "unrecognised bundle layout: $app" >&2
   exit 1
 fi
 
+if [ "$kind" = linux ]; then
+  for exe in tectonic synctex; do
+    [ ! -e "$bindir/$exe" ] || bad "$exe is installed in /usr/bin, where it would collide with TeX Live's package"
+  done
+fi
+
 for exe in somescript-desktop tectonic synctex; do
-  path="$bindir/$exe$ext"
+  dir="$toolsdir"
+  [ "$exe" != somescript-desktop ] || dir="$bindir"
+  path="$dir/$exe$ext"
   if [ ! -x "$path" ]; then
-    bad "missing executable $exe$ext in $bindir"
+    bad "missing executable $exe$ext in $dir"
     continue
   fi
   case "$kind" in

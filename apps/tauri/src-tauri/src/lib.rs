@@ -63,7 +63,7 @@ pub fn run() {
 
             let state = ApiState {
                 library,
-                tex: Arc::new(TexTools::locate()),
+                tex: Arc::new(TexTools::locate(app.path().resource_dir().ok().as_deref())),
                 templates_dir: templates_dir(app),
                 config_path,
             };
