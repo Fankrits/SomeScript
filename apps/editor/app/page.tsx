@@ -57,6 +57,11 @@ import {
 } from "@/components/editor/search-panel";
 import { TasksPanel, TasksPanelHandle } from "@/components/editor/tasks-panel";
 import type { Task } from "@/lib/tasks";
+import {
+  AUTO_COMPILE_DELAY_MS,
+  planAutoCompile,
+  type AutoCompileBaseline,
+} from "@/lib/auto-compile";
 import { SearchQuery, setSearchQuery } from "@codemirror/search";
 import { setDiagnostics, type Diagnostic } from "@codemirror/lint";
 import { parseCompileErrors, type CompileError } from "@/lib/compile-errors";
@@ -421,6 +426,9 @@ const Example = () => {
   // editedCode still holds the *previous* file (or "" on first mount). Writing
   // that to the new selectedPath truncates it, which is how main.tex hit 0 bytes.
   const loadedPathRef = useRef<string | null>(null);
+  // What the last compile saw (or what a file held when it was opened). Auto-compile runs when the
+  // buffer drifts from this, never from the autosave baseline: see lib/auto-compile.ts.
+  const autoCompileBaselineRef = useRef<AutoCompileBaseline | null>(null);
   // Set synchronously by handleFileSelect, which fetches the content itself. The
   // selectedPath effect below would otherwise re-fetch the same file immediately —
   // loadedPathRef can't gate that, since it's only set once the fetch lands.
@@ -2119,6 +2127,14 @@ const Example = () => {
   const handleCompileLatex = useCallback(
     async (silent = false) => {
       if (isCompiling) return;
+      // Whatever is in the buffer now is what this compile sees (runCompile saves it first), so
+      // auto-compile only needs to run again for edits made after this point.
+      if (selectedPath) {
+        autoCompileBaselineRef.current = {
+          path: selectedPath,
+          code: stateRef.current.editedCode,
+        };
+      }
       setIsCompiling(true);
       try {
         const currentPath =
@@ -2166,20 +2182,25 @@ const Example = () => {
   // autosave having run first. Silent so a mid-edit syntax error (e.g. an
   // unclosed brace while still typing) doesn't toast on every idle pause —
   // failures still surface via the gutter markers and terminal badge.
+  //
+  // "Edited" means "differs from what the last compile saw", NOT "differs from
+  // what is on disk": autosave fires after 1s and would otherwise cancel this
+  // 3s timer every time (lib/auto-compile.ts).
   useEffect(() => {
-    if (
-      !settings.autoCompileEnabled ||
-      !selectedPath ||
-      loadedPathRef.current !== selectedPath ||
-      editedCode === currentCode
-    ) {
-      return;
-    }
+    const plan = planAutoCompile({
+      enabled: settings.autoCompileEnabled,
+      selectedPath,
+      loadedPath: loadedPathRef.current,
+      editedCode,
+      baseline: autoCompileBaselineRef.current,
+    });
+    if (plan.kind === "adopt") autoCompileBaselineRef.current = plan.baseline;
+    if (plan.kind !== "schedule") return;
 
-    const timer = setTimeout(() => void handleCompileLatex(true), 3000);
+    const timer = setTimeout(() => void handleCompileLatex(true), AUTO_COMPILE_DELAY_MS);
 
     return () => clearTimeout(timer);
-  }, [settings.autoCompileEnabled, selectedPath, editedCode, currentCode, handleCompileLatex]);
+  }, [settings.autoCompileEnabled, selectedPath, editedCode, handleCompileLatex]);
 
   // Always the project's main file, never "whatever's open" — a download is
   // the finished project, not whichever chapter happens to be open.
