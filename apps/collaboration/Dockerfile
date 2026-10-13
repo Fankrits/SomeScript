@@ -1,4 +1,4 @@
-FROM oven/bun:1.3-slim AS base
+FROM oven/bun:1.4-slim AS base
 WORKDIR /app
 
 # Standalone install (same pattern as apps/compiler/Dockerfile): this package.json
