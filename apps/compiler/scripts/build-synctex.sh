@@ -16,4 +16,4 @@ cc -O2 -DSYNCTEX_STANDALONE -I"$tmp/synctex" -o "$dir/bin/synctex" \
   "$tmp/synctex/synctex_parser.c" \
   "$tmp/synctex/synctex_parser_utils.c" \
   -lz -lm
-echo "Built $dir/bin/synctex"
+echo "Built $dir/bin/synctex (upstream commit $(git -C "$tmp/synctex" rev-parse HEAD))"
