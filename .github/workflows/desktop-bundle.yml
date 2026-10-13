@@ -50,7 +50,7 @@ jobs:
       version: ${{ steps.read.outputs.version }}
       signed: ${{ steps.read.outputs.signed }}
     env:
-      SIGN: ${{ inputs.release && secrets.APPLE_CERTIFICATE != '' }}
+      APPLE_SIGN: ${{ inputs.release && secrets.APPLE_CERTIFICATE != '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -58,7 +58,7 @@ jobs:
       - id: read
         run: |
           echo "version=$(jq -r .version apps/tauri/src-tauri/tauri.conf.json)" >> "$GITHUB_OUTPUT"
-          echo "signed=${SIGN}" >> "$GITHUB_OUTPUT"
+          echo "signed=${APPLE_SIGN}" >> "$GITHUB_OUTPUT"
 
   bundle:
     name: ${{ matrix.name }}
@@ -96,7 +96,8 @@ jobs:
         working-directory: apps/tauri
     env:
       VERSION: ${{ needs.meta.outputs.version }}
-      SIGN: ${{ needs.meta.outputs.signed == 'true' && matrix.kind == 'macos' }}
+      # Deliberately not named SIGN: linuxdeploy's AppImage plugin reads that variable as "sign with GPG".
+      APPLE_SIGN: ${{ needs.meta.outputs.signed == 'true' && matrix.kind == 'macos' }}
       BUNDLE_DIR: src-tauri/target/release/bundle
       # Linux ships the sidecars in the app's lib dir, not /usr/bin (see tauri.bundle.linux.conf.json).
       BUILD_SCRIPT: ${{ matrix.kind == 'linux' && 'desktop:build:linux' || 'desktop:build' }}
@@ -124,7 +125,7 @@ jobs:
           workspaces: apps/tauri/src-tauri
 
       - name: Build and sign
-        if: env.SIGN == 'true'
+        if: env.APPLE_SIGN == 'true'
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -136,7 +137,7 @@ jobs:
 
       # Apple variables must be absent, not empty, or the tauri CLI tries to import a certificate.
       - name: Build (unsigned)
-        if: env.SIGN != 'true'
+        if: env.APPLE_SIGN != 'true'
         run: bun run "$BUILD_SCRIPT" --bundles "${{ matrix.bundles }}" ${VERBOSE:+"$VERBOSE"}
 
       # ---- Verify and smoke-test what a user would actually get ----
@@ -144,7 +145,7 @@ jobs:
       - name: Verify and smoke test (macOS app)
         if: matrix.kind == 'macos'
         env:
-          REQUIRE_SIGNED: ${{ env.SIGN == 'true' && '1' || '0' }}
+          REQUIRE_SIGNED: ${{ env.APPLE_SIGN == 'true' && '1' || '0' }}
           COMPILE: ${{ inputs.release && '--compile' || '' }}
         run: |
           app="$BUNDLE_DIR/macos/SomeScript.app"
