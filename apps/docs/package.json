@@ -10,9 +10,9 @@
     "@takumi-rs/core": "^2.14.0",
     "@vercel/analytics": "^2.0.1",
     "@vercel/speed-insights": "^2.0.0",
-    "docus": "5.13.0",
-    "katex": "^0.18.10",
-    "nuxt": "^4.5.2",
+    "docus": "5.14.0",
+    "katex": "^0.19.0",
+    "nuxt": "^4.6.0",
     "rehype-katex": "^7.0.1",
     "remark-math": "^6.0.0"
   }
