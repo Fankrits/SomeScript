@@ -68,8 +68,26 @@ export default defineConfig({
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     viewport: { width: 1440, height: 900 },
-    // The release server wants its per-launch token as a cookie on every request, API calls included.
-    extraHTTPHeaders: token ? { Cookie: `ss_token=${token}` } : undefined,
+    // The release server wants its per-launch token as a cookie on every request, API calls and
+    // downloads included. A real cookie (what the webview holds after the /?t=<token> redirect), not an
+    // extra header: the browser's download manager does not send those.
+    storageState: token
+      ? {
+          cookies: [
+            {
+              name: "ss_token",
+              value: token,
+              domain: "127.0.0.1",
+              path: "/",
+              httpOnly: true,
+              secure: false,
+              sameSite: "Strict" as const,
+              expires: -1,
+            },
+          ],
+          origins: [],
+        }
+      : undefined,
   },
   webServer: {
     command: `"${app}"`,
