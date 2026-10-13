@@ -1,0 +1,39 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "useDefineForClassFields": true,
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "types": ["node", "vite/client"],
+
+    /* Bundler mode */
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "allowJs": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+
+    /* Same strictness as apps/editor, whose source this app type-checks too. */
+    "strict": true,
+    "noFallthroughCasesInSwitch": true,
+
+    /* Mirrors resolve.alias in vite.config.ts: keep both in sync. Exact keys beat "@/*". */
+    "paths": {
+      "next/dynamic": ["./src/shims/next-dynamic.tsx"],
+      "next/image": ["./src/shims/next-image.tsx"],
+      "next/navigation": ["./src/shims/noop.ts"],
+      "@clerk/nextjs": ["./src/shims/clerk.ts"],
+      "@sentry/nextjs": ["./src/shims/noop.ts"],
+      "@/components/analytics/clarity": ["./src/shims/clarity.ts"],
+      "@/components/chat/eve-thread": ["./src/shims/eve-thread.tsx"],
+      "@/lib/eve-threads-client": ["./src/shims/eve-threads-client.ts"],
+      "@/*": ["../editor/*"]
+    }
+  },
+  "include": ["src"],
+  "references": [{ "path": "./tsconfig.node.json" }]
+}
