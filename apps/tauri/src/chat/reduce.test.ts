@@ -35,7 +35,9 @@ describe("applyEvent", () => {
   });
 
   test("a tool call goes running -> done with its result, and a failure marks it error", () => {
-    const running = fold([{ type: "tool-call", id: "c1", name: "edit_file", args: { path: "a.tex" } }]);
+    const running = fold([
+      { type: "tool-call", id: "c1", name: "edit_file", args: { path: "a.tex" } },
+    ]);
     expect((running.parts[0] as ToolPart).status).toBe("running");
 
     const done = applyEvent(running, {
@@ -60,10 +62,25 @@ describe("applyEvent", () => {
     expect((failed.parts[0] as ToolPart).status).toBe("error");
   });
 
+  test("remembers which model step issued a tool call", () => {
+    const msg = fold([
+      { type: "tool-call", id: "c1", name: "read_file", args: {}, step: 1 },
+      { type: "tool-call", id: "c2", name: "edit_file", args: {}, step: 2 },
+      { type: "tool-call", id: "c3", name: "grep", args: {} },
+    ]);
+    expect(msg.parts.map((p) => (p as ToolPart).step)).toEqual([1, 2, undefined]);
+  });
+
   test("a result for an unknown call changes nothing", () => {
     const msg = fold([{ type: "text", delta: "hi" }]);
     expect(
-      applyEvent(msg, { type: "tool-result", id: "ghost", ok: true, result: { ok: true }, output: "" }),
+      applyEvent(msg, {
+        type: "tool-result",
+        id: "ghost",
+        ok: true,
+        result: { ok: true },
+        output: "",
+      }),
     ).toEqual(msg);
   });
 
@@ -110,14 +127,23 @@ describe("sanitizeMessages", () => {
   test("keeps well-formed messages and drops everything else", () => {
     const out = sanitizeMessages([
       { id: "u1", role: "user", text: "hi", attachments: [{ name: "a", text: "b" }, { name: 1 }] },
-      { id: "a1", role: "assistant", parts: [{ type: "text", text: "yo" }, { type: "bogus" }, null] },
+      {
+        id: "a1",
+        role: "assistant",
+        parts: [{ type: "text", text: "yo" }, { type: "bogus" }, null],
+      },
       { role: "user", text: 5 },
       "junk",
       null,
       { role: "system", text: "x" },
     ]);
     expect(out).toHaveLength(2);
-    expect(out[0]).toEqual({ id: "u1", role: "user", text: "hi", attachments: [{ name: "a", text: "b" }] });
+    expect(out[0]).toEqual({
+      id: "u1",
+      role: "user",
+      text: "hi",
+      attachments: [{ name: "a", text: "b" }],
+    });
     expect((out[1] as AssistantMessage).parts).toEqual([{ type: "text", text: "yo" }]);
     expect(sanitizeMessages("nope")).toEqual([]);
     expect(sanitizeMessages(undefined)).toEqual([]);
@@ -154,9 +180,9 @@ describe("latestTodos", () => {
   });
 
   test("returns the newest plan", () => {
-    expect(latestTodos([todoPart("1", "first"), { type: "text", text: "x" }, todoPart("2", "second")])).toEqual([
-      { content: "second", status: "pending" },
-    ]);
+    expect(
+      latestTodos([todoPart("1", "first"), { type: "text", text: "x" }, todoPart("2", "second")]),
+    ).toEqual([{ content: "second", status: "pending" }]);
   });
 
   test("is null without a successful plan", () => {

@@ -40,7 +40,10 @@ beforeEach(() => {
     };
     calls.push(call);
     const { status = 200, json } = respond(call);
-    return new Response(JSON.stringify(json), { status, headers: { "content-type": "application/json" } });
+    return new Response(JSON.stringify(json), {
+      status,
+      headers: { "content-type": "application/json" },
+    });
   }) as typeof fetch;
 });
 afterEach(() => {
@@ -62,14 +65,26 @@ describe("AI settings client", () => {
       "POST /api/ai/settings",
       "POST /api/ai/providers/test",
     ]);
-    expect(calls[1].body).toEqual({ name: "A", kind: "openai", baseUrl: "https://x/v1", apiKey: "sk-1" });
+    expect(calls[1].body).toEqual({
+      name: "A",
+      kind: "openai",
+      baseUrl: "https://x/v1",
+      apiKey: "sk-1",
+    });
     expect(calls[2].body).toEqual({ id: "p1" });
     expect(calls[3].body).toEqual({ activeProviderId: "p1", activeModel: "m" });
-    expect(calls[4].body).toMatchObject({ mode: "chat", model: "gpt-4.1", baseUrl: "https://x/v1" });
+    expect(calls[4].body).toMatchObject({
+      mode: "chat",
+      model: "gpt-4.1",
+      baseUrl: "https://x/v1",
+    });
   });
 
   test("a server error becomes an Error carrying the server's own message", async () => {
-    respond = () => ({ status: 400, json: { error: "Base URL must start with http:// or https://" } });
+    respond = () => ({
+      status: 400,
+      json: { error: "Base URL must start with http:// or https://" },
+    });
     await expect(saveProvider({ name: "A", kind: "openai", baseUrl: "ftp://x" })).rejects.toThrow(
       "Base URL must start with http:// or https://",
     );
@@ -78,15 +93,18 @@ describe("AI settings client", () => {
   });
 
   test("startChat returns the stream, and rejects with the server's reason when there is none", async () => {
-    globalThis.fetch = (async () => new Response("{}\n", { status: 200 })) as unknown as typeof fetch;
+    globalThis.fetch = (async () =>
+      new Response("{}\n", { status: 200 })) as unknown as typeof fetch;
     const stream = await startChat({ projectId: "p", messages: [] }, new AbortController().signal);
     expect(stream).toBeInstanceOf(ReadableStream);
 
     globalThis.fetch = (async () =>
-      new Response(JSON.stringify({ error: "No AI provider is set up yet." }), { status: 400 })) as unknown as typeof fetch;
-    await expect(startChat({ projectId: "p", messages: [] }, new AbortController().signal)).rejects.toThrow(
-      "No AI provider is set up yet.",
-    );
+      new Response(JSON.stringify({ error: "No AI provider is set up yet." }), {
+        status: 400,
+      })) as unknown as typeof fetch;
+    await expect(
+      startChat({ projectId: "p", messages: [] }, new AbortController().signal),
+    ).rejects.toThrow("No AI provider is set up yet.");
   });
 });
 
@@ -109,7 +127,11 @@ describe("chat history client", () => {
       "PUT /api/chat/thread",
       "DELETE /api/chat/thread?projectId=p&threadId=t",
     ]);
-    expect(calls[3].body).toEqual({ projectId: "p", threadId: "t", messages: [{ role: "user", text: "hi" }] });
+    expect(calls[3].body).toEqual({
+      projectId: "p",
+      threadId: "t",
+      messages: [{ role: "user", text: "hi" }],
+    });
   });
 
   test("saves report failure with false instead of throwing (the UI keeps working)", async () => {
@@ -129,8 +151,28 @@ describe("chat history client", () => {
 describe("activeChoice", () => {
   const settings = {
     providers: [
-      { id: "a", name: "A", kind: "openai", baseUrl: "", hasKey: true, keyHint: "", apiKeyHeader: "", models: ["a1", "a2"], defaultModel: "a2" },
-      { id: "b", name: "B", kind: "anthropic", baseUrl: "", hasKey: false, keyHint: "", apiKeyHeader: "", models: ["b1"], defaultModel: "" },
+      {
+        id: "a",
+        name: "A",
+        kind: "openai",
+        baseUrl: "",
+        hasKey: true,
+        keyHint: "",
+        apiKeyHeader: "",
+        models: ["a1", "a2"],
+        defaultModel: "a2",
+      },
+      {
+        id: "b",
+        name: "B",
+        kind: "anthropic",
+        baseUrl: "",
+        hasKey: false,
+        keyHint: "",
+        apiKeyHeader: "",
+        models: ["b1"],
+        defaultModel: "",
+      },
     ],
     activeProviderId: null,
     activeModel: null,
@@ -141,10 +183,17 @@ describe("activeChoice", () => {
     expect(activeChoice(null)).toBeNull();
     expect(activeChoice({ ...settings, providers: [] } as never)).toBeNull();
     expect(activeChoice(settings as never)).toEqual({ name: "A", model: "a2" });
-    expect(activeChoice({ ...settings, activeProviderId: "b" } as never)).toEqual({ name: "B", model: "b1" });
-    expect(activeChoice({ ...settings, activeProviderId: "a", activeModel: "a1" } as never)).toEqual({ name: "A", model: "a1" });
+    expect(activeChoice({ ...settings, activeProviderId: "b" } as never)).toEqual({
+      name: "B",
+      model: "b1",
+    });
+    expect(
+      activeChoice({ ...settings, activeProviderId: "a", activeModel: "a1" } as never),
+    ).toEqual({ name: "A", model: "a1" });
     // A saved model belongs to the saved provider only.
-    expect(activeChoice({ ...settings, activeProviderId: "ghost", activeModel: "zzz" } as never)).toEqual({ name: "A", model: "a2" });
+    expect(
+      activeChoice({ ...settings, activeProviderId: "ghost", activeModel: "zzz" } as never),
+    ).toEqual({ name: "A", model: "a2" });
   });
 });
 
@@ -169,9 +218,13 @@ describe("presets and the settings link", () => {
   });
 
   test("settingsUrl remembers the page to come back to", () => {
-    (globalThis as { window?: unknown }).window = { location: { pathname: "/", search: "?projectId=My%20Paper" } };
+    (globalThis as { window?: unknown }).window = {
+      location: { pathname: "/", search: "?projectId=My%20Paper" },
+    };
     expect(settingsUrl()).toBe("/settings?section=ai&from=%2F%3FprojectId%3DMy%2520Paper");
-    (globalThis as { window?: unknown }).window = { location: { pathname: "/settings", search: "?section=ai" } };
+    (globalThis as { window?: unknown }).window = {
+      location: { pathname: "/settings", search: "?section=ai" },
+    };
     expect(settingsUrl("general")).toBe("/settings?section=general");
     delete (globalThis as { window?: unknown }).window;
   });

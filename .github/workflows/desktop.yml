@@ -143,6 +143,54 @@ jobs:
           SYNCTEX_BIN="$here/binaries/synctex-$TRIPLE$EXE" \
           cargo test -- --ignored real_
 
+  # The whole app, as a person uses it: the real Rust server with the UI it embeds, driven in a real
+  # browser, with a scripted model provider (so the AI chat, its tools, the Settings screen and the
+  # key handling are exercised without a key) and a stand-in for Tectonic (auto-compile, the
+  # tasks board). Tectonic itself is covered by the "Real Tectonic round trip" above.
+  e2e:
+    name: End-to-end (app, AI chat, settings, editor)
+    needs: changes
+    if: needs.changes.outputs.web == 'true' || needs.changes.outputs.rust == 'true' || github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: bash
+        working-directory: apps/tauri
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-js
+      - uses: ./.github/actions/desktop-deps
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: apps/tauri/src-tauri
+      # The binary serves the UI it embedded at build time, so the frontend comes first.
+      - name: Build the frontend
+        run: bun run web:build
+      - name: Build the app
+        working-directory: apps/tauri/src-tauri
+        run: cargo build
+      - name: Install the browser
+        run: bun x playwright install --with-deps chromium
+      # The app needs a display even though it opens no window when headless.
+      - name: Run the end-to-end tests
+        run: xvfb-run -a bun run e2e
+      - name: Keep the report
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-report
+          path: |
+            apps/tauri/e2e/.run/report
+            apps/tauri/e2e/.run/results
+          if-no-files-found: ignore
+          retention-days: 7
+
   bundle:
     name: Bundle
     needs: changes
@@ -153,7 +201,7 @@ jobs:
 
   desktop-success:
     name: Desktop success
-    needs: [changes, web, rust, bundle]
+    needs: [changes, web, rust, e2e, bundle]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 2

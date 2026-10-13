@@ -25,7 +25,9 @@ const line = (e: object) => JSON.stringify(e) + "\n";
 describe("readEvents", () => {
   test("yields one event per line", async () => {
     const events = await collect(
-      streamOf([line({ type: "start", provider: "P", model: "m" }) + line({ type: "text", delta: "hi" })]),
+      streamOf([
+        line({ type: "start", provider: "P", model: "m" }) + line({ type: "text", delta: "hi" }),
+      ]),
     );
     expect(events).toEqual([
       { type: "start", provider: "P", model: "m" },
@@ -54,7 +56,12 @@ describe("readEvents", () => {
   });
 
   test("a final line without a newline is still delivered", async () => {
-    const events = await collect(streamOf([line({ type: "text", delta: "a" }), JSON.stringify({ type: "done", reason: "stop" })]));
+    const events = await collect(
+      streamOf([
+        line({ type: "text", delta: "a" }),
+        JSON.stringify({ type: "done", reason: "stop" }),
+      ]),
+    );
     expect(events.map((e) => e.type)).toEqual(["text", "done"]);
   });
 
@@ -65,7 +72,10 @@ describe("readEvents", () => {
   test("stops reading once aborted", async () => {
     const controller = new AbortController();
     const seen: ChatEvent[] = [];
-    const stream = streamOf([line({ type: "text", delta: "1" }), line({ type: "text", delta: "2" })]);
+    const stream = streamOf([
+      line({ type: "text", delta: "1" }),
+      line({ type: "text", delta: "2" }),
+    ]);
     for await (const e of readEvents(stream, controller.signal)) {
       seen.push(e);
       controller.abort();

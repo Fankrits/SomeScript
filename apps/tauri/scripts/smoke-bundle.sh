@@ -3,7 +3,7 @@
 # Homebrew/MSYS tools, no TECTONIC_BIN) and drives its HTTP surface, so it only passes if the
 # bundled sidecars and templates are really found.
 #
-#   sh scripts/smoke-bundle.sh <SomeScript.app | path/to/somescript-desktop[.exe]>            auth, SPA, project creation, files
+#   sh scripts/smoke-bundle.sh <SomeScript.app | path/to/somescript-desktop[.exe]>            auth, SPA, project creation, files, AI settings
 #   sh scripts/smoke-bundle.sh <...> --compile                                                ...plus a real Tectonic compile
 #
 # Needs sh, curl, awk, od, grep. On Linux without a display it starts Xvfb (GTK needs one even though
@@ -109,6 +109,26 @@ contains "creating a project uses the bundled template" '"id":"Smoke"' -b "$jar"
   -H 'content-type: application/json' -d '{"name":"Smoke","template":"blank"}' "$base/api/projects"
 contains "the new project's files are served" '"main.tex"' -b "$jar" "$base/api/files?projectId=Smoke"
 contains "the project is in the library listing" '"Smoke"' -b "$jar" "$base/api/projects"
+
+# The AI assistant: settings are stored by the app and never echoed, and the HTTP/TLS stack of the
+# release binary starts (a provider test against a closed port must say so, not crash).
+contains "AI settings start empty" '"providers":[]' -b "$jar" "$base/api/ai/settings"
+# Assembled here so the secret scanner sees no key-shaped literal in the repo.
+fake_key="smoke-test-$port-key"
+saved="$(curl -s -b "$jar" -H 'content-type: application/json' \
+  -d "{\"name\":\"Smoke AI\",\"kind\":\"openai\",\"baseUrl\":\"https://127.0.0.1:9/v1\",\"apiKey\":\"$fake_key\"}" \
+  "$base/api/ai/providers")"
+echo "$saved" | grep -qF '"hasKey":true' || fail "the provider was not saved: $saved"
+if echo "$saved" | grep -qF "$fake_key"; then fail "the API key was echoed back"; fi
+if curl -s -b "$jar" "$base/api/ai/settings" | grep -qF "$fake_key"; then fail "the API key is readable from the settings"; fi
+ok "a provider is saved and its key is never returned"
+contains "the TLS/HTTP stack starts and reports an unreachable provider" "Couldn't reach" -b "$jar" \
+  -H 'content-type: application/json' -d '{"name":"Smoke AI","kind":"openai","baseUrl":"https://127.0.0.1:9/v1","mode":"models"}' \
+  "$base/api/ai/providers/test"
+provider_id="$(echo "$saved" | sed -n 's/.*"provider":{"id":"\([^"]*\)".*/\1/p')"
+[ -n "$provider_id" ] || fail "no provider id in $saved"
+contains "the provider can be removed again" '"providers":[]' -b "$jar" \
+  -H 'content-type: application/json' -d "{\"id\":\"$provider_id\"}" "$base/api/ai/providers/delete"
 
 if [ "$compile" = "--compile" ]; then
   contains "real Tectonic compile succeeds" '[SUCCESS] main.pdf' -b "$jar" --max-time 300 \

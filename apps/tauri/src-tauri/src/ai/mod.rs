@@ -12,7 +12,11 @@ pub mod sse;
 pub mod threads;
 pub mod tools;
 
-use std::{sync::Once, time::Duration};
+use crate::error::{ApiError, ApiResult};
+use std::{
+    sync::{Arc, Once, OnceLock},
+    time::Duration,
+};
 
 /// reqwest is built without a bundled crypto provider (see Cargo.toml), so one must be installed
 /// once per process before the first client is made.
@@ -26,14 +30,26 @@ pub fn init_tls() {
 
 /// Two clients: loopback endpoints (Ollama, LM Studio, a local proxy) must never be sent through
 /// a corporate/system proxy, while everything else should honour it.
-#[derive(Clone)]
+///
+/// They are built on first use, not at startup: the assistant is optional, so a TLS stack that
+/// can't initialise on some machine must show up as an error in the chat, never stop the app
+/// (and the editor) from starting.
+#[derive(Clone, Default)]
 pub struct AiHttp {
+    clients: Arc<OnceLock<Result<Clients, String>>>,
+}
+
+struct Clients {
     remote: reqwest::Client,
     local: reqwest::Client,
 }
 
 impl AiHttp {
     pub fn new() -> Self {
+        Self::default()
+    }
+
+    fn build() -> Result<Clients, String> {
         init_tls();
         let base = || {
             reqwest::Client::builder()
@@ -43,13 +59,25 @@ impl AiHttp {
                 // redirects) to wherever the server points. Make the user fix the base URL instead.
                 .redirect(reqwest::redirect::Policy::none())
         };
-        Self {
-            remote: base().build().expect("HTTP client"),
-            local: base().no_proxy().build().expect("HTTP client"),
-        }
+        let build = |b: reqwest::ClientBuilder| b.build().map_err(|e| e.to_string());
+        Ok(Clients {
+            remote: build(base())?,
+            local: build(base().no_proxy())?,
+        })
     }
 
-    pub fn client_for(&self, base_url: &str) -> reqwest::Client {
+    pub fn client_for(&self, base_url: &str) -> ApiResult<reqwest::Client> {
+        let clients = self
+            .clients
+            .get_or_init(Self::build)
+            .as_ref()
+            .map_err(|e| {
+                eprintln!("[ai] network stack failed to start: {e}");
+                ApiError::new(
+                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    "The assistant couldn't set up its secure connection on this computer.",
+                )
+            })?;
         let loopback = reqwest::Url::parse(base_url)
             .ok()
             .and_then(|u| u.host_str().map(str::to_owned))
@@ -60,17 +88,11 @@ impl AiHttp {
                         .parse::<std::net::IpAddr>()
                         .is_ok_and(|ip| ip.is_loopback())
             });
-        if loopback {
-            self.local.clone()
+        Ok(if loopback {
+            clients.local.clone()
         } else {
-            self.remote.clone()
-        }
-    }
-}
-
-impl Default for AiHttp {
-    fn default() -> Self {
-        Self::new()
+            clients.remote.clone()
+        })
     }
 }
 

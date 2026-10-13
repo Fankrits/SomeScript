@@ -7,7 +7,7 @@
     "sync:public": "bun scripts/sync-public.mjs",
     "web:dev": "bun run sync:public && vite",
     "web:build": "bun run sync:public && tsc && vite build",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p e2e",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
     "format": "oxfmt",
@@ -20,7 +20,9 @@
     "desktop:build:universal": "tauri build --config src-tauri/tauri.bundle.conf.json --target universal-apple-darwin",
     "desktop:build:linux": "tauri build --config src-tauri/tauri.bundle.linux.conf.json",
     "desktop:verify": "sh scripts/verify-bundle.sh src-tauri/target/release/bundle/macos/SomeScript.app",
-    "desktop:smoke": "sh scripts/smoke-bundle.sh src-tauri/target/release/bundle/macos/SomeScript.app"
+    "desktop:smoke": "sh scripts/smoke-bundle.sh src-tauri/target/release/bundle/macos/SomeScript.app",
+    "e2e": "playwright test --config e2e/playwright.config.ts",
+    "e2e:install": "playwright install chromium"
   },
   "dependencies": {
     "@fontsource-variable/geist": "5.3.0",
@@ -35,6 +37,7 @@
     "sonner": "^2.0.8"
   },
   "devDependencies": {
+    "@playwright/test": "1.56.1",
     "@tailwindcss/vite": "^4.3.3",
     "@tauri-apps/cli": "^2",
     "@types/node": "^26.6.3",

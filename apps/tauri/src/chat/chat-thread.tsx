@@ -321,7 +321,10 @@ function AssistantBubble(props: {
 }
 
 function ErrorBanner(props: { message: string; onDismiss: () => void; onRetry: () => void }) {
-  const aboutSetup = /settings|api key|provider|model/i.test(props.message);
+  // Messages that point at the Settings screen get a button to it; retrying only makes sense
+  // when something was actually attempted.
+  const needsSettings = /settings|base url/i.test(props.message);
+  const retryable = !/no ai provider|choose a model/i.test(props.message);
   return (
     <div
       role="alert"
@@ -329,23 +332,26 @@ function ErrorBanner(props: { message: string; onDismiss: () => void; onRetry: (
       className="mx-2 mb-2 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive"
     >
       <span className="min-w-0 flex-1 break-words">{props.message}</span>
-      {aboutSetup ? (
-        <Button size="xs" variant="outline" onClick={openSettings}>
-          <Settings /> Settings
-        </Button>
-      ) : (
-        <Button size="xs" variant="outline" onClick={props.onRetry}>
-          <RotateCcw /> Retry
-        </Button>
-      )}
-      <button
-        type="button"
-        aria-label="Dismiss"
-        onClick={props.onDismiss}
-        className="rounded p-0.5 hover:bg-destructive/10"
-      >
-        <X className="size-3.5" />
-      </button>
+      <span className="flex shrink-0 items-center gap-1">
+        {needsSettings && (
+          <Button size="xs" variant="outline" onClick={openSettings}>
+            <Settings /> Settings
+          </Button>
+        )}
+        {retryable && (
+          <Button size="xs" variant="outline" onClick={props.onRetry}>
+            <RotateCcw /> Retry
+          </Button>
+        )}
+        <button
+          type="button"
+          aria-label="Dismiss"
+          onClick={props.onDismiss}
+          className="rounded p-0.5 hover:bg-destructive/10"
+        >
+          <X className="size-3.5" />
+        </button>
+      </span>
     </div>
   );
 }

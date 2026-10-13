@@ -5,7 +5,9 @@ A free, local LaTeX editor. Projects are plain folders on your computer, compili
 (Tectonic downloads LaTeX packages the first time a document needs them; **Prepare for offline use** in the
 app fetches the common ones up front).
 
-No authentication, collaboration or AI in v1. AI returns later as bring-your-own-key (see _Extending_).
+No authentication and no collaboration. An optional **AI assistant** is built in and bring-your-own-key: add a
+provider (OpenAI, Anthropic, OpenRouter, Gemini, a local model such as Ollama, or any OpenAI-compatible custom
+endpoint) in **Settings** and the chat panel works on the open project. See _AI assistant_.
 
 ## How it works
 
@@ -16,9 +18,11 @@ Tauri window ──► http://127.0.0.1:<random port>/?t=<token>        (loopbac
    axum server ── Host check + per-launch token cookie on every request
      ├─ the built SPA, embedded in the binary
      ├─ /api/*   the SAME contract apps/editor's Next routes implement (files, search, compile, ...)
-     └─ /api/projects, /api/trash, /api/templates, /api/settings   (library screen, desktop only)
+     ├─ /api/projects, /api/trash, /api/templates, /api/settings   (library screen, desktop only)
+     └─ /api/ai/*, /api/chat/*   (AI settings, streaming chat, chat history; desktop only)
    storage.rs  traversal- and symlink-safe paths, atomic writes, sha256 versions
    tex.rs      bundled tectonic + synctex as sidecar processes
+   ai/         the assistant: provider protocols, tools, agent loop, key store
 ```
 
 **The UI is not forked.** `vite.config.ts` aliases `@/` to `apps/editor`, so the desktop app compiles the
@@ -33,8 +37,12 @@ database. Deleted projects move to `<library>/.trash/` for 7 days.
 | ------------------------------ | ------------------------------------------------------------------------------------ |
 | `src/main.tsx`, `src/root.tsx` | Host entry. `/dashboard` is the library, `/?projectId=…` is the editor               |
 | `src/library/`                 | Library screen (new project, import/export ZIP, trash, library folder, offline prep) |
-| `src/shims/`                   | Stand-ins for `next/*`, Clerk, Sentry, analytics, Eve                                |
+| `src/settings/`                | App-wide Settings screen (`/settings`): AI providers and keys, library folder        |
+| `src/chat/`                    | The chat panel: streaming UI, tool cards with diffs and Undo, history                |
+| `src/shims/`                   | Stand-ins for `next/*`, Clerk, Sentry, analytics, and the cloud chat                 |
 | `src-tauri/src/api/`           | Route-by-route ports of `apps/editor/app/api/*`; each file names its source          |
+| `src-tauri/src/ai/`            | The assistant (see below). `api/ai.rs` holds its HTTP routes                         |
+| `e2e/`                         | End-to-end tests (Playwright) against the real server and UI                         |
 | `src-tauri/templates/`         | Bundled project templates (Starter with Thai fonts, Blank)                           |
 | `scripts/`                     | `fetch-sidecars.sh`, `sync-public.mjs`, `api-coverage.test.ts`                       |
 
@@ -62,11 +70,22 @@ In dev, `/api` is proxied by Vite to the Rust server, so the UI also works in a 
 ## Test
 
 ```sh
-bun run typecheck                          # the host AND the editor source it aliases
-cd src-tauri && cargo test                 # unit + HTTP contract tests (no TeX needed)
+bun run typecheck                          # the host, the editor source it aliases, and the e2e tests
+cd src-tauri && cargo test                 # unit + HTTP contract tests (no TeX, no network, no API key)
 TECTONIC_BIN=… SYNCTEX_BIN=… cargo test -- --ignored real_    # real Tectonic/SyncTeX round trip
-bun run web:build && bun test              # drift guard (below)
+bun run web:build && bun test              # drift guard (below) + the chat's unit tests
+
+# End to end: the real server and its embedded UI in a browser, a scripted model provider, and a
+# stand-in for Tectonic. Build what the binary embeds first; Linux needs a display (xvfb-run -a).
+bun run web:build && (cd src-tauri && cargo build)
+bun run e2e:install                        # once: the Chromium Playwright drives
+bun run e2e                                # E2E_APP=<release binary> runs the same suite against it
 ```
+
+The end-to-end suite covers the Settings screen (adding, testing, editing and removing providers; the key
+never coming back), the whole chat (streaming, every tool, Undo, errors, Stop, history, both protocols),
+auto-compile, and the Tasks board. `e2e/mock-provider.ts` is the scripted provider: its header lists what each
+kind of prompt makes it do.
 
 **Editor drift.** Because the desktop app compiles the editor, a future editor change can add an `/api` call
 the Rust server lacks. `scripts/api-coverage.test.ts` checks the built bundle against the Rust routes and
@@ -114,9 +133,42 @@ rejects any `Host` other than its own (DNS rebinding), and requires a random per
 first load for an `HttpOnly; SameSite=Strict` cookie. Every file path is confined to its project (including
 through symlinks). ZIP imports are size-capped by bytes actually read, not by declared size.
 
-## Extending: bring-your-own-key AI
+## AI assistant
 
-`src/shims/eve-thread.tsx` is where the chat panel plugs in: replace it with a local assistant-ui thread,
-keep the key in the OS keychain and call the model from Rust (a streaming `/api/ai/*` route) so it never
-reaches the webview. Tool-call cards in `apps/editor/components/assistant-ui/eve-tool-calls.tsx` can be
-reused if tool names and output shapes are kept.
+The chat panel in the editor's sidebar is the assistant. Open **Settings** from the dashboard (or the chat's
+"Set up AI" prompt) to connect it.
+
+**Providers.** A provider is a base URL, an optional key and a protocol: _OpenAI-compatible_ (chat completions:
+OpenAI, OpenRouter, Groq, DeepSeek, Gemini's compatibility endpoint, Ollama, LM Studio, vLLM, LiteLLM, Azure OpenAI,
+and any **custom endpoint** that speaks it) or _Anthropic_ (messages). Settings can fetch a provider's model list,
+test the connection, and send a real test message before saving. Local servers need no key. A key can be sent in a
+different header (Azure's `api-key`) under _Advanced_. Providers, the active model and your custom instructions are
+global: they apply to every project.
+
+**How it runs.** The webview never talks to a model. It posts the conversation to `/api/ai/chat` and the Rust server
+calls the provider (`ai/protocol.rs` builds the request and decodes the stream for either protocol), runs the tools
+the model asks for against the project folder, feeds the results back, and streams everything to the UI as NDJSON
+(`ai/agent.rs` documents the events). Stop closes the request and kills a running compile.
+
+**Tools** (`ai/tools.rs`; ports of the cloud assistant's, same names and wording): `list_files`, `read_file`, `grep`,
+`edit_file` (exact-once replacement, tolerant of CRLF files), `write_file` (refuses if the file changed since the
+model read it), `delete_file`, `move_file`, `compile_project`, and `todo_write` (the live plan). Every path goes through
+`Project::resolve`, so a model can't leave the project, and the app's own folders (`.somescript`, `.git`,
+`.preview-cache`, ...) are off limits. Edits show a diff with **Undo**, which asks first if the file changed since.
+A model that can't use tools (many small local ones) still chats.
+
+**Keys and privacy.**
+
+- Keys are stored in `ai.json` in the OS app-config dir, written owner-only on Unix, and are never returned: the UI
+  only sees `hasKey` and the last four characters, errors have the key redacted, and nothing is logged. (A keychain
+  would be stronger at rest but needs a running secret service on Linux and fails silently in headless sessions.)
+- The text of the files the assistant reads, and what you type, goes to the provider you chose, and nowhere else.
+- Redirects are not followed (a custom header like `x-api-key` would travel with them), loopback endpoints bypass
+  system proxies, and everything else honours them. TLS is rustls with the OS root store (no OpenSSL to bundle).
+
+**History** lives in the project (`.somescript/chat/`), so it follows the folder and never mixes projects; it is not
+part of exports. The editor's own history menu (New Chat, History, delete) drives it through `src/shims/eve-threads-client.ts`.
+
+**Extending.** A new protocol belongs in `ai/protocol.rs` (request body, auth, stream decoder; the agent above it is
+protocol-agnostic). A new tool needs a schema and an arm in `ai/tools.rs`, a card in `src/chat/tool-cards.tsx`, and a
+line in `ai/instructions.md` (a test fails if the prompt and the tools drift apart).

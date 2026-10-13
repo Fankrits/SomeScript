@@ -7,7 +7,7 @@
 //! ```text
 //! {"type":"start","provider":"OpenAI","model":"gpt-4.1"}
 //! {"type":"text","delta":"..."}            {"type":"reasoning","delta":"..."}
-//! {"type":"tool-call","id","name","args"}  {"type":"tool-result","id","ok","result","output"}
+//! {"type":"tool-call","id","name","args","step"}  {"type":"tool-result","id","ok","result","output"}
 //! {"type":"usage","input","output"}        {"type":"notice","message":"..."}
 //! {"type":"error","message":"..."}         {"type":"done","reason":"stop"|"max-steps"|"error"}
 //! ```
@@ -184,7 +184,7 @@ pub async fn run(mut input: RunInput, tx: mpsc::Sender<Bytes>) {
         for call in calls {
             if !emit(
                 &tx,
-                json!({ "type": "tool-call", "id": call.id, "name": call.name, "args": call.args }),
+                json!({ "type": "tool-call", "id": call.id, "name": call.name, "args": call.args, "step": step_no }),
             )
             .await
             {
@@ -555,6 +555,10 @@ fn push_assistant(out: &mut Vec<Msg>, m: &Value) {
     let mut text = String::new();
     let mut calls: Vec<ToolCall> = Vec::new();
     let mut results: Vec<Msg> = Vec::new();
+    // Which model step the buffered calls belong to; `step` on a tool part is what the server
+    // emitted, so two calls from different steps (read, then edit after seeing the result) are not
+    // replayed as one parallel batch. Messages saved without it keep the older, merged reading.
+    let mut calls_step: Option<u64> = None;
     let flush = |out: &mut Vec<Msg>,
                  text: &mut String,
                  calls: &mut Vec<ToolCall>,
@@ -595,6 +599,11 @@ fn push_assistant(out: &mut Vec<Msg>, m: &Value) {
                 if id.is_empty() || name.is_empty() {
                     continue;
                 }
+                let step = part.get("step").and_then(Value::as_u64);
+                if !calls.is_empty() && step != calls_step {
+                    flush(out, &mut text, &mut calls, &mut results);
+                }
+                calls_step = step;
                 let output = part.get("output").and_then(Value::as_str).map_or_else(
                     || "The tool did not finish (the run was stopped).".to_owned(),
                     str::to_owned,
@@ -746,6 +755,41 @@ mod tests {
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].args, json!({}));
         assert!(matches!(&h[2], Msg::Tool { content, .. } if content.contains("did not finish")));
+    }
+
+    #[test]
+    fn tool_calls_from_different_steps_are_replayed_as_separate_steps() {
+        let h = history_from_client(&[
+            json!({ "role": "user", "text": "go" }),
+            json!({ "role": "assistant", "parts": [
+                { "type": "tool", "id": "a", "name": "read_file", "args": {}, "output": "x", "step": 1 },
+                { "type": "tool", "id": "b", "name": "read_file", "args": {}, "output": "y", "step": 1 },
+                { "type": "tool", "id": "c", "name": "edit_file", "args": {}, "output": "z", "step": 2 },
+                { "type": "text", "text": "done" },
+            ]}),
+        ]);
+        let shape: Vec<String> = h
+            .iter()
+            .map(|m| match m {
+                Msg::User(_) => "user".to_owned(),
+                Msg::Assistant { calls, text } => {
+                    format!("assistant({} calls, {:?})", calls.len(), text)
+                }
+                Msg::Tool { call_id, .. } => format!("tool({call_id})"),
+            })
+            .collect();
+        assert_eq!(
+            shape,
+            [
+                "user",
+                "assistant(2 calls, \"\")",
+                "tool(a)",
+                "tool(b)",
+                "assistant(1 calls, \"\")",
+                "tool(c)",
+                "assistant(0 calls, \"done\")",
+            ]
+        );
     }
 
     #[test]
@@ -926,7 +970,7 @@ mod tests {
                 },
                 model: "mock-1".into(),
                 system: "SYS".into(),
-                http: crate::ai::AiHttp::new().client_for(base_url),
+                http: crate::ai::AiHttp::new().client_for(base_url).unwrap(),
             },
             history,
             env: ToolEnv::new(

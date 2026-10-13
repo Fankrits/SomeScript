@@ -28,6 +28,8 @@ export interface ToolPart {
   id: string;
   name: string;
   args: Record<string, unknown>;
+  /** Which model step issued it: calls from different steps are replayed as separate steps. */
+  step?: number;
   status: ToolStatus;
   /** The short text the model saw as the tool's result; sent back as history on later turns. */
   output?: string;
@@ -59,7 +61,7 @@ export type ChatEvent =
   | { type: "start"; provider: string; model: string }
   | { type: "text"; delta: string }
   | { type: "reasoning"; delta: string }
-  | { type: "tool-call"; id: string; name: string; args: Record<string, unknown> }
+  | { type: "tool-call"; id: string; name: string; args: Record<string, unknown>; step?: number }
   | { type: "tool-result"; id: string; ok: boolean; result: ToolResult; output: string }
   | { type: "usage"; input: number; output: number }
   | { type: "notice"; message: string }

@@ -125,13 +125,15 @@ This applies to every app in the monorepo, not just the compiler — e.g. LaTeX-
 
 ## Desktop app (apps/tauri)
 
-A free, offline-first desktop build. **No auth, collaboration or AI in v1** (AI returns later as BYOK).
+A free, offline-first desktop build. **No auth or collaboration.** AI is bring-your-own-key: the user adds providers (any OpenAI-compatible or Anthropic endpoint) in the app's global Settings screen.
 
 - **The editor UI is not forked.** `apps/tauri/vite.config.ts` aliases `@/` to `apps/editor` and stubs `next/*`, Clerk, Sentry, analytics and the Eve chat in `apps/tauri/src/shims/`. Do not add desktop-only branches to `apps/editor`.
 - **The Rust server (`apps/tauri/src-tauri/src/api/`) re-implements the editor's `/api/*` routes.** Each file names the Next route it ports; keep response shapes identical. When you add a Next/Clerk import or an `/api` call to the editor's *client* code, give it a shim or a Rust route. `cd apps/tauri && bun run web:build && bun test` fails and names the path if you forget.
 - Keep the aliases in `vite.config.ts` and `tsconfig.json` `paths` in sync. `cd apps/tauri && bun run typecheck` type-checks the editor source too.
 - Projects are folders under the user's library; there is no database. Never edit anything under a user's library from tests; use `SOMESCRIPT_LIBRARY` with a temp dir.
+- **The AI assistant runs in Rust** (`src-tauri/src/ai/`, routes in `api/ai.rs`; the UI is `apps/tauri/src/chat/` and `src/settings/`). The webview never calls a model and never sees an API key: keys live in `ai.json` in the app config dir, responses only carry `hasKey` and the last four characters, and provider errors are redacted. Don't add a route or a UI path that returns a key. Chat history is per project in `.somescript/chat/`, served by `/api/chat/*` (not `/api/eve/*`: the drift guard fails the build if cloud-only paths reach the bundle).
 - Rust tests: `cd apps/tauri/src-tauri && cargo test`. Sidecars (Tectonic, SyncTeX) come from `bun run desktop:sidecars` and are only needed for release builds and the `--ignored real_` test.
+- End-to-end tests (`cd apps/tauri && bun run web:build && (cd src-tauri && cargo build) && xvfb-run -a bun run e2e`) drive the real server and UI with a scripted model provider and a stand-in Tectonic; new editor or desktop features should get a spec in `apps/tauri/e2e/`.
 
 ## CI/CD
 

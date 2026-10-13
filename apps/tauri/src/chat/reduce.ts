@@ -38,6 +38,7 @@ export function applyEvent(msg: AssistantMessage, ev: ChatEvent): AssistantMessa
         id: ev.id,
         name: ev.name,
         args: ev.args ?? {},
+        ...(typeof ev.step === "number" ? { step: ev.step } : {}),
         status: "running",
       };
       return { ...msg, parts: [...msg.parts, part] };

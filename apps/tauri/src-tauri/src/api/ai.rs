@@ -93,7 +93,7 @@ pub async fn provider_test(
         .as_deref()
         .and_then(|id| s.ai.snapshot().provider(id).cloned());
     let provider = draft_provider(stored.as_ref(), &input)?;
-    let http = s.http.client_for(&provider.base_url);
+    let http = s.http.client_for(&provider.base_url)?;
 
     if mode == "chat" {
         let Some(model) =
@@ -215,7 +215,7 @@ pub async fn chat(State(s): State<ApiState>, Json(body): Json<Value>) -> ApiResu
         .filter(|f| f.len() < 1024);
     let conn = Conn {
         system: agent::system_prompt(&settings.custom_instructions, open_file),
-        http: s.http.client_for(&provider.base_url),
+        http: s.http.client_for(&provider.base_url)?,
         provider,
         model,
     };
