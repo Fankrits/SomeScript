@@ -2,7 +2,7 @@
 //! JSON shapes: those are the contract with apps/editor, so they are what must not drift.
 
 use super::{ApiState, router};
-use crate::library::Library;
+use crate::{library::Library, tex::TexTools};
 use axum::{
     Router,
     body::Body,
@@ -22,7 +22,8 @@ fn harness() -> Harness {
     let root = tempfile::tempdir().unwrap();
     std::fs::create_dir(root.path().join("p1")).unwrap();
     let library = Arc::new(Library::new(root.path().to_path_buf()));
-    let state = ApiState { library };
+    let tex = Arc::new(TexTools::new("never-run".into(), "never-run".into()));
+    let state = ApiState { library, tex };
     Harness {
         app: router::<ApiState>().with_state(state),
         root,

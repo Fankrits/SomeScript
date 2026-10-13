@@ -1,6 +1,7 @@
 //! The `/api/*` contract apps/editor's UI already speaks. Each submodule documents the
 //! Next route handler it is a port of; keep response shapes identical to those.
 
+mod compile;
 mod files;
 mod meta;
 mod search;
@@ -8,7 +9,7 @@ mod search;
 #[cfg(test)]
 mod http_tests;
 
-use crate::library::Library;
+use crate::{library::Library, tex::TexTools};
 use axum::{
     Router,
     extract::{DefaultBodyLimit, FromRef},
@@ -20,6 +21,7 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub struct ApiState {
     pub library: Arc<Library>,
+    pub tex: Arc<TexTools>,
 }
 
 pub fn router<S>() -> Router<S>
@@ -38,6 +40,8 @@ where
             "/api/files/upload",
             post(files::upload).layer(DefaultBodyLimit::max(files::MAX_UPLOAD_BYTES + 1024 * 1024)),
         )
+        .route("/api/compile", post(compile::compile))
+        .route("/api/synctex", post(compile::synctex))
         .route("/api/search", get(search::get).post(search::post))
         .route("/api/tasks", get(meta::tasks_get).post(meta::tasks_post))
         .route(

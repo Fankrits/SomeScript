@@ -3,6 +3,7 @@ mod error;
 mod library;
 mod server;
 mod storage;
+mod tex;
 
 use api::ApiState;
 use library::Library;
@@ -11,6 +12,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder, webview::DownloadEvent};
+use tex::TexTools;
 
 /// `SOMESCRIPT_LIBRARY` (dev, tests, portable use) overrides the default `~/Documents/SomeScript`.
 fn library_root(app: &tauri::App) -> PathBuf {
@@ -34,7 +36,10 @@ pub fn run() {
             }
             let library = Arc::new(Library::new(root));
 
-            let state = ApiState { library };
+            let state = ApiState {
+                library,
+                tex: Arc::new(TexTools::locate()),
+            };
             let started =
                 tauri::async_runtime::block_on(server::start(app.handle().clone(), state))?;
             let served = format!(
