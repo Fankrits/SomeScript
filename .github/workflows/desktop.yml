@@ -1,7 +1,9 @@
 name: Desktop
 
-# The desktop app (apps/tauri) reuses apps/editor's UI source through Vite aliases, so editor
-# changes can break it: this runs on editor changes too, not just apps/tauri.
+# The desktop app compiles apps/editor's UI source, so editor changes can break it: the cheap
+# JS checks run on those too, while the macOS jobs only run when the Rust app itself changes.
+# Required status check: "Desktop success".
+
 on:
   pull_request:
     paths:
@@ -9,76 +11,132 @@ on:
       - "apps/editor/**"
       - "apps/compiler/scripts/build-synctex.sh"
       - "bun.lock"
-      - ".github/workflows/desktop.yml"
+      - ".github/workflows/desktop*.yml"
+      - ".github/actions/**"
   push:
     branches: [main]
-    tags: ["desktop-v*"]
   workflow_dispatch:
 
+concurrency:
+  group: desktop-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
 jobs:
-  test:
-    runs-on: macos-latest
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      rust: ${{ steps.filter.outputs.rust }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          bun-version: 1.3.14
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+          persist-credentials: false
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
         with:
-          workspaces: apps/tauri/src-tauri
-      - run: bun install --frozen-lockfile
-      - name: Type-check (desktop host + the editor source it aliases)
-        run: cd apps/tauri && bun run typecheck
+          filters: |
+            rust:
+              - 'apps/tauri/src-tauri/**'
+              - 'apps/tauri/scripts/**'
+              - 'apps/tauri/package.json'
+              - 'apps/compiler/scripts/build-synctex.sh'
+              - '.github/workflows/desktop*.yml'
+              - '.github/actions/**'
+
+  web:
+    name: Frontend, scripts and drift guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/tauri
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-js
+      - name: Type-check (this app and the editor source it aliases)
+        run: bun run typecheck
       - name: Lint and format
-        run: cd apps/tauri && bun run lint && bun run format:check
-      # tauri::generate_context! embeds the built frontend, so it must exist before cargo runs.
-      - name: Build frontend
-        run: cd apps/tauri && bun run web:build
+        run: bun run lint && bun run format:check
+      - name: Build the frontend
+        run: bun run web:build
       # Fails, naming the path, when the editor starts calling an /api route the Rust server lacks.
       - name: Drift guard (editor /api calls vs Rust routes)
-        run: cd apps/tauri && bun test
-      - name: Rust format and lint
+        run: bun test
+      - name: Shell scripts
+        run: shellcheck -s sh scripts/*.sh
+
+  rust:
+    name: Rust (macOS)
+    needs: changes
+    if: needs.changes.outputs.rust == 'true' || github.event_name != 'pull_request'
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-js
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: apps/tauri/src-tauri
+      # tauri::generate_context! embeds the built frontend, so it must exist before cargo runs.
+      - name: Build the frontend
+        working-directory: apps/tauri
+        run: bun run web:build
+      - name: rustfmt and clippy
+        working-directory: apps/tauri/src-tauri
         run: |
-          cd apps/tauri/src-tauri
           cargo fmt --check
           cargo clippy --all-targets -- -D warnings
-      - name: Rust tests
-        run: cd apps/tauri/src-tauri && cargo test
+      - name: Tests
+        working-directory: apps/tauri/src-tauri
+        run: cargo test
       - name: Fetch sidecars
-        run: cd apps/tauri && bun run desktop:sidecars
-      # Real Tectonic + SyncTeX. Needs the network to fetch TeX packages, so it must not gate merges.
+        working-directory: apps/tauri
+        run: bun run desktop:sidecars
+      # Real Tectonic + SyncTeX. It downloads TeX packages, so a network blip must not gate merges.
       - name: Real Tectonic round trip
         continue-on-error: true
+        working-directory: apps/tauri/src-tauri
         run: |
-          cd apps/tauri/src-tauri
           TECTONIC_BIN="$PWD/binaries/tectonic-aarch64-apple-darwin" \
           SYNCTEX_BIN="$PWD/binaries/synctex-aarch64-apple-darwin" \
           cargo test -- --ignored real_
 
-  # Unsigned build, uploaded as a workflow artifact. Signing and notarization need Apple
-  # Developer ID secrets (APPLE_CERTIFICATE, APPLE_SIGNING_IDENTITY, APPLE_ID, APPLE_PASSWORD,
-  # APPLE_TEAM_ID); add them and Tauri signs the app and its sidecars automatically.
   bundle:
-    if: startsWith(github.ref, 'refs/tags/desktop-v') || github.event_name == 'workflow_dispatch'
-    needs: test
-    runs-on: macos-latest
+    name: Bundle
+    needs: changes
+    if: needs.changes.outputs.rust == 'true' || github.event_name != 'pull_request'
+    uses: ./.github/workflows/desktop-bundle.yml
+    permissions:
+      contents: read
+
+  desktop-success:
+    name: Desktop success
+    needs: [changes, web, rust, bundle]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
     steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.3.14
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: apps/tauri/src-tauri
-      - run: bun install --frozen-lockfile
-      - run: cd apps/tauri && bun run desktop:sidecars
-      - run: cd apps/tauri && bun run desktop:build
-      - uses: actions/upload-artifact@v4
-        with:
-          name: somescript-desktop-macos-arm64
-          path: |
-            apps/tauri/src-tauri/target/release/bundle/dmg/*.dmg
-            apps/tauri/src-tauri/target/release/bundle/macos/*.app
-          if-no-files-found: error
+      - name: Require every job that ran to have passed
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          echo "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          if echo "$NEEDS" | jq -e '[.[] | .result] | any(. == "failure" or . == "cancelled")' > /dev/null; then
+            echo "A required job failed or was cancelled." >&2
+            exit 1
+          fi

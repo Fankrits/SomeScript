@@ -1,0 +1,128 @@
+name: Desktop bundle
+
+# Reusable. Builds the macOS app bundle from source, then proves it works before anything is
+# published: verifies its contents (sidecars beside the executable, only system libraries,
+# templates, licenses), and starts it headless in a clean environment to drive its HTTP surface.
+#
+# With `release: true` it also signs and notarizes (when the Apple secrets below are set; otherwise
+# the bundle is unsigned), builds the DMG and writes checksums. Publishing and provenance
+# attestation are the caller's job (desktop-release.yml).
+
+on:
+  workflow_call:
+    inputs:
+      release:
+        description: Build the DMG, sign if possible, run the compile smoke test and package artifacts.
+        type: boolean
+        default: false
+    secrets:
+      APPLE_CERTIFICATE:
+        description: Base64 of the Developer ID Application .p12
+        required: false
+      APPLE_CERTIFICATE_PASSWORD:
+        required: false
+      APPLE_SIGNING_IDENTITY:
+        required: false
+      APPLE_ID:
+        required: false
+      APPLE_PASSWORD:
+        description: App-specific password for notarization
+        required: false
+      APPLE_TEAM_ID:
+        required: false
+    outputs:
+      signed:
+        description: '"true" when the bundle was signed and notarized'
+        value: ${{ jobs.bundle.outputs.signed }}
+
+permissions:
+  contents: read
+
+jobs:
+  bundle:
+    name: macOS arm64 bundle
+    runs-on: macos-latest # Apple Silicon: the only platform with a verified Tectonic checksum so far
+    timeout-minutes: 60
+    outputs:
+      signed: ${{ steps.meta.outputs.signed }}
+    env:
+      SIGN: ${{ inputs.release && secrets.APPLE_CERTIFICATE != '' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-js
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: apps/tauri/src-tauri
+
+      - name: Fetch sidecars (Tectonic, checksum-verified; SyncTeX, built from source)
+        working-directory: apps/tauri
+        run: bun run desktop:sidecars
+
+      - name: Build and sign
+        if: env.SIGN == 'true'
+        working-directory: apps/tauri
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: bun run desktop:build --bundles app,dmg
+
+      # Apple variables must be absent, not empty, or the tauri CLI tries to import a certificate.
+      - name: Build (unsigned)
+        if: env.SIGN != 'true'
+        working-directory: apps/tauri
+        env:
+          BUNDLES: ${{ inputs.release && 'app,dmg' || 'app' }}
+        run: bun run desktop:build --bundles "$BUNDLES"
+
+      - name: Read the version
+        id: meta
+        working-directory: apps/tauri
+        run: |
+          echo "version=$(jq -r .version src-tauri/tauri.conf.json)" >> "$GITHUB_OUTPUT"
+          echo "signed=${SIGN}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify the bundle
+        working-directory: apps/tauri
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          REQUIRE_SIGNED: ${{ env.SIGN == 'true' && '1' || '0' }}
+        run: sh scripts/verify-bundle.sh src-tauri/target/release/bundle/macos/SomeScript.app "$VERSION"
+
+      # A release also compiles for real: it needs the network (Tectonic fetches packages), which
+      # an ordinary PR check should not depend on.
+      - name: Smoke test the bundle
+        working-directory: apps/tauri
+        env:
+          COMPILE: ${{ inputs.release && '--compile' || '' }}
+        run: sh scripts/smoke-bundle.sh src-tauri/target/release/bundle/macos/SomeScript.app ${COMPILE:+"$COMPILE"}
+
+      - name: Package release artifacts
+        if: inputs.release
+        working-directory: apps/tauri/src-tauri/target/release/bundle
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          cp dmg/*.dmg "$GITHUB_WORKSPACE/dist/SomeScript-${VERSION}-macos-arm64.dmg"
+          ditto -c -k --keepParent macos/SomeScript.app "$GITHUB_WORKSPACE/dist/SomeScript-${VERSION}-macos-arm64.app.zip"
+          cd "$GITHUB_WORKSPACE/dist"
+          shasum -a 256 -- * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Upload release artifacts
+        if: inputs.release
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: desktop-macos-arm64
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14

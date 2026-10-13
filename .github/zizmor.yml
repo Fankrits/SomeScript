@@ -1,0 +1,8 @@
+# zizmor (workflow security linter) configuration. See docs/ci-cd.md.
+rules:
+  artipacked:
+    ignore:
+      # The OpenWiki workflow's create-pull-request step pushes with the credentials that
+      # actions/checkout persists. Changing that needs a real run of the workflow to verify,
+      # so it is accepted here until someone can test it.
+      - openwiki-update.yml

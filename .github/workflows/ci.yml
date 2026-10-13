@@ -1,26 +1,248 @@
 name: CI
 
+# Required status check: "CI success" (the last job). It passes when every job that ran passed,
+# and jobs skipped by the path filter below count as passed, so one name works for every PR.
+
 on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
 
 jobs:
-  check:
+  changes:
+    name: Detect changes
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read # paths-filter lists a PR's files through the API
+    outputs:
+      build: ${{ steps.filter.outputs.build }}
+      compiler: ${{ steps.filter.outputs.compiler }}
+      collaboration: ${{ steps.filter.outputs.collaboration }}
+      workflows: ${{ steps.filter.outputs.workflows }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          bun-version: 1.3.14
-      - run: bun install --frozen-lockfile
-      - name: Lint
+          persist-credentials: false
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        with:
+          filters: |
+            build:
+              - 'apps/web/**'
+              - 'apps/editor/**'
+              - 'apps/docs/**'
+              - 'apps/collaboration/**'
+              - 'package.json'
+              - 'bun.lock'
+              - 'turbo.json'
+              - '.github/workflows/ci.yml'
+              - '.github/actions/**'
+            compiler:
+              - 'apps/compiler/**'
+              - '.github/workflows/ci.yml'
+            collaboration:
+              - 'apps/collaboration/**'
+              - 'apps/editor/lib/storage.ts'
+              - '.github/workflows/ci.yml'
+            workflows:
+              - '.github/**'
+
+  quality:
+    name: Lint, format and types
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-js
+      - name: Lint (oxlint, every workspace)
         run: bun run lint
+      - name: Format check (oxfmt, every workspace)
+        run: bun run format:check
+      # .github/scripts is not a workspace package, so turbo skips it; use the binaries installed for apps/tauri.
+      - name: Format and lint CI scripts
+        run: |
+          apps/tauri/node_modules/.bin/oxfmt --check .github/scripts
+          apps/tauri/node_modules/.bin/oxlint .github/scripts
       - name: Type-check editor
-        run: cd apps/editor && bun x tsc --noEmit
+        working-directory: apps/editor
+        run: bun x tsc --noEmit
       - name: Type-check web
-        run: cd apps/web && bun x tsc --noEmit
-      - name: Test web
-        run: cd apps/web && bun test
-      - name: Test editor
-        run: cd apps/editor && bun test
+        working-directory: apps/web
+        run: bun x tsc --noEmit
+
+  test:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-js
+      - name: Web
+        working-directory: apps/web
+        run: bun test
+      - name: Editor
+        working-directory: apps/editor
+        run: bun test
+      - name: Compiler
+        working-directory: apps/compiler
+        run: bun test
+      - name: Collaboration
+        working-directory: apps/collaboration
+        run: bun test
+      # Bun's test discovery skips dot-directories, so the file is named explicitly.
+      - name: CI scripts (dependency audit gate)
+        run: bun test ./.github/scripts/audit-gate.test.ts
+
+  build:
+    name: Production builds
+    needs: changes
+    if: needs.changes.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      # `next build` imports modules that read these at build time. They are placeholders so the
+      # build can run without secrets; none of them is a credential. (The Clerk publishable key,
+      # which has to decode to "<host>$", is derived in the first step so no key-shaped literal
+      # sits in the repo for the secret scanner to flag.)
+      CLERK_SECRET_KEY: sk_test_ci_placeholder
+      CLERK_WEBHOOK_SECRET: whsec_ci_placeholder
+      DATABASE_URL: postgresql://postgres:password@localhost:5432/ci
+      STRIPE_SECRET_KEY: sk_test_ci_placeholder
+      STRIPE_WEBHOOK_SECRET: whsec_ci_placeholder
+      STRIPE_PRICE_PRO: price_ci
+      STRIPE_PRICE_PRO_ANNUAL: price_ci
+      STRIPE_PRICE_TEAM: price_ci
+      STRIPE_PRICE_TEAM_ANNUAL: price_ci
+      EDITOR_URL: http://localhost:3002
+      AI_GATEWAY_API_KEY: ci_placeholder
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-js
+      - name: Placeholder Clerk publishable key
+        run: echo "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_$(printf 'ci-placeholder.clerk.accounts.dev$' | base64)" >> "$GITHUB_ENV"
+      - name: Cache Next.js build output
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            apps/web/.next/cache
+            apps/editor/.next/cache
+          key: next-${{ runner.os }}-${{ hashFiles('bun.lock') }}-${{ github.sha }}
+          restore-keys: |
+            next-${{ runner.os }}-${{ hashFiles('bun.lock') }}-
+      - name: Build web, editor, docs and collaboration
+        run: bun run build
+
+  docker-compiler:
+    name: Docker image (compiler)
+    needs: changes
+    if: needs.changes.outputs.compiler == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      # linux/amd64 only: Tectonic publishes no aarch64-linux-gnu build (see apps/compiler/Dockerfile).
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: apps/compiler
+          file: apps/compiler/Dockerfile
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: somescript-compiler:ci
+          cache-from: type=gha,scope=compiler
+          cache-to: type=gha,scope=compiler,mode=max
+      - name: Start the container and check it serves
+        run: |
+          docker run -d --name compiler -p 3001:3001 somescript-compiler:ci
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3001/health; then echo; break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:3001/health
+          docker exec compiler tectonic --version
+          docker exec compiler sh -c 'command -v synctex'
+      - name: Container logs on failure
+        if: failure()
+        run: docker logs compiler
+
+  docker-collaboration:
+    name: Docker image (collaboration)
+    needs: changes
+    if: needs.changes.outputs.collaboration == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      # The repo root is the build context: the image copies apps/editor/lib/storage.ts too.
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: apps/collaboration/Dockerfile
+          platforms: linux/amd64
+          push: false
+          tags: somescript-collaboration:ci
+          cache-from: type=gha,scope=collaboration
+          cache-to: type=gha,scope=collaboration,mode=max
+
+  workflow-lint:
+    name: Lint workflows
+    needs: changes
+    if: needs.changes.outputs.workflows == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Pinned release binary, verified against the checksum published with that release.
+      - name: Install actionlint
+        env:
+          VERSION: 1.7.12
+          SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/actionlint.tgz" "https://github.com/rhysd/actionlint/releases/download/v${VERSION}/actionlint_${VERSION}_linux_amd64.tar.gz"
+          echo "${SHA256}  $RUNNER_TEMP/actionlint.tgz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/actionlint.tgz" -C "$RUNNER_TEMP" actionlint
+      - name: actionlint (also shellchecks every shell step)
+        run: '"$RUNNER_TEMP/actionlint" -color'
+
+  # The one required status check. `if: always()` so it reports even when a needed job fails;
+  # skipped jobs (path-filtered) are fine, failed or cancelled ones are not.
+  ci-success:
+    name: CI success
+    needs: [changes, quality, test, build, docker-compiler, docker-collaboration, workflow-lint]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require every job that ran to have passed
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          echo "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          if echo "$NEEDS" | jq -e '[.[] | .result] | any(. == "failure" or . == "cancelled")' > /dev/null; then
+            echo "A required job failed or was cancelled." >&2
+            exit 1
+          fi
