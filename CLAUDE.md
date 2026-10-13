@@ -133,6 +133,10 @@ A free, offline-first desktop build. **No auth, collaboration or AI in v1** (AI 
 - Projects are folders under the user's library; there is no database. Never edit anything under a user's library from tests; use `SOMESCRIPT_LIBRARY` with a temp dir.
 - Rust tests: `cd apps/tauri/src-tauri && cargo test`. Sidecars (Tectonic, SyncTeX) come from `bun run desktop:sidecars` and are only needed for release builds and the `--ignored real_` test.
 
+## CI/CD
+
+GitHub Actions in `.github/` gate merges (CI, Desktop, Security: three aggregate checks), ship the desktop app (tag `desktop-vX.Y.Z` makes a draft release) and watch production deploys. Vercel and Railway still deploy through their own Git integrations. See [docs/ci-cd.md](docs/ci-cd.md): it lists what to turn on in GitHub, what the platforms actually do today, and the commands to run every check locally. Actions are pinned to commit SHAs; keep them that way.
+
 ## Further Reading
 
 For deeper dives, see:
