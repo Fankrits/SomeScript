@@ -1,0 +1,26 @@
+/* Fonts are bundled: the editor loads these from Google via next/font, which needs a network. */
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
+
+/* Theme tokens, Tailwind setup and editor-specific styles, shared with the cloud editor. */
+@import "../../editor/app/globals.css";
+
+/* Tailwind v4 only scans the Vite root by default; the UI source lives in apps/editor. */
+@source "../../editor/app";
+@source "../../editor/components";
+@source "../../editor/hooks";
+@source "../../editor/lib";
+@source ".";
+
+/* What next/font/google sets on <html> in the cloud editor. */
+:root {
+  --font-sans: "Inter Variable", system-ui, sans-serif;
+  --font-geist-sans: "Geist Variable", system-ui, sans-serif;
+  --font-geist-mono: "Geist Mono Variable", ui-monospace, monospace;
+}
+
+/* Children of #root behave as direct children of <body>, like they do under Next's layout. */
+#root {
+  display: contents;
+}

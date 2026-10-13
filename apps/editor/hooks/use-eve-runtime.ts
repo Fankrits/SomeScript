@@ -174,8 +174,8 @@ class SimplePdfAttachmentAdapter implements AttachmentAdapter {
  * an `agent/hooks/billing.ts` subscribing to `step.completed` via defineHook —
  * hooks fire server-side after durable event acceptance, carry the same usage
  * object, and reach Postgres through getPool() in lib/authz.ts. That deletes this
- * function entirely; it does NOT need an OTel exporter (see agent/instrumentation.ts
- * for why adding a `setup` there would be a mistake).
+ * function entirely; it does NOT need an OTel exporter (see agent/instrumentation/otel.ts
+ * for why adding an exporter there would be a mistake).
  */
 function recordStepUsage(mode: EveMode, usage: { costUsd?: number; outputTokens: number }) {
   fetch("/api/eve/credits", {

@@ -1,0 +1,113 @@
+name: Deploy verify
+
+# Vercel and Railway deploy this repo through their own Git integrations and report each result as
+# a GitHub deployment. This does not deploy anything: it watches PRODUCTION deployments, opens an
+# issue the moment one fails (production docs failed on every deploy for weeks without anyone being
+# told), smoke-checks the live site after a success, and closes the issue again.
+#
+# Smoke checks need the public production URLs: set repository variables PRODUCTION_URL_WEB,
+# PRODUCTION_URL_EDITOR and PRODUCTION_URL_DOCS (for example https://app.example.com, no trailing
+# slash). Without them a success is only noted.
+
+on:
+  deployment_status:
+
+concurrency:
+  group: deploy-verify-${{ github.event.deployment.environment }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  verify:
+    name: Verify production deploy
+    # Vercel names environments "Production – <project>" and Railway "<service> / production".
+    # Previews and in-progress states are ignored.
+    if: >-
+      contains(fromJSON('["success", "failure", "error"]'), github.event.deployment_status.state) &&
+      (startsWith(github.event.deployment.environment, 'Production') || endsWith(github.event.deployment.environment, '/ production'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      ENVIRONMENT: ${{ github.event.deployment.environment }}
+      STATE: ${{ github.event.deployment_status.state }}
+      DESCRIPTION: ${{ github.event.deployment_status.description }}
+      TARGET_URL: ${{ github.event.deployment_status.target_url }}
+      SHA: ${{ github.event.deployment.sha }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      URL_WEB: ${{ vars.PRODUCTION_URL_WEB }}
+      URL_EDITOR: ${{ vars.PRODUCTION_URL_EDITOR }}
+      URL_DOCS: ${{ vars.PRODUCTION_URL_DOCS }}
+    steps:
+      - name: Smoke-check the live site
+        id: smoke
+        if: env.STATE == 'success'
+        run: |
+          case "$ENVIRONMENT" in
+            *web)    base="$URL_WEB";    path="/";           var=PRODUCTION_URL_WEB ;;
+            *editor) base="$URL_EDITOR"; path="/api/health"; var=PRODUCTION_URL_EDITOR ;;
+            *docs)   base="$URL_DOCS";   path="/";           var=PRODUCTION_URL_DOCS ;;
+            *)
+              echo "::notice::No smoke check for '$ENVIRONMENT' (private service; the platform's own health check covers it)."
+              echo "ok=true" >> "$GITHUB_OUTPUT"
+              exit 0 ;;
+          esac
+          if [ -z "$base" ]; then
+            echo "::notice::Set the repository variable $var to enable the smoke check for '$ENVIRONMENT'."
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # A fresh deployment can take a moment to start answering on its domain.
+          for attempt in 1 2 3 4 5 6; do
+            code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 -L "${base}${path}" || true)"
+            echo "attempt $attempt: ${base}${path} -> ${code}"
+            if [ "$code" = "200" ]; then
+              echo "ok=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            sleep $((attempt * 10))
+          done
+          echo "ok=false" >> "$GITHUB_OUTPUT"
+          echo "reason=${base}${path} did not return 200 after the deploy (last status: ${code})" >> "$GITHUB_OUTPUT"
+
+      - name: Open or update the failure issue
+        id: report
+        if: env.STATE != 'success' || steps.smoke.outputs.ok == 'false'
+        env:
+          REASON: ${{ steps.smoke.outputs.reason }}
+        run: |
+          title="Production deploy failed: ${ENVIRONMENT}"
+          gh label create deploy-failure --color B60205 --description "A production deployment failed or is unhealthy" 2> /dev/null || true
+          {
+            echo "**${ENVIRONMENT}** is not healthy."
+            echo
+            echo "- State: \`${STATE}\`"
+            [ -z "${REASON}" ] || echo "- Check: ${REASON}"
+            [ -z "${DESCRIPTION}" ] || echo "- Platform says: ${DESCRIPTION}"
+            echo "- Commit: ${SHA}"
+            [ -z "${TARGET_URL}" ] || echo "- Deployment: ${TARGET_URL}"
+            echo "- Workflow run: ${RUN_URL}"
+            echo
+            echo "This issue closes itself when the next production deploy of this environment succeeds."
+          } > body.md
+          existing="$(gh issue list --state open --label deploy-failure --json number,title --jq "map(select(.title == \"${title}\")) | .[0].number // empty")"
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body-file body.md
+          else
+            gh issue create --title "$title" --label deploy-failure --body-file body.md
+          fi
+          echo "::error::${title}"
+          exit 1
+
+      - name: Close the failure issue after a healthy deploy
+        if: env.STATE == 'success' && steps.smoke.outputs.ok == 'true'
+        run: |
+          title="Production deploy failed: ${ENVIRONMENT}"
+          existing="$(gh issue list --state open --label deploy-failure --json number,title --jq "map(select(.title == \"${title}\")) | .[0].number // empty")"
+          if [ -n "$existing" ]; then
+            gh issue close "$existing" --comment "Recovered: ${ENVIRONMENT} deployed successfully at ${SHA} (${RUN_URL})."
+          fi

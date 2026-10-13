@@ -1,0 +1,236 @@
+name: Desktop bundle
+
+# Reusable. Builds the desktop app installers from source on macOS (Apple Silicon and Intel),
+# Windows and Linux, then proves each one works before anything is published: verifies the
+# contents (sidecars beside the executable, only expected libraries, templates, licenses), installs
+# it the way a user would (Windows: the NSIS installer; Linux: the .deb in a clean Ubuntu container)
+# and starts it headless in a clean environment to drive its HTTP surface.
+#
+# With `release: true` it also signs and notarizes the macOS apps (when the Apple secrets below are
+# set; otherwise they are unsigned) and runs the compile smoke test, which needs the network.
+# Every run packages and uploads the installers; publishing and provenance attestation are the
+# caller's job (desktop-release.yml).
+
+on:
+  workflow_call:
+    inputs:
+      release:
+        description: Sign if possible and run the real-compile smoke test; keeps the artifacts longer.
+        type: boolean
+        default: false
+    secrets:
+      APPLE_CERTIFICATE:
+        description: Base64 of the Developer ID Application .p12
+        required: false
+      APPLE_CERTIFICATE_PASSWORD:
+        required: false
+      APPLE_SIGNING_IDENTITY:
+        required: false
+      APPLE_ID:
+        required: false
+      APPLE_PASSWORD:
+        description: App-specific password for notarization
+        required: false
+      APPLE_TEAM_ID:
+        required: false
+    outputs:
+      signed:
+        description: '"true" when the macOS bundles were signed and notarized'
+        value: ${{ jobs.meta.outputs.signed }}
+
+permissions:
+  contents: read
+
+jobs:
+  meta:
+    name: Version and signing
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+      signed: ${{ steps.read.outputs.signed }}
+    env:
+      APPLE_SIGN: ${{ inputs.release && secrets.APPLE_CERTIFICATE != '' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: read
+        run: |
+          echo "version=$(jq -r .version apps/tauri/src-tauri/tauri.conf.json)" >> "$GITHUB_OUTPUT"
+          echo "signed=${APPLE_SIGN}" >> "$GITHUB_OUTPUT"
+
+  bundle:
+    name: ${{ matrix.name }}
+    needs: meta
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false # one platform's failure should not hide another's
+      matrix:
+        include:
+          - name: macOS (Apple Silicon)
+            os: macos-latest
+            kind: macos
+            arch: arm64
+            bundles: app,dmg
+          - name: macOS (Intel)
+            os: macos-15-intel
+            kind: macos
+            arch: x64
+            bundles: app,dmg
+          - name: Windows (x64)
+            os: windows-latest
+            kind: windows
+            arch: x64
+            bundles: nsis
+          # 24.04, not older: the official Linux Tectonic build needs glibc 2.39.
+          - name: Linux (x64)
+            os: ubuntu-24.04
+            kind: linux
+            arch: x64
+            bundles: deb,rpm,appimage
+    defaults:
+      run:
+        shell: bash
+        working-directory: apps/tauri
+    env:
+      VERSION: ${{ needs.meta.outputs.version }}
+      # Deliberately not named SIGN: linuxdeploy's AppImage plugin reads that variable as "sign with GPG".
+      APPLE_SIGN: ${{ needs.meta.outputs.signed == 'true' && matrix.kind == 'macos' }}
+      BUNDLE_DIR: src-tauri/target/release/bundle
+      # Linux ships the sidecars in the app's lib dir, not /usr/bin (see tauri.bundle.linux.conf.json).
+      BUILD_SCRIPT: ${{ matrix.kind == 'linux' && 'desktop:build:linux' || 'desktop:build' }}
+      # The macOS .dmg step is flaky on runners (see scripts/retry.sh); nothing else is retried.
+      BUILD_ATTEMPTS: ${{ matrix.kind == 'macos' && 3 || 1 }}
+      # linuxdeploy says nothing useful when it fails unless tauri is verbose.
+      VERBOSE: ${{ matrix.kind == 'linux' && '--verbose' || '' }}
+      # linuxdeploy (AppImage) cannot use FUSE on a runner, and its bundled `strip` chokes on new binaries.
+      APPIMAGE_EXTRACT_AND_RUN: "1"
+      NO_STRIP: "true"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/desktop-deps
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
+        with:
+          toolchain: stable
+
+      # First, because it is the part most likely to differ per platform (and needs no JS install).
+      - name: Fetch sidecars (Tectonic, checksum-verified; SyncTeX, built from source)
+        run: sh scripts/fetch-sidecars.sh
+
+      - uses: ./.github/actions/setup-js
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: apps/tauri/src-tauri
+
+      - name: Build and sign
+        if: env.APPLE_SIGN == 'true'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: sh scripts/retry.sh "$BUILD_ATTEMPTS" bun run "$BUILD_SCRIPT" --bundles "${{ matrix.bundles }}" ${VERBOSE:+"$VERBOSE"}
+
+      # Apple variables must be absent, not empty, or the tauri CLI tries to import a certificate.
+      - name: Build (unsigned)
+        if: env.APPLE_SIGN != 'true'
+        run: sh scripts/retry.sh "$BUILD_ATTEMPTS" bun run "$BUILD_SCRIPT" --bundles "${{ matrix.bundles }}" ${VERBOSE:+"$VERBOSE"}
+
+      # ---- Verify and smoke-test what a user would actually get ----
+
+      - name: Verify and smoke test (macOS app)
+        if: matrix.kind == 'macos'
+        env:
+          REQUIRE_SIGNED: ${{ env.APPLE_SIGN == 'true' && '1' || '0' }}
+          COMPILE: ${{ inputs.release && '--compile' || '' }}
+        run: |
+          app="$BUNDLE_DIR/macos/SomeScript.app"
+          sh scripts/verify-bundle.sh "$app" "$VERSION"
+          # A release also compiles for real: it needs the network (Tectonic fetches packages), which
+          # an ordinary PR check should not depend on.
+          sh scripts/smoke-bundle.sh "$app" ${COMPILE:+"$COMPILE"}
+
+      - name: Verify and smoke test (Windows - install with the NSIS installer, then run the install)
+        if: matrix.kind == 'windows'
+        env:
+          COMPILE: ${{ inputs.release && '--compile' || '' }}
+        run: |
+          setup="$(ls "$BUNDLE_DIR"/nsis/*_"${VERSION}"_x64-setup.exe)" || { ls -la "$BUNDLE_DIR/nsis"; exit 1; }
+          dir="$RUNNER_TEMP\\SomeScript-installed"
+          MSYS2_ARG_CONV_EXCL='*' "$setup" /S "/D=$dir"
+          for _ in $(seq 1 60); do [ -f "$dir/somescript-desktop.exe" ] && break; sleep 1; done
+          ls -la "$dir"
+          sh scripts/verify-bundle.sh "$dir" "$VERSION"
+          sh scripts/smoke-bundle.sh "$dir/somescript-desktop.exe" ${COMPILE:+"$COMPILE"}
+
+      - name: Verify (Linux .deb, extracted)
+        if: matrix.kind == 'linux'
+        run: |
+          deb="$(ls "$BUNDLE_DIR"/deb/*_"${VERSION}"_amd64.deb)" || { ls -la "$BUNDLE_DIR/deb"; exit 1; }
+          dpkg-deb -I "$deb" | grep -E 'Depends|Package|Version'
+          dpkg-deb -x "$deb" "$RUNNER_TEMP/deb-root"
+          sh scripts/verify-bundle.sh "$RUNNER_TEMP/deb-root" "$VERSION"
+
+      # The real test of the dependency list: a bare Ubuntu 24.04 (so only what the .deb declares is
+      # there) installs the package and runs it.
+      - name: Smoke test (Linux - the .deb in a clean Ubuntu 24.04 container)
+        if: matrix.kind == 'linux'
+        env:
+          COMPILE: ${{ inputs.release && '--compile' || '' }}
+        run: |
+          docker run --rm -v "$PWD:/w:ro" -e DEBIAN_FRONTEND=noninteractive -e COMPILE="$COMPILE" ubuntu:24.04 sh -ec '
+            apt-get update -qq
+            apt-get install -y -qq --no-install-recommends /w/'"$BUNDLE_DIR"'/deb/*.deb xvfb curl ca-certificates
+            sh /w/scripts/smoke-bundle.sh /usr/bin/somescript-desktop ${COMPILE:+"$COMPILE"}
+          '
+
+      - name: Verify (Linux .rpm and .AppImage)
+        if: matrix.kind == 'linux'
+        run: |
+          rpm="$(ls "$BUNDLE_DIR"/rpm/*"${VERSION}"*.rpm)" || { ls -la "$BUNDLE_DIR/rpm"; exit 1; }
+          echo "$rpm"
+          appimage="$(ls "$BUNDLE_DIR"/appimage/*_"${VERSION}"_amd64.AppImage)" || { ls -la "$BUNDLE_DIR/appimage"; exit 1; }
+          chmod +x "$appimage"
+          mkdir "$RUNNER_TEMP/appimage" && cd "$RUNNER_TEMP/appimage" && "$OLDPWD/$appimage" --appimage-extract > /dev/null
+          test -x squashfs-root/usr/bin/somescript-desktop || { echo "::error::AppImage lacks the app"; exit 1; }
+          for exe in tectonic synctex; do
+            test -x "squashfs-root/usr/lib/SomeScript/bin/$exe" || { echo "::error::AppImage lacks $exe"; exit 1; }
+          done
+          test -n "$(find squashfs-root -path '*/templates/blank/main.tex' -print -quit)" || { echo "::error::AppImage lacks the templates"; exit 1; }
+
+      # ---- Package ----
+
+      - name: Package installers
+        run: |
+          dist="$GITHUB_WORKSPACE/dist"
+          mkdir -p "$dist"
+          b="$BUNDLE_DIR"
+          case "${{ matrix.kind }}" in
+            macos)
+              cp "$b"/dmg/*_"${VERSION}"_*.dmg "$dist/SomeScript-${VERSION}-macos-${{ matrix.arch }}.dmg"
+              ditto -c -k --keepParent "$b/macos/SomeScript.app" "$dist/SomeScript-${VERSION}-macos-${{ matrix.arch }}.app.zip"
+              ;;
+            windows)
+              cp "$b"/nsis/*_"${VERSION}"_x64-setup.exe "$dist/SomeScript-${VERSION}-windows-x64-setup.exe"
+              ;;
+            linux)
+              cp "$b"/deb/*_"${VERSION}"_amd64.deb "$dist/SomeScript-${VERSION}-linux-x64.deb"
+              cp "$b"/rpm/*"${VERSION}"*.rpm "$dist/SomeScript-${VERSION}-linux-x64.rpm"
+              cp "$b"/appimage/*_"${VERSION}"_amd64.AppImage "$dist/SomeScript-${VERSION}-linux-x64.AppImage"
+              ;;
+          esac
+          ls -la "$dist"
+
+      - name: Upload installers
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: desktop-${{ matrix.kind }}-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: ${{ inputs.release && 30 || 3 }}

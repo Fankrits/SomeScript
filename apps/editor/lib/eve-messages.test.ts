@@ -123,10 +123,11 @@ test("keeps tool parts that repeat within one step", () => {
  * The real eve reducer, driven with the events a HITL question actually
  * produces, so what this pins is eve's projection and not our idea of it.
  *
- * The shape that matters: in `conversation` mode eve *completes* the parked
- * turn — `emitTurnEpilogue` in harness/tool-loop.js emits turn.completed then
- * session.waiting at the park — so answering starts a *new* turn with its own
- * assistant message, and the answered one is no longer the last.
+ * The shape that matters: eve *completes* the parked turn (every session parks
+ * after a turn since eve 0.67 removed run modes) — `emitTurnEpilogue` in
+ * harness/tool-loop.js emits turn.completed then session.waiting at the park —
+ * so answering starts a *new* turn with its own assistant message, and the
+ * answered one is no longer the last.
  */
 function projectHitlExchange() {
   const reducer = defaultMessageReducer();
@@ -134,6 +135,9 @@ function projectHitlExchange() {
     { type: "turn.started", data: { sequence: 0, turnId: "turn_0" } },
     {
       type: "message.received",
+      // eve stamps `meta` on every persisted event, and the reducer keys the user
+      // message off `meta.id` (stable across replay) rather than the turn id.
+      meta: { at: "2026-01-01T00:00:00.000Z", id: "evt_0" },
       data: { message: "make the intro shorter", sequence: 0, turnId: "turn_0" },
     },
     { type: "step.started", data: { modelId: "m", sequence: 0, stepIndex: 0, turnId: "turn_0" } },
@@ -207,7 +211,7 @@ test("keeps the answered turn's reply when a HITL question resumes into a new tu
   const { events, messages } = projectHitlExchange();
 
   expect(filterOrphanedMessages(messages, events).map((m) => m.id)).toEqual([
-    "turn_0:user",
+    "evt_0:user",
     "turn_0:assistant",
     "turn_1:assistant",
   ]);

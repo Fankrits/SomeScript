@@ -4,6 +4,7 @@
 // https://docs.sentry.io/platforms/javascript/guides/nextjs/
 
 import * as Sentry from "@sentry/nextjs";
+import { sentryDataCollection } from "@/lib/sentry-data-collection";
 
 Sentry.init({
   dsn: "https://491e119c4d82d37f6eda844826dde444@o4511827346849792.ingest.de.sentry.io/4511827460816976",
@@ -13,13 +14,5 @@ Sentry.init({
   // have been the largest single source of trace volume.
   tracesSampleRate: 0.1,
 
-  // Enable logs to be sent to Sentry
-  enableLogs: true,
-
-  dataCollection: {
-    // To disable sending user data and HTTP bodies, uncomment the lines below. For more info visit:
-    // https://docs.sentry.io/platforms/javascript/guides/nextjs/configuration/options/#dataCollection
-    // userInfo: false,
-    // httpBodies: [],
-  },
+  dataCollection: sentryDataCollection,
 });

@@ -1,0 +1,155 @@
+name: Security
+
+# Static analysis, dependency and secret checks. Also runs weekly, because new advisories appear
+# without any code change. "Security success" aggregates the checks that run on a PR.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 4 * * 1" # Mondays 04:17 UTC
+  workflow_dispatch:
+
+concurrency:
+  group: security-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  codeql:
+    name: CodeQL (${{ matrix.language }})
+    # Pull requests from forks get a read-only token, which cannot upload results.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [javascript-typescript, actions]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: github/codeql-action/init@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+      - uses: github/codeql-action/analyze@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        with:
+          category: /language:${{ matrix.language }}
+
+  # Blocks a PR that ADDS a vulnerable dependency; the existing backlog is handled by audit-js.
+  dependency-review:
+    name: Dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: never
+
+  # `bun audit` already reports a backlog, so a plain gate would fail forever. This fails only on
+  # advisories that are new since .github/audit-baseline.json, and lists the fixed ones so the
+  # baseline can shrink (`bun .github/scripts/audit-gate.mjs --update`).
+  audit-js:
+    name: JS dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-js
+      - name: Fail on new high or critical advisories
+        run: bun .github/scripts/audit-gate.mjs
+
+  cargo-deny:
+    name: Rust dependencies (cargo-deny)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Pinned release binary, verified against the checksum published with that release.
+      - name: Install cargo-deny
+        env:
+          VERSION: 0.20.2
+          SHA256: 9f12ed4c49936e09b48bf862b595cde2fe64fcbd9d74dfacac6131ca824c8d5f
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/cargo-deny.tgz" "https://github.com/EmbarkStudios/cargo-deny/releases/download/${VERSION}/cargo-deny-${VERSION}-x86_64-unknown-linux-musl.tar.gz"
+          echo "${SHA256}  $RUNNER_TEMP/cargo-deny.tgz" | sha256sum -c -
+          mkdir "$RUNNER_TEMP/cargo-deny"
+          tar -xzf "$RUNNER_TEMP/cargo-deny.tgz" -C "$RUNNER_TEMP/cargo-deny" --strip-components=1
+      - name: Advisories, licenses, bans and sources
+        run: |
+          "$RUNNER_TEMP/cargo-deny/cargo-deny" \
+            --manifest-path apps/tauri/src-tauri/Cargo.toml \
+            --config apps/tauri/src-tauri/deny.toml \
+            check
+
+  secrets:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the whole history: a secret removed in a later commit is still leaked
+          persist-credentials: false
+      - name: Install gitleaks
+        env:
+          VERSION: 8.30.1
+          SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/gitleaks.tgz" "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz"
+          echo "${SHA256}  $RUNNER_TEMP/gitleaks.tgz" | sha256sum -c -
+          mkdir "$RUNNER_TEMP/gitleaks"
+          tar -xzf "$RUNNER_TEMP/gitleaks.tgz" -C "$RUNNER_TEMP/gitleaks"
+      # --redact: a finding must never print the secret into a public log.
+      - name: Scan the full history
+        run: '"$RUNNER_TEMP/gitleaks/gitleaks" git --redact --no-banner --exit-code 1 .'
+
+  zizmor:
+    name: Workflow security (zizmor)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: zizmorcore/zizmor-action@cc914d7f3750a2d13d75c7f184a1060aa0e9d482 # v0.6.4
+        with:
+          version: 1.30.1
+          collect: all
+          min-severity: medium
+          advanced-security: false
+
+  security-success:
+    name: Security success
+    needs: [codeql, dependency-review, audit-js, cargo-deny, secrets, zizmor]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require every job that ran to have passed
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          echo "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          if echo "$NEEDS" | jq -e '[.[] | .result] | any(. == "failure" or . == "cancelled")' > /dev/null; then
+            echo "A required job failed or was cancelled." >&2
+            exit 1
+          fi

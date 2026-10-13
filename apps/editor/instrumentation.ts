@@ -10,7 +10,7 @@
  * all. Every exception in `/api/eve/*` and eve's own route handlers went
  * nowhere. The runtime-scoped imports below are the SDK's documented wiring.
  *
- * Not to be confused with `agent/instrumentation.ts`, which is eve's OTel
+ * Not to be confused with `agent/instrumentation/`, which is eve's OTel
  * surface and unrelated to this file.
  */
 export async function register() {

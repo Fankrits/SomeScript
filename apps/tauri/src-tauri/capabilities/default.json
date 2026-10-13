@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Main window. In release the UI is served from the loopback server, so IPC is granted to that origin.",
+  "windows": ["main"],
+  "remote": { "urls": ["http://127.0.0.1:*/*"] },
+  "permissions": ["core:default", "dialog:default", "opener:allow-reveal-item-in-dir"]
+}

@@ -1,0 +1,20 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "category": "Productivity",
+    "shortDescription": "Free, local LaTeX editor",
+    "longDescription": "Write, compile and preview LaTeX documents on your own computer. No account, no cloud.",
+    "externalBin": [],
+    "resources": {
+      "templates": "templates",
+      "THIRD_PARTY_LICENSES.md": "THIRD_PARTY_LICENSES.md",
+      "binaries/SOURCES.txt": "SOURCES.txt",
+      "binaries/tectonic-x86_64-unknown-linux-gnu": "bin/tectonic",
+      "binaries/synctex-x86_64-unknown-linux-gnu": "bin/synctex"
+    },
+    "linux": {
+      "deb": { "depends": ["libc6 (>= 2.39)", "libgraphite2-3"] },
+      "rpm": { "depends": ["graphite2"] }
+    }
+  }
+}
