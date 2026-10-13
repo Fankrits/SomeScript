@@ -1,18 +1,23 @@
 # cargo-deny policy for the desktop app's Rust dependencies.
 #   cargo deny check                 (CI runs this in .github/workflows/security.yml)
 #
-# Only the platforms we ship are analysed: Linux's GTK3 bindings carry unmaintained-crate
-# advisories that can never reach a macOS build, and would only add noise.
+# Only the platforms we ship are analysed (keep in step with the matrix in desktop-bundle.yml).
 
 [graph]
-targets = ["aarch64-apple-darwin", "x86_64-apple-darwin"]
+targets = [
+  "aarch64-apple-darwin",
+  "x86_64-apple-darwin",
+  "x86_64-pc-windows-msvc",
+  "x86_64-unknown-linux-gnu",
+]
 
 [advisories]
 version = 2
 yanked = "deny"
-# Add an entry only with a reason and a date to revisit, e.g.
-#   { id = "RUSTSEC-0000-0000", reason = "not reachable: we never call X (revisit 2027-01)" }
-ignore = []
+# Add an entry only with a reason and a date to revisit.
+ignore = [
+  { id = "RUSTSEC-2024-0370", reason = "proc-macro-error is a build-time dependency of gtk3-macros (the Linux GTK3 bindings under tauri/wry): unmaintained, not a vulnerability, and not in the shipped binary. Nothing to upgrade until tauri leaves gtk3-rs (revisit 2027-01)" },
+]
 
 [licenses]
 version = 2

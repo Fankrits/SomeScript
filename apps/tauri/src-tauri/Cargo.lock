@@ -3442,6 +3442,7 @@ name = "somescript-desktop"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "dunce",
  "getrandom 0.4.3",
  "http-body-util",
  "percent-encoding",

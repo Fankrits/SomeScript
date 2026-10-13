@@ -1,35 +1,40 @@
 #!/bin/sh
 # Smoke test of a built desktop bundle. Starts it headless in a clean environment (no PATH to
-# Homebrew, no TECTONIC_BIN) and drives its HTTP surface, so it only passes if the bundled
-# sidecars and templates are really found.
+# Homebrew/MSYS tools, no TECTONIC_BIN) and drives its HTTP surface, so it only passes if the
+# bundled sidecars and templates are really found.
 #
-#   sh scripts/smoke-bundle.sh path/to/SomeScript.app            auth, SPA, project creation, files
-#   sh scripts/smoke-bundle.sh path/to/SomeScript.app --compile  ...plus a real Tectonic compile
+#   sh scripts/smoke-bundle.sh <SomeScript.app | path/to/somescript-desktop[.exe]>            auth, SPA, project creation, files
+#   sh scripts/smoke-bundle.sh <...> --compile                                                ...plus a real Tectonic compile
+#
+# Needs sh, curl, awk, od, grep. On Linux without a display it starts Xvfb (GTK needs one even though
+# no window is shown). On Windows run it from Git Bash.
 set -eu
 
-app="${1:?usage: smoke-bundle.sh path/to/SomeScript.app [--compile]}"
+app="${1:?usage: smoke-bundle.sh <SomeScript.app | path/to/somescript-desktop[.exe]> [--compile]}"
 compile="${2:-}"
-exe="$app/Contents/MacOS/somescript-desktop"
+case "$app" in
+  *.app) exe="$app/Contents/MacOS/somescript-desktop" ;;
+  *) exe="$app" ;;
+esac
 [ -x "$exe" ] || { echo "no executable at $exe" >&2; exit 1; }
 
+os="$(uname -s)"
 work="$(mktemp -d)"
-port="$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')"
-token="$(openssl rand -hex 16)"
+winpath() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else echo "$1"; fi; }
+port="$(awk 'BEGIN { srand(); print int(20000 + rand() * 20000) }')"
+token="$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n')"
 base="http://127.0.0.1:$port"
 jar="$work/cookies"
 pid=""
+xvfb=""
 cleanup() {
-  if [ -n "$pid" ]; then
-    kill "$pid" 2>/dev/null || true
-    wait "$pid" 2>/dev/null || true # reap it so the shell prints no "Terminated" job notice
-  fi
+  for p in $pid $xvfb; do
+    kill "$p" 2>/dev/null || true
+    wait "$p" 2>/dev/null || true # reap it so the shell prints no "Terminated" job notice
+  done
   rm -rf "$work"
 }
 trap cleanup EXIT
-
-env -i HOME="$HOME" PATH=/usr/bin:/bin SOMESCRIPT_HEADLESS=1 SOMESCRIPT_PORT="$port" \
-  SOMESCRIPT_TOKEN="$token" SOMESCRIPT_LIBRARY="$work/library" "$exe" >"$work/app.log" 2>&1 &
-pid=$!
 
 ok() { echo "ok   $1"; }
 fail() {
@@ -38,6 +43,34 @@ fail() {
   cat "$work/app.log" >&2
   exit 1
 }
+
+case "$os" in
+  MINGW* | MSYS* | CYGWIN*)
+    # Windows needs a few variables to work at all (temp dir, Schannel, profile) and nothing from the
+    # developer PATH. SOMESCRIPT_LIBRARY must be a native path, not an MSYS one.
+    clean_env() {
+      env -i SystemRoot="$SYSTEMROOT" PATH="$SYSTEMROOT\\System32" TEMP="$(winpath "$TEMP")" TMP="$(winpath "$TEMP")" \
+        USERPROFILE="$USERPROFILE" APPDATA="$APPDATA" LOCALAPPDATA="$LOCALAPPDATA" "$@"
+    }
+    library="$(winpath "$work")/library"
+    ;;
+  *)
+    if [ "$os" = Linux ] && [ -z "${DISPLAY:-}" ]; then
+      command -v Xvfb >/dev/null 2>&1 || { echo "no DISPLAY and no Xvfb (apt-get install xvfb)" >&2; exit 1; }
+      Xvfb :99 -screen 0 1280x720x24 >"$work/xvfb.log" 2>&1 &
+      xvfb=$!
+      DISPLAY=:99
+      for _ in $(seq 1 40); do [ -S /tmp/.X11-unix/X99 ] && break; sleep 0.25; done
+    fi
+    clean_env() { env -i HOME="$HOME" PATH=/usr/bin:/bin DISPLAY="${DISPLAY:-}" "$@"; }
+    library="$work/library"
+    ;;
+esac
+
+clean_env SOMESCRIPT_HEADLESS=1 SOMESCRIPT_PORT="$port" SOMESCRIPT_TOKEN="$token" \
+  SOMESCRIPT_LIBRARY="$library" "$exe" >"$work/app.log" 2>&1 &
+pid=$!
+
 # status <description> <expected code> <curl args...>
 status() {
   desc="$1"

@@ -227,7 +227,7 @@ pub async fn settings_post(
     let root = blocking(move || {
         fs::create_dir_all(&path)
             .map_err(|e| ApiError::bad_request(format!("Can't use that folder: {e}")))?;
-        let root = path.canonicalize()?;
+        let root = dunce::canonicalize(&path)?;
         if let Some(config_path) = config_path {
             config::save(
                 &config_path,

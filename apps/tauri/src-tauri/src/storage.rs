@@ -76,7 +76,7 @@ pub struct Project {
 impl Project {
     pub fn open(dir: PathBuf) -> io::Result<Self> {
         Ok(Self {
-            root: dir.canonicalize()?,
+            root: dunce::canonicalize(dir)?,
         })
     }
 
@@ -130,7 +130,7 @@ impl Project {
                 None => break,
             }
         }
-        match probe.canonicalize() {
+        match dunce::canonicalize(probe) {
             Ok(c) if c.starts_with(&self.root) => Ok(()),
             _ => Err(ApiError::bad_request(
                 "Directory traversal attempt detected",
