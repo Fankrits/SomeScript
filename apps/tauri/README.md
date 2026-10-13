@@ -30,6 +30,13 @@ cloud editor's own source. Next.js, Clerk, Sentry, analytics and the Eve chat ar
 `src/shims/`. The Rust server re-implements the `/api/*` routes the editor calls, so none of its 35 `fetch`
 call sites (nor its image/PDF/download URLs) needed changing.
 
+**Old system webviews are covered.** macOS 12.0 is the minimum, and its WebKit can predate `crypto.randomUUID`,
+`Array#at`, `Object.hasOwn` (Safari 15.4) and `Array#toSorted` / `#toReversed` (Safari 16), all of which the editor
+uses; without them the editor does not even render. `src/shims/polyfills.ts` fills them in
+([core-js](https://github.com/zloirock/core-js) and [uuid](https://github.com/uuidjs/uuid)), and
+`e2e/old-webview.e2e.ts` strips them from the browser to prove the app still works. If the editor starts using
+another recent web API, add it to the polyfills and that spec.
+
 A project is a **folder** in the library (default `~/Documents/SomeScript`); its name is its id. There is no
 database. Deleted projects move to `<library>/.trash/` for 7 days.
 
@@ -39,7 +46,7 @@ database. Deleted projects move to `<library>/.trash/` for 7 days.
 | `src/library/`                 | Library screen (new project, import/export ZIP, trash, library folder, offline prep) |
 | `src/settings/`                | App-wide Settings screen (`/settings`): AI providers and keys, library folder        |
 | `src/chat/`                    | The chat panel: streaming UI, tool cards with diffs and Undo, history                |
-| `src/shims/`                   | Stand-ins for `next/*`, Clerk, Sentry, analytics, and the cloud chat                 |
+| `src/shims/`                   | Stand-ins for `next/*`, Clerk, Sentry, analytics, the cloud chat; web-API polyfills  |
 | `src-tauri/src/api/`           | Route-by-route ports of `apps/editor/app/api/*`; each file names its source          |
 | `src-tauri/src/ai/`            | The assistant (see below). `api/ai.rs` holds its HTTP routes                         |
 | `e2e/`                         | End-to-end tests (Playwright) against the real server and UI                         |
