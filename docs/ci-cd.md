@@ -31,7 +31,6 @@ gate what is merged, watch what the platforms report, and ship the desktop app.
 | `security.yml`        | PR, push to `main`, **weekly**                             | CodeQL (JS/TS and the workflows themselves), dependency review on PRs, JS audit gate, `cargo-deny`, gitleaks over the full history, zizmor. Aggregates into **Security success**.                                                                                                                                                                                                                                                                                                                                                 |
 | `deploy-verify.yml`   | every GitHub deployment status                             | For production environments only: opens an issue when a deploy fails, smoke-checks the live site after a success, closes the issue on recovery.                                                                                                                                                                                                                                                                                                                                                                                   |
 | `openwiki-update.yml` | nightly                                                    | Pre-existing. Pinned to commit SHAs now.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `dependabot.yml`      | weekly                                                     | Grouped updates for Actions, bun, cargo and Docker; 7-day cooldown; majors and hand-aligned packages (React, CodeMirror, shiki) are left to people.                                                                                                                                                                                                                                                                                                                                                                               |
 
 ## Turn these on (one-time, in GitHub / the platforms)
 
@@ -109,8 +108,8 @@ The production builds need env vars that CI fills with placeholders; see the `bu
 
 ## Maintaining the pipeline
 
-- **Action versions** are pinned to commit SHAs (a moved tag is a known attack path); Dependabot bumps them. When
-  editing by hand, resolve the SHA from the tag and keep the `# vX.Y.Z` comment.
+- **Action versions** are pinned to commit SHAs (a moved tag is a known attack path); bump them by hand. Resolve the SHA from
+  the tag and keep the `# vX.Y.Z` comment.
 - **Downloaded tools** (actionlint, gitleaks, cargo-deny) are pinned to a version _and_ a SHA-256 taken from the
   release's own checksum file. Bump them together.
 - **Bun's version** lives in one place, `.github/actions/setup-js/action.yml`; keep it equal to `packageManager` in
