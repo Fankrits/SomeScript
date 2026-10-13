@@ -57,6 +57,7 @@ In dev, `/api` is proxied by Vite to the Rust server, so the UI also works in a 
 | `TECTONIC_BIN`, `SYNCTEX_BIN`         | Use these binaries instead of the bundled / `PATH` ones                               |
 | `SOMESCRIPT_DEV_API_PORT`             | Rust API port in debug builds (default 1430; keep in sync with `vite.config.ts`)      |
 | `SOMESCRIPT_PORT`, `SOMESCRIPT_TOKEN` | Pin the release server's port and token (≥16 chars), so a test can open the app's URL |
+| `SOMESCRIPT_HEADLESS`                 | Run the server with no window and no Dock icon (smoke tests, CI)                      |
 
 ## Test
 
@@ -83,6 +84,17 @@ bun run desktop:sidecars && bun run desktop:build      # .app + .dmg under src-t
 Apple Developer ID secrets are configured (see `.github/workflows/desktop.yml`); macOS shows a Gatekeeper
 warning for unsigned apps. Only macOS Apple Silicon has a verified Tectonic checksum so far; add other
 platforms in `scripts/fetch-sidecars.sh` (Linux needs the glibc build: musl breaks Thai/CJK line breaking).
+
+Before anything is published, CI checks the bundle itself (see `docs/ci-cd.md`):
+
+```sh
+bun run desktop:verify                                  # sidecars beside the executable, only system libraries, templates, licenses
+sh scripts/smoke-bundle.sh <path to SomeScript.app> --compile   # starts it headless in a clean env and drives the HTTP surface
+```
+
+A release is a tag: `desktop-vX.Y.Z` on a commit that is on `main` (`scripts/check-version.mjs` requires the tag,
+`Cargo.toml`, `tauri.conf.json` and `package.json` to agree). The _Desktop release_ workflow builds, verifies and
+smoke-tests the bundle, then creates a **draft** GitHub release with the DMG, a zipped `.app` and checksums.
 
 Licenses of everything bundled are in `src-tauri/THIRD_PARTY_LICENSES.md`.
 

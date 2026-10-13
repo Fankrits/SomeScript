@@ -40,10 +40,13 @@ fn templates_dir(app: &tauri::App) -> PathBuf {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Automated checks (CI smoke tests of a built bundle) drive the HTTP surface only, so
+    // SOMESCRIPT_HEADLESS runs the server with no window and no Dock icon.
+    let headless = std::env::var_os("SOMESCRIPT_HEADLESS").is_some();
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .setup(|app| {
+        .setup(move |app| {
             let config_path = app
                 .path()
                 .app_config_dir()
@@ -66,6 +69,11 @@ pub fn run() {
             };
             let started =
                 tauri::async_runtime::block_on(server::start(app.handle().clone(), state))?;
+            if headless {
+                #[cfg(target_os = "macos")]
+                app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+                return Ok(());
+            }
             let served = format!(
                 "http://127.0.0.1:{}/{}",
                 started.port,
@@ -109,6 +117,16 @@ pub fn run() {
                 .build()?;
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(move |_app, event| {
+            // With no window Tauri would exit at once; headless mode keeps serving.
+            if let tauri::RunEvent::ExitRequested {
+                api, code: None, ..
+            } = event
+                && headless
+            {
+                api.prevent_exit();
+            }
+        });
 }

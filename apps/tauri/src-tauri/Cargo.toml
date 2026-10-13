@@ -3,6 +3,7 @@ name = "somescript-desktop"
 version = "0.1.0"
 description = "SomeScript desktop: free, local LaTeX editor"
 authors = ["Fankrits"]
+publish = false
 edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
