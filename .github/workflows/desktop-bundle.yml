@@ -1,6 +1,6 @@
 name: Desktop bundle
 
-# Reusable. Builds the desktop app installers from source on macOS (universal: Apple Silicon + Intel),
+# Reusable. Builds the desktop app installers from source on macOS (universal - Apple Silicon and Intel),
 # Windows and Linux, then proves each one works before anything is published: verifies the
 # contents (sidecars beside the executable, only expected libraries, templates, licenses), installs
 # it the way a user would (Windows: the NSIS installer; Linux: the .deb in a clean Ubuntu container),
@@ -70,7 +70,7 @@ jobs:
       fail-fast: false # one platform's failure should not hide another's
       matrix:
         include:
-          - name: macOS (universal: Apple Silicon + Intel)
+          - name: macOS (universal - Apple Silicon and Intel)
             os: macos-latest
             kind: macos
             arch: universal
