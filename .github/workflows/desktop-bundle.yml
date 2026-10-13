@@ -101,6 +101,8 @@ jobs:
       BUNDLE_DIR: src-tauri/target/release/bundle
       # Linux ships the sidecars in the app's lib dir, not /usr/bin (see tauri.bundle.linux.conf.json).
       BUILD_SCRIPT: ${{ matrix.kind == 'linux' && 'desktop:build:linux' || 'desktop:build' }}
+      # The macOS .dmg step is flaky on runners (see scripts/retry.sh); nothing else is retried.
+      BUILD_ATTEMPTS: ${{ matrix.kind == 'macos' && 3 || 1 }}
       # linuxdeploy says nothing useful when it fails unless tauri is verbose.
       VERBOSE: ${{ matrix.kind == 'linux' && '--verbose' || '' }}
       # linuxdeploy (AppImage) cannot use FUSE on a runner, and its bundled `strip` chokes on new binaries.
@@ -133,12 +135,12 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: bun run "$BUILD_SCRIPT" --bundles "${{ matrix.bundles }}" ${VERBOSE:+"$VERBOSE"}
+        run: sh scripts/retry.sh "$BUILD_ATTEMPTS" bun run "$BUILD_SCRIPT" --bundles "${{ matrix.bundles }}" ${VERBOSE:+"$VERBOSE"}
 
       # Apple variables must be absent, not empty, or the tauri CLI tries to import a certificate.
       - name: Build (unsigned)
         if: env.APPLE_SIGN != 'true'
-        run: bun run "$BUILD_SCRIPT" --bundles "${{ matrix.bundles }}" ${VERBOSE:+"$VERBOSE"}
+        run: sh scripts/retry.sh "$BUILD_ATTEMPTS" bun run "$BUILD_SCRIPT" --bundles "${{ matrix.bundles }}" ${VERBOSE:+"$VERBOSE"}
 
       # ---- Verify and smoke-test what a user would actually get ----
 
