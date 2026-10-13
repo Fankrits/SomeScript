@@ -22,11 +22,20 @@ case "$(uname -s)" in
     echo "$zlib_sha256  $tmp/zlib.tgz" | sha256sum -c - >&2
     tar -xzf "$tmp/zlib.tgz" -C "$tmp"
     z="$tmp/zlib-$zlib"
+    # The CLI includes <poll.h>, which MinGW lacks. It only uses poll() in its interactive mode, which
+    # we never start (we run `view` and `edit`), so a header whose poll() reports "nothing to read" is
+    # enough. Its Windows code (synctex_parser_utils.c) needs shlwapi.
+    mkdir "$tmp/shim"
+    cat > "$tmp/shim/poll.h" <<'SHIM'
+struct pollfd { int fd; short events; short revents; };
+#define POLLIN 1
+static inline int poll(struct pollfd *fds, unsigned long n, int timeout) { (void)fds; (void)n; (void)timeout; return 0; }
+SHIM
     for f in adler32 compress crc32 deflate gzclose gzlib gzread gzwrite infback inffast inflate inftrees trees uncompr zutil; do
       sources="$sources $z/$f.c"
     done
     # shellcheck disable=SC2086 # $sources is a list of paths without spaces
-    "${CC:-gcc}" -O2 -static -DSYNCTEX_STANDALONE -I"$tmp/synctex" -I"$z" -o "$dir/bin/synctex" $sources
+    "${CC:-gcc}" -O2 -static -DSYNCTEX_STANDALONE -I"$tmp/synctex" -I"$tmp/shim" -I"$z" -o "$dir/bin/synctex" $sources -lshlwapi
     ;;
   *)
     # shellcheck disable=SC2086

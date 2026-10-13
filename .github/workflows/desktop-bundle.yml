@@ -98,6 +98,8 @@ jobs:
       VERSION: ${{ needs.meta.outputs.version }}
       SIGN: ${{ needs.meta.outputs.signed == 'true' && matrix.kind == 'macos' }}
       BUNDLE_DIR: src-tauri/target/release/bundle
+      # Linux ships the sidecars in the app's lib dir, not /usr/bin (see tauri.bundle.linux.conf.json).
+      BUILD_SCRIPT: ${{ matrix.kind == 'linux' && 'desktop:build:linux' || 'desktop:build' }}
       # linuxdeploy (AppImage) cannot use FUSE on a runner, and its bundled `strip` chokes on new binaries.
       APPIMAGE_EXTRACT_AND_RUN: "1"
       NO_STRIP: "true"
@@ -105,17 +107,19 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/setup-js
       - uses: ./.github/actions/desktop-deps
       - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
         with:
           toolchain: stable
+
+      # First, because it is the part most likely to differ per platform (and needs no JS install).
+      - name: Fetch sidecars (Tectonic, checksum-verified; SyncTeX, built from source)
+        run: sh scripts/fetch-sidecars.sh
+
+      - uses: ./.github/actions/setup-js
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: apps/tauri/src-tauri
-
-      - name: Fetch sidecars (Tectonic, checksum-verified; SyncTeX, built from source)
-        run: sh scripts/fetch-sidecars.sh
 
       - name: Build and sign
         if: env.SIGN == 'true'
@@ -126,12 +130,12 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: bun run desktop:build --bundles "${{ matrix.bundles }}"
+        run: bun run "$BUILD_SCRIPT" --bundles "${{ matrix.bundles }}"
 
       # Apple variables must be absent, not empty, or the tauri CLI tries to import a certificate.
       - name: Build (unsigned)
         if: env.SIGN != 'true'
-        run: bun run desktop:build --bundles "${{ matrix.bundles }}"
+        run: bun run "$BUILD_SCRIPT" --bundles "${{ matrix.bundles }}"
 
       # ---- Verify and smoke-test what a user would actually get ----
 
