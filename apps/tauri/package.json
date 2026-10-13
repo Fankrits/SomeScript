@@ -15,7 +15,9 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "desktop:sidecars": "sh scripts/fetch-sidecars.sh",
+    "desktop:sidecars:universal": "sh scripts/fetch-sidecars.sh universal",
     "desktop:build": "tauri build --config src-tauri/tauri.bundle.conf.json",
+    "desktop:build:universal": "tauri build --config src-tauri/tauri.bundle.conf.json --target universal-apple-darwin",
     "desktop:build:linux": "tauri build --config src-tauri/tauri.bundle.linux.conf.json",
     "desktop:verify": "sh scripts/verify-bundle.sh src-tauri/target/release/bundle/macos/SomeScript.app",
     "desktop:smoke": "sh scripts/smoke-bundle.sh src-tauri/target/release/bundle/macos/SomeScript.app"

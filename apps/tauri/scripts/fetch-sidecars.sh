@@ -2,6 +2,11 @@
 # Fetches/builds the sidecar binaries the desktop app bundles, for THIS machine's target
 # triple, into src-tauri/binaries/<tool>-<triple>[.exe] (Tauri's externalBin naming).
 #
+#   sh scripts/fetch-sidecars.sh              this machine's triple
+#   sh scripts/fetch-sidecars.sh universal    macOS only: both Apple architectures, plus the
+#                                             merged <tool>-universal-apple-darwin that
+#                                             `tauri build --target universal-apple-darwin` bundles
+#
 #   tectonic  official release binary from github.com/tectonic-typesetting/tectonic,
 #             verified against a pinned SHA-256 (never run or ship an unverified download)
 #   synctex   built from github.com/jlaurens/synctex via apps/compiler/scripts/build-synctex.sh
@@ -16,32 +21,44 @@ set -eu
 TECTONIC_VERSION=0.17.0
 here="$(cd "$(dirname "$0")/.." && pwd)"
 out="$here/src-tauri/binaries"
-triple="$(rustc -vV | sed -n 's/^host: //p' | tr -d '\r')"
-exe=""
+host="$(rustc -vV | sed -n 's/^host: //p' | tr -d '\r')"
 
-case "$triple" in
-  aarch64-apple-darwin)
-    asset="tectonic-$TECTONIC_VERSION-aarch64-apple-darwin.tar.gz"
-    sha256="a3f1cac7c5678f01661a92212f58480ae3b0634115d880dbc59e2953ded45667"
+case "${1:-}" in
+  "") triples="$host" ;;
+  universal)
+    [ "$(uname -s)" = Darwin ] || { echo "universal builds are macOS-only" >&2; exit 1; }
+    triples="aarch64-apple-darwin x86_64-apple-darwin"
     ;;
-  x86_64-apple-darwin)
-    asset="tectonic-$TECTONIC_VERSION-x86_64-apple-darwin.tar.gz"
-    sha256="7c90ef5b6ddb1eb1937e4337add5237b79338e4b9676459fa91187d24d6cdf80"
-    ;;
-  x86_64-unknown-linux-gnu)
-    asset="tectonic-$TECTONIC_VERSION-x86_64-unknown-linux-gnu.tar.gz"
-    sha256="1a715688baf591e650c8aeb160ae934e181685eecbb38b317de30b269ac5d606"
-    ;;
-  x86_64-pc-windows-msvc)
-    asset="tectonic-$TECTONIC_VERSION-x86_64-pc-windows-msvc.zip"
-    sha256="f61ce51f0b0ade1015b7de7ef368541c5424e9756ecbd0d7af97d6d48030845f"
-    exe=".exe"
-    ;;
-  *)
-    echo "No verified Tectonic checksum for $triple yet; see the comment at the top of this script." >&2
-    exit 1
-    ;;
+  *) echo "usage: fetch-sidecars.sh [universal]" >&2; exit 1 ;;
 esac
+
+# Sets asset, sha256 and exe for a target triple.
+pick_asset() {
+  exe=""
+  case "$1" in
+    aarch64-apple-darwin)
+      asset="tectonic-$TECTONIC_VERSION-aarch64-apple-darwin.tar.gz"
+      sha256="a3f1cac7c5678f01661a92212f58480ae3b0634115d880dbc59e2953ded45667"
+      ;;
+    x86_64-apple-darwin)
+      asset="tectonic-$TECTONIC_VERSION-x86_64-apple-darwin.tar.gz"
+      sha256="7c90ef5b6ddb1eb1937e4337add5237b79338e4b9676459fa91187d24d6cdf80"
+      ;;
+    x86_64-unknown-linux-gnu)
+      asset="tectonic-$TECTONIC_VERSION-x86_64-unknown-linux-gnu.tar.gz"
+      sha256="1a715688baf591e650c8aeb160ae934e181685eecbb38b317de30b269ac5d606"
+      ;;
+    x86_64-pc-windows-msvc)
+      asset="tectonic-$TECTONIC_VERSION-x86_64-pc-windows-msvc.zip"
+      sha256="f61ce51f0b0ade1015b7de7ef368541c5424e9756ecbd0d7af97d6d48030845f"
+      exe=".exe"
+      ;;
+    *)
+      echo "No verified Tectonic checksum for $1 yet; see the comment at the top of this script." >&2
+      exit 1
+      ;;
+  esac
+}
 
 if command -v sha256sum >/dev/null 2>&1; then
   check_sha256() { echo "$1  $2" | sha256sum -c -; }
@@ -53,36 +70,60 @@ mkdir -p "$out"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
-url="https://github.com/tectonic-typesetting/tectonic/releases/download/tectonic%40$TECTONIC_VERSION/$asset"
-echo "Downloading $url"
-curl -fsSL --retry 3 "$url" -o "$tmp/$asset"
-check_sha256 "$sha256" "$tmp/$asset"
-mkdir "$tmp/tectonic"
-case "$asset" in
-  *.zip)
-    # Git Bash has no unzip by default; Windows' own tar (bsdtar) and 7-Zip read zips.
-    if command -v unzip >/dev/null 2>&1; then
-      unzip -q "$tmp/$asset" -d "$tmp/tectonic"
-    elif [ -x /c/Windows/System32/tar.exe ]; then
-      (cd "$tmp/tectonic" && /c/Windows/System32/tar.exe -xf "../$asset")
-    else
-      7z x -y -o"$tmp/tectonic" "$tmp/$asset" >/dev/null
-    fi
-    ;;
-  *) tar -xzf "$tmp/$asset" -C "$tmp/tectonic" ;;
-esac
-install -m 755 "$tmp/tectonic/tectonic$exe" "$out/tectonic-$triple$exe"
+sources_txt=""
+synctex_log=""
+for triple in $triples; do
+  pick_asset "$triple"
+  url="https://github.com/tectonic-typesetting/tectonic/releases/download/tectonic%40$TECTONIC_VERSION/$asset"
+  echo "Downloading $url"
+  curl -fsSL --retry 3 "$url" -o "$tmp/$asset"
+  check_sha256 "$sha256" "$tmp/$asset"
+  mkdir "$tmp/tectonic-$triple"
+  case "$asset" in
+    *.zip)
+      # Git Bash has no unzip by default; Windows' own tar (bsdtar) and 7-Zip read zips.
+      if command -v unzip >/dev/null 2>&1; then
+        unzip -q "$tmp/$asset" -d "$tmp/tectonic-$triple"
+      elif [ -x /c/Windows/System32/tar.exe ]; then
+        (cd "$tmp/tectonic-$triple" && /c/Windows/System32/tar.exe -xf "../$asset")
+      else
+        7z x -y -o"$tmp/tectonic-$triple" "$tmp/$asset" >/dev/null
+      fi
+      ;;
+    *) tar -xzf "$tmp/$asset" -C "$tmp/tectonic-$triple" ;;
+  esac
+  install -m 755 "$tmp/tectonic-$triple/tectonic$exe" "$out/tectonic-$triple$exe"
 
-synctex_log="$(sh "$here/../compiler/scripts/build-synctex.sh")"
-echo "$synctex_log"
-install -m 755 "$here/../compiler/bin/synctex$exe" "$out/synctex-$triple$exe"
+  # Universal: cross-compile each architecture's SyncTeX (clang's -arch; see build-synctex.sh).
+  arch=""
+  if [ -n "${1:-}" ]; then
+    arch="${triple%%-*}"
+    [ "$arch" != aarch64 ] || arch=arm64 # clang's name for it
+  fi
+  synctex_log="$(SYNCTEX_ARCH="$arch" sh "$here/../compiler/scripts/build-synctex.sh")"
+  echo "$synctex_log"
+  install -m 755 "$here/../compiler/bin/synctex$exe" "$out/synctex-$triple$exe"
 
-cat > "$out/SOURCES.txt" <<SOURCES
-Sidecar binaries bundled with SomeScript Desktop ($triple). Generated by scripts/fetch-sidecars.sh.
-
-tectonic $TECTONIC_VERSION  (MIT)
+  sources_txt="$sources_txt
+tectonic $TECTONIC_VERSION  (MIT)  $triple
   $url
   sha256 $sha256
+"
+done
+
+if [ "${1:-}" = universal ]; then
+  # One fat binary per tool, with both slices byte-for-byte the verified/built ones above.
+  for tool in tectonic synctex; do
+    lipo -create "$out/$tool-aarch64-apple-darwin" "$out/$tool-x86_64-apple-darwin" \
+      -output "$out/$tool-universal-apple-darwin"
+    lipo -archs "$out/$tool-universal-apple-darwin"
+  done
+  triples="universal-apple-darwin (aarch64 + x86_64)"
+fi
+
+cat > "$out/SOURCES.txt" <<SOURCES
+Sidecar binaries bundled with SomeScript Desktop ($triples). Generated by scripts/fetch-sidecars.sh.
+$sources_txt
 synctex  (MIT)
   https://github.com/jlaurens/synctex
   $synctex_log
