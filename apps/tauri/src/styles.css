@@ -13,6 +13,11 @@
 @source "../../editor/lib";
 @source ".";
 
+/* Streamdown renders the chat's markdown and carries its Tailwind class names inside its own JS,
+   which Tailwind skips because it lives in node_modules. Without this, lists have no bullets. */
+@source "../../editor/node_modules/streamdown/dist";
+@source "../../editor/node_modules/@streamdown";
+
 /* What next/font/google sets on <html> in the cloud editor. */
 :root {
   --font-sans: "Inter Variable", system-ui, sans-serif;

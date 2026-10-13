@@ -34,6 +34,8 @@
       "@/*": ["../editor/*"]
     }
   },
+  // Bun tests import "bun:test", which tsc has no types for (apps/web does the same).
   "include": ["src"],
+  "exclude": ["src/**/*.test.ts"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

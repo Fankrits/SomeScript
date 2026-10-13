@@ -1,3 +1,4 @@
+mod ai;
 mod api;
 mod config;
 mod error;
@@ -61,11 +62,15 @@ pub fn run() {
             let library = Arc::new(Library::new(root));
             library.purge_expired(SystemTime::now());
 
+            // AI settings live beside config.json in the app config dir, never in a project.
+            let ai_path = app.path().app_config_dir().ok().map(|d| d.join("ai.json"));
             let state = ApiState {
                 library,
                 tex: Arc::new(TexTools::locate(app.path().resource_dir().ok().as_deref())),
                 templates_dir: templates_dir(app),
                 config_path,
+                ai: Arc::new(ai::settings::AiStore::load(ai_path)),
+                http: ai::AiHttp::new(),
             };
             let started =
                 tauri::async_runtime::block_on(server::start(app.handle().clone(), state))?;

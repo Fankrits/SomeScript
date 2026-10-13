@@ -44,6 +44,18 @@ regex = "1.13.1"
 percent-encoding = "2.3.2"
 tokio-stream = "0.1.19"
 zip = { version = "9.0.2", default-features = false, features = ["deflate"] }
+# HTTP client for the AI chat (bring-your-own-key providers, custom endpoints). rustls with `ring`
+# rather than reqwest's default aws-lc-rs: pure Rust + a small C core, no cmake/NASM on the Windows
+# runner, and it links statically so the Linux bundle needs no libssl. System roots (and the OS
+# proxy settings) are honoured, so corporate proxies and local CAs keep working.
+reqwest = { version = "0.13.5", default-features = false, features = [
+  "rustls-no-provider",
+  "system-proxy",
+  "stream",
+  "json",
+] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+globset = "0.4"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

@@ -18,18 +18,22 @@ struct Harness {
     root: tempfile::TempDir,
 }
 
+/// The router's state with no real Tectonic and in-memory AI settings.
+fn test_state(library: Arc<Library>, config_path: Option<std::path::PathBuf>) -> ApiState {
+    ApiState {
+        library,
+        tex: Arc::new(TexTools::new("never-run".into(), "never-run".into())),
+        templates_dir: std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("templates"),
+        config_path,
+        ai: Arc::new(crate::ai::settings::AiStore::in_memory()),
+        http: crate::ai::AiHttp::new(),
+    }
+}
+
 fn harness() -> Harness {
     let root = tempfile::tempdir().unwrap();
     std::fs::create_dir(root.path().join("p1")).unwrap();
-    let library = Arc::new(Library::new(root.path().to_path_buf()));
-    let tex = Arc::new(TexTools::new("never-run".into(), "never-run".into()));
-    let templates_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("templates");
-    let state = ApiState {
-        library,
-        tex,
-        templates_dir,
-        config_path: None,
-    };
+    let state = test_state(Arc::new(Library::new(root.path().to_path_buf())), None);
     Harness {
         app: router::<ApiState>().with_state(state),
         root,
@@ -786,12 +790,7 @@ async fn changing_the_library_folder_switches_projects_and_is_remembered() {
 
     // Rebuild the router with a config path so persistence is observable.
     let library = Arc::new(Library::new(h.root.path().to_path_buf()));
-    let state = ApiState {
-        library,
-        tex: Arc::new(TexTools::new("never-run".into(), "never-run".into())),
-        templates_dir: std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("templates"),
-        config_path: Some(cfg.clone()),
-    };
+    let state = test_state(library, Some(cfg.clone()));
     let h = Harness {
         app: router::<ApiState>().with_state(state),
         root: h.root,
@@ -842,12 +841,7 @@ async fn changing_the_library_folder_switches_projects_and_is_remembered() {
 async fn an_unreadable_library_folder_is_reported_with_its_path_not_a_generic_500() {
     let h = harness();
     let gone = h.root.path().join("unplugged-drive");
-    let state = ApiState {
-        library: Arc::new(Library::new(gone.clone())),
-        tex: Arc::new(TexTools::new("never-run".into(), "never-run".into())),
-        templates_dir: std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("templates"),
-        config_path: None,
-    };
+    let state = test_state(Arc::new(Library::new(gone.clone())), None);
     let h = Harness {
         app: router::<ApiState>().with_state(state),
         root: h.root,
@@ -874,4 +868,457 @@ async fn an_unreadable_library_folder_is_reported_with_its_path_not_a_generic_50
         h.get("/api/projects").await.json(),
         json!({ "projects": [] })
     );
+}
+
+// ---- AI assistant -------------------------------------------------------------------------
+
+mod ai_routes {
+    use super::*;
+    use crate::ai::testing::{Reply as Mocked, spawn_mock};
+
+    const SECRET: &str = "sk-live-0123456789abcdef";
+
+    fn sse_text(text: &str) -> String {
+        format!(
+            "data: {}\n\ndata: {{\"choices\":[{{\"delta\":{{}},\"finish_reason\":\"stop\"}}]}}\n\ndata: [DONE]\n\n",
+            json!({ "choices": [{ "delta": { "content": text } }] })
+        )
+    }
+
+    fn sse_tool(name: &str, args: &str) -> String {
+        format!(
+            "data: {}\n\ndata: {{\"choices\":[{{\"delta\":{{}},\"finish_reason\":\"tool_calls\"}}]}}\n\ndata: [DONE]\n\n",
+            json!({ "choices": [{ "delta": { "tool_calls": [{ "index": 0, "id": "x", "function": { "name": name, "arguments": args } }] } }] })
+        )
+    }
+
+    async fn add_provider(h: &Harness, url: &str) -> String {
+        let r = h
+            .post(
+                "/api/ai/providers",
+                json!({ "name": "Mock", "kind": "openai", "baseUrl": url, "apiKey": SECRET, "defaultModel": "mock-1" }),
+            )
+            .await;
+        assert_eq!(
+            r.status,
+            StatusCode::OK,
+            "{}",
+            String::from_utf8_lossy(&r.body)
+        );
+        r.json()["provider"]["id"].as_str().unwrap().to_owned()
+    }
+
+    fn events(r: &Reply) -> Vec<Value> {
+        String::from_utf8(r.body.clone())
+            .unwrap()
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn settings_start_empty_and_the_key_never_comes_back_out() {
+        let h = harness();
+        let r = h.get("/api/ai/settings").await;
+        assert_eq!(r.status, StatusCode::OK);
+        assert_eq!(r.json()["providers"], json!([]));
+        assert_eq!(r.json()["activeProviderId"], Value::Null);
+
+        let id = add_provider(&h, "https://api.example.com/v1/").await;
+        let after = h.get("/api/ai/settings").await;
+        let text = String::from_utf8(after.body.clone()).unwrap();
+        assert!(
+            !text.contains(SECRET) && !text.contains("sk-live"),
+            "{text}"
+        );
+        let p = &after.json()["providers"][0];
+        assert_eq!(p["id"], id.as_str());
+        assert_eq!(p["baseUrl"], "https://api.example.com/v1");
+        assert_eq!(p["hasKey"], true);
+        assert_eq!(p["keyHint"], "cdef");
+        assert_eq!(after.json()["activeProviderId"], id.as_str());
+
+        // Editing without a key keeps it; the saved key still works (checked in the chat test).
+        let r = h
+            .post(
+                "/api/ai/providers",
+                json!({ "id": id, "name": "Renamed", "kind": "openai", "baseUrl": "https://api.example.com/v1" }),
+            )
+            .await;
+        assert_eq!(r.json()["provider"]["hasKey"], true);
+        assert_eq!(r.json()["provider"]["name"], "Renamed");
+
+        let r = h
+            .post(
+                "/api/ai/settings",
+                json!({ "customInstructions": "Use biblatex." }),
+            )
+            .await;
+        assert_eq!(r.json()["customInstructions"], "Use biblatex.");
+        let r = h
+            .post("/api/ai/providers/delete", json!({ "id": id }))
+            .await;
+        assert_eq!(r.json()["providers"], json!([]));
+        let r = h
+            .post("/api/ai/providers/delete", json!({ "id": id }))
+            .await;
+        assert_eq!(r.status, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn bad_provider_forms_are_rejected_with_a_reason() {
+        let h = harness();
+        for (body, needle) in [
+            (json!({ "name": "", "baseUrl": "https://x.com" }), "name"),
+            (json!({ "name": "A", "baseUrl": "x.com" }), "Base URL"),
+            (json!({ "name": "A", "baseUrl": "ftp://x.com" }), "http"),
+            (
+                json!({ "name": "A", "baseUrl": "https://u:p@x.com" }),
+                "credentials",
+            ),
+            (
+                json!({ "name": "A", "baseUrl": "https://x.com", "apiKeyHeader": "bad header" }),
+                "header",
+            ),
+            (
+                json!({ "name": "A", "baseUrl": "https://x.com", "kind": "carrier-pigeon" }),
+                "valid",
+            ),
+        ] {
+            let r = h.post("/api/ai/providers", body.clone()).await;
+            assert_eq!(r.status, StatusCode::BAD_REQUEST, "{body}");
+            let msg = r.json()["error"].as_str().unwrap().to_owned();
+            assert!(msg.contains(needle), "{body} -> {msg}");
+        }
+        assert_eq!(
+            h.get("/api/ai/settings").await.json()["providers"],
+            json!([])
+        );
+    }
+
+    #[tokio::test]
+    async fn testing_a_provider_lists_models_or_explains_why_not() {
+        let h = harness();
+        let mock = spawn_mock(vec![Mocked::Sse(sse_text("ok"))]).await;
+        let form =
+            json!({ "name": "Mock", "kind": "openai", "baseUrl": mock.url, "apiKey": SECRET });
+
+        let r = h.post("/api/ai/providers/test", form.clone()).await;
+        assert_eq!(
+            r.json(),
+            json!({ "ok": true, "models": ["mock-1", "mock-2"] })
+        );
+        let sent = mock.requests();
+        assert_eq!(
+            (sent[0].method.as_str(), sent[0].path.as_str()),
+            ("GET", "/models")
+        );
+        assert_eq!(sent[0].headers["authorization"], format!("Bearer {SECRET}"));
+
+        // A real round trip with a model name.
+        let mut chat = form.clone();
+        chat["mode"] = json!("chat");
+        chat["model"] = json!("mock-1");
+        let r = h.post("/api/ai/providers/test", chat.clone()).await;
+        assert_eq!(r.json()["ok"], true, "{}", String::from_utf8_lossy(&r.body));
+        assert_eq!(r.json()["sample"], "ok");
+        let mut no_model = chat;
+        no_model["model"] = json!("");
+        assert_eq!(
+            h.post("/api/ai/providers/test", no_model).await.json()["ok"],
+            false
+        );
+
+        // A rejected key.
+        mock.set_models(
+            StatusCode::UNAUTHORIZED,
+            json!({ "error": { "message": "bad key" } }),
+        );
+        let r = h.post("/api/ai/providers/test", form.clone()).await;
+        assert_eq!(r.status, StatusCode::OK);
+        assert_eq!(r.json()["ok"], false);
+        assert!(
+            r.json()["error"]
+                .as_str()
+                .unwrap()
+                .contains("rejected the API key")
+        );
+
+        // An endpoint that has no /models still gets a hint instead of a dead end.
+        mock.set_models(StatusCode::NOT_FOUND, json!({}));
+        let r = h.post("/api/ai/providers/test", form.clone()).await;
+        assert!(
+            r.json()["error"]
+                .as_str()
+                .unwrap()
+                .contains("type a model name")
+        );
+
+        // Something that answers, but not with models.
+        mock.set_models(StatusCode::OK, json!({ "hello": "world" }));
+        assert!(
+            h.post("/api/ai/providers/test", form).await.json()["error"]
+                .as_str()
+                .unwrap()
+                .contains("not with a list of models")
+        );
+
+        // Nothing is listening.
+        let dead = json!({ "name": "Dead", "kind": "openai", "baseUrl": "http://127.0.0.1:9/v1" });
+        let r = h.post("/api/ai/providers/test", dead).await;
+        assert!(
+            r.json()["error"]
+                .as_str()
+                .unwrap()
+                .contains("Couldn't reach")
+        );
+    }
+
+    #[tokio::test]
+    async fn testing_a_saved_provider_reuses_its_stored_key() {
+        let h = harness();
+        let mock = spawn_mock(vec![]).await;
+        let id = add_provider(&h, &mock.url).await;
+        // The edit form sends no key (it never has it); the server fills in the saved one.
+        let r = h
+            .post(
+                "/api/ai/providers/test",
+                json!({ "id": id, "name": "Mock", "kind": "openai", "baseUrl": mock.url }),
+            )
+            .await;
+        assert_eq!(r.json()["ok"], true);
+        assert_eq!(
+            mock.requests()[0].headers["authorization"],
+            format!("Bearer {SECRET}")
+        );
+    }
+
+    #[tokio::test]
+    async fn chat_streams_events_and_runs_tools_in_the_project() {
+        let h = harness();
+        std::fs::write(h.file("main.tex"), "Hello\n").unwrap();
+        let mock = spawn_mock(vec![
+            Mocked::Sse(sse_tool(
+                "edit_file",
+                r#"{"path":"main.tex","oldText":"Hello","newText":"Hello, world"}"#,
+            )),
+            Mocked::Sse(sse_text("Done.")),
+        ])
+        .await;
+        add_provider(&h, &mock.url).await;
+
+        let r = h
+            .post(
+                "/api/ai/chat",
+                json!({
+                    "projectId": "p1",
+                    "openFile": "main.tex",
+                    "messages": [{ "id": "1", "role": "user", "text": "make it friendlier" }],
+                }),
+            )
+            .await;
+        assert_eq!(r.status, StatusCode::OK);
+        assert_eq!(
+            r.headers[header::CONTENT_TYPE],
+            "application/x-ndjson; charset=utf-8"
+        );
+        let ev = events(&r);
+        let kinds: Vec<_> = ev.iter().map(|e| e["type"].as_str().unwrap()).collect();
+        assert_eq!(kinds, ["start", "tool-call", "tool-result", "text", "done"]);
+        assert_eq!(ev[0]["model"], "mock-1");
+        assert_eq!(ev[2]["ok"], true);
+        assert_eq!(
+            std::fs::read_to_string(h.file("main.tex")).unwrap(),
+            "Hello, world\n"
+        );
+
+        let first = &mock.requests()[0];
+        assert_eq!(first.headers["authorization"], format!("Bearer {SECRET}"));
+        let system = first.body["messages"][0]["content"].as_str().unwrap();
+        assert!(
+            system.ends_with("[openFile: main.tex]"),
+            "the open file reaches the model"
+        );
+    }
+
+    #[tokio::test]
+    async fn chat_continues_a_conversation_from_the_clients_history() {
+        let h = harness();
+        let mock = spawn_mock(vec![Mocked::Sse(sse_text("Because."))]).await;
+        add_provider(&h, &mock.url).await;
+        let r = h
+            .post(
+                "/api/ai/chat",
+                json!({
+                    "projectId": "p1",
+                    "messages": [
+                        { "role": "user", "text": "What is a bibitem?" },
+                        { "role": "assistant", "parts": [{ "type": "text", "text": "An entry." }] },
+                        { "role": "user", "text": "Why?" },
+                    ],
+                }),
+            )
+            .await;
+        assert_eq!(events(&r).last().unwrap()["reason"], "stop");
+        let sent = mock.requests()[0].body["messages"].clone();
+        let roles: Vec<_> = sent
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|m| m["role"].as_str().unwrap())
+            .collect();
+        assert_eq!(roles, ["system", "user", "assistant", "user"]);
+    }
+
+    #[tokio::test]
+    async fn a_provider_error_is_a_stream_event_and_never_contains_the_key() {
+        let h = harness();
+        let mock = spawn_mock(vec![Mocked::Json(
+            StatusCode::UNAUTHORIZED,
+            json!({ "error": { "message": format!("Invalid key {SECRET}") } }),
+        )])
+        .await;
+        add_provider(&h, &mock.url).await;
+        let r = h
+            .post(
+                "/api/ai/chat",
+                json!({ "projectId": "p1", "messages": [{ "role": "user", "text": "hi" }] }),
+            )
+            .await;
+        assert_eq!(r.status, StatusCode::OK);
+        let text = String::from_utf8(r.body.clone()).unwrap();
+        assert!(!text.contains(SECRET), "{text}");
+        let ev = events(&r);
+        assert_eq!(ev[1]["type"], "error");
+        assert!(ev[1]["message"].as_str().unwrap().contains("[your key]"));
+        assert_eq!(ev.last().unwrap()["reason"], "error");
+    }
+
+    #[tokio::test]
+    async fn chat_setup_problems_are_plain_json_errors() {
+        let h = harness();
+        let user = json!([{ "role": "user", "text": "hi" }]);
+
+        let r = h
+            .post(
+                "/api/ai/chat",
+                json!({ "projectId": "p1", "messages": user }),
+            )
+            .await;
+        assert_eq!(r.status, StatusCode::BAD_REQUEST);
+        assert!(
+            r.json()["error"]
+                .as_str()
+                .unwrap()
+                .contains("No AI provider is set up")
+        );
+
+        add_provider(&h, "https://api.example.com/v1").await;
+        let r = h
+            .post(
+                "/api/ai/chat",
+                json!({ "projectId": "nope", "messages": user }),
+            )
+            .await;
+        assert_eq!(r.status, StatusCode::NOT_FOUND);
+        let r = h
+            .post("/api/ai/chat", json!({ "projectId": "p1", "messages": [] }))
+            .await;
+        assert_eq!(r.status, StatusCode::BAD_REQUEST);
+        let r = h.post("/api/ai/chat", json!({ "projectId": "p1" })).await;
+        assert_eq!(r.status, StatusCode::BAD_REQUEST);
+        let r = h
+            .post(
+                "/api/ai/chat",
+                json!({ "projectId": "p1", "messages": [{ "role": "user", "text": "hi" }, { "role": "assistant", "parts": [{ "type": "text", "text": "hello" }] }] }),
+            )
+            .await;
+        assert_eq!(r.status, StatusCode::BAD_REQUEST);
+        assert!(r.json()["error"].as_str().unwrap().contains("last message"));
+    }
+
+    #[tokio::test]
+    async fn chat_history_round_trips_per_project_and_refuses_unsafe_ids() {
+        let h = harness();
+        let index = json!({ "threads": [{ "id": "t1", "title": "First chat", "createdAt": 1 }], "activeThreadId": "t1" });
+        assert_eq!(
+            h.get("/api/chat/threads?projectId=p1").await.json()["index"]["threads"],
+            json!([])
+        );
+        let r = h
+            .json(
+                Method::PUT,
+                "/api/chat/threads",
+                json!({ "projectId": "p1", "index": index }),
+            )
+            .await;
+        assert_eq!(r.json(), json!({ "success": true }));
+        assert_eq!(
+            h.get("/api/chat/threads?projectId=p1").await.json()["index"],
+            index
+        );
+
+        assert_eq!(
+            h.get("/api/chat/thread?projectId=p1&threadId=t1")
+                .await
+                .json(),
+            json!({ "snapshot": null })
+        );
+        let messages = json!([{ "role": "user", "text": "hi" }]);
+        let r = h
+            .json(
+                Method::PUT,
+                "/api/chat/thread",
+                json!({ "projectId": "p1", "threadId": "t1", "messages": messages }),
+            )
+            .await;
+        assert_eq!(r.status, StatusCode::OK);
+        let got = h
+            .get("/api/chat/thread?projectId=p1&threadId=t1")
+            .await
+            .json();
+        assert_eq!(got["snapshot"]["messages"], messages);
+        assert!(h.file(".somescript/chat/threads/t1.json").is_file());
+
+        let del = h
+            .send(
+                Request::delete("/api/chat/thread?projectId=p1&threadId=t1")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await;
+        assert_eq!(del.status, StatusCode::OK);
+        assert_eq!(
+            h.get("/api/chat/thread?projectId=p1&threadId=t1")
+                .await
+                .json(),
+            json!({ "snapshot": null })
+        );
+
+        for bad in ["../evil", "a/b", ""] {
+            let r = h
+                .json(
+                    Method::PUT,
+                    "/api/chat/thread",
+                    json!({ "projectId": "p1", "threadId": bad, "messages": [] }),
+                )
+                .await;
+            assert_eq!(r.status, StatusCode::BAD_REQUEST, "{bad:?}");
+        }
+        assert_eq!(
+            h.get("/api/chat/thread?projectId=p1&threadId=..%2Fx")
+                .await
+                .status,
+            StatusCode::BAD_REQUEST
+        );
+        assert!(!h.root.path().join("evil.json").exists());
+        let r = h
+            .json(
+                Method::PUT,
+                "/api/chat/threads",
+                json!({ "projectId": "nope", "index": index }),
+            )
+            .await;
+        assert_eq!(r.status, StatusCode::NOT_FOUND);
+    }
 }

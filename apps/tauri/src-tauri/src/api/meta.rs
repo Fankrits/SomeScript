@@ -167,6 +167,23 @@ pub fn sanitize_settings(input: Option<&Value>) -> Value {
     json!({ "mainFilePath": main_file, "compilerEngine": engine })
 }
 
+/// The project's root document: the configured one if it exists, else the conventional
+/// `main.tex` / `Main.tex`, else whatever is configured (so the error names it).
+pub(crate) fn main_file_path(project: &Project) -> String {
+    let configured = sanitize_settings(read_json(project, SETTINGS_PATH).as_ref())["mainFilePath"]
+        .as_str()
+        .unwrap_or("main.tex")
+        .to_owned();
+    let exists = |p: &str| project.resolve(p).is_ok_and(|full| full.is_file());
+    if exists(&configured) {
+        return configured;
+    }
+    ["main.tex", "Main.tex"]
+        .into_iter()
+        .find(|p| exists(p))
+        .map_or(configured, str::to_owned)
+}
+
 pub async fn settings_get(
     State(s): State<ApiState>,
     Query(q): Query<HashMap<String, String>>,

@@ -9,6 +9,7 @@ import {
   Pencil,
   Plus,
   RotateCcw,
+  Settings,
   Trash2,
   Upload,
   WifiOff,
@@ -113,6 +114,13 @@ export default function Library() {
           </Button>
           <Button onClick={() => setDialog("new")}>
             <Plus /> New project
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => window.location.assign("/settings")}
+            data-testid="open-settings"
+          >
+            <Settings /> Settings
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
