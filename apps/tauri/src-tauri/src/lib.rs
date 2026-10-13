@@ -1,25 +1,41 @@
 mod api;
+mod config;
 mod error;
 mod library;
 mod server;
 mod storage;
 mod tex;
+mod zipio;
 
 use api::ApiState;
 use library::Library;
 use std::{
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{Arc, Mutex},
+    time::SystemTime,
 };
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder, webview::DownloadEvent};
 use tex::TexTools;
 
-/// `SOMESCRIPT_LIBRARY` (dev, tests, portable use) overrides the default `~/Documents/SomeScript`.
-fn library_root(app: &tauri::App) -> PathBuf {
+/// `SOMESCRIPT_LIBRARY` (dev, tests, portable use) beats the folder saved in the app config,
+/// which beats the default `~/Documents/SomeScript`.
+fn library_root(app: &tauri::App, config_path: Option<&Path>) -> PathBuf {
     std::env::var_os("SOMESCRIPT_LIBRARY")
         .map(PathBuf::from)
+        .or_else(|| config_path.and_then(|p| config::load(p).library_path))
         .or_else(|| app.path().document_dir().ok().map(|d| d.join("SomeScript")))
         .unwrap_or_else(|| PathBuf::from("SomeScript"))
+}
+
+/// Bundled templates: the app's resource dir. Under `cargo run` there is no bundle, so debug
+/// builds read the source tree; a release build never does (a missing bundle must fail loudly,
+/// not read whatever happens to exist at the build machine's path).
+fn templates_dir(app: &tauri::App) -> PathBuf {
+    let bundled = app.path().resource_dir().ok().map(|d| d.join("templates"));
+    match bundled {
+        Some(dir) if dir.is_dir() || !cfg!(debug_assertions) => dir,
+        _ => Path::new(env!("CARGO_MANIFEST_DIR")).join("templates"),
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -28,17 +44,25 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
-            let root = library_root(app);
+            let config_path = app
+                .path()
+                .app_config_dir()
+                .ok()
+                .map(|d| d.join("config.json"));
+            let root = library_root(app, config_path.as_deref());
             // An unusable folder (unplugged drive, moved) must not stop the app from starting:
             // the Library screen reports it and lets the user pick another one.
             if let Err(e) = std::fs::create_dir_all(&root) {
                 eprintln!("[library] can't use {}: {e}", root.display());
             }
             let library = Arc::new(Library::new(root));
+            library.purge_expired(SystemTime::now());
 
             let state = ApiState {
                 library,
                 tex: Arc::new(TexTools::locate()),
+                templates_dir: templates_dir(app),
+                config_path,
             };
             let started =
                 tauri::async_runtime::block_on(server::start(app.handle().clone(), state))?;

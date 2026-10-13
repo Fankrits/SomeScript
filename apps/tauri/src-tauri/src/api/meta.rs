@@ -20,6 +20,15 @@ const SETTINGS_PATH: &str = ".somescript/project-settings.json";
 /// The cloud editor keys prefs by Clerk user id; the desktop app has exactly one user.
 const PREFS_PATH: &str = ".somescript/editor-prefs/local.json";
 
+/// Prefs for a brand-new project: open `file` straight away instead of an empty editor.
+pub fn write_initial_prefs(project: &Project, file: &str) -> ApiResult<()> {
+    let prefs = sanitize_prefs(Some(&json!({ "lastOpenFile": file })));
+    project.write(
+        PREFS_PATH,
+        &serde_json::to_vec(&prefs).map_err(ApiError::internal)?,
+    )
+}
+
 const MAX_TASKS: usize = 500;
 const MAX_NAME: usize = 200;
 const MAX_DESCRIPTION: usize = 5000;

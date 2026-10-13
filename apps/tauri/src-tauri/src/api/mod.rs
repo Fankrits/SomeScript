@@ -4,6 +4,7 @@
 mod compile;
 mod files;
 mod meta;
+mod projects;
 mod search;
 
 #[cfg(test)]
@@ -16,12 +17,16 @@ use axum::{
     routing::{get, post},
 };
 use serde_json::Value;
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 
 #[derive(Clone)]
 pub struct ApiState {
     pub library: Arc<Library>,
     pub tex: Arc<TexTools>,
+    /// Bundled project templates (`src-tauri/templates`, shipped as app resources).
+    pub templates_dir: PathBuf,
+    /// Where the chosen library folder is remembered; `None` in tests.
+    pub config_path: Option<PathBuf>,
 }
 
 pub fn router<S>() -> Router<S>
@@ -53,6 +58,26 @@ where
             get(meta::prefs_get).put(meta::prefs_put),
         )
         .route("/api/project/name", get(meta::project_name))
+        // Library screen (desktop only)
+        .route("/api/projects", get(projects::list).post(projects::create))
+        .route("/api/projects/rename", post(projects::rename))
+        .route("/api/projects/delete", post(projects::delete))
+        .route(
+            "/api/projects/import",
+            post(projects::import).layer(DefaultBodyLimit::max(
+                crate::zipio::MAX_UPLOAD_BYTES + 1024 * 1024,
+            )),
+        )
+        .route("/api/projects/export", get(projects::export))
+        .route("/api/templates", get(projects::templates))
+        .route("/api/trash", get(projects::trash_list))
+        .route("/api/trash/restore", post(projects::trash_restore))
+        .route("/api/trash/purge", post(projects::trash_purge))
+        .route(
+            "/api/settings",
+            get(projects::settings_get).post(projects::settings_post),
+        )
+        .route("/api/prepare-offline", post(projects::prepare_offline))
 }
 
 /// JS truthiness for the few request fields the Next routes test that way (`if (body.isDir)`).

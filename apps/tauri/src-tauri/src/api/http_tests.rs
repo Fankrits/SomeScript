@@ -23,7 +23,13 @@ fn harness() -> Harness {
     std::fs::create_dir(root.path().join("p1")).unwrap();
     let library = Arc::new(Library::new(root.path().to_path_buf()));
     let tex = Arc::new(TexTools::new("never-run".into(), "never-run".into()));
-    let state = ApiState { library, tex };
+    let templates_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("templates");
+    let state = ApiState {
+        library,
+        tex,
+        templates_dir,
+        config_path: None,
+    };
     Harness {
         app: router::<ApiState>().with_state(state),
         root,
@@ -520,5 +526,352 @@ async fn tasks_settings_prefs_and_name_roundtrip() {
     assert_eq!(
         h.get("/api/files?projectId=p1").await.json(),
         json!({ "tree": [] })
+    );
+}
+
+// ---- Library screen ----------------------------------------------------------------------
+
+fn multipart_to(uri: &str, parts: &[(&str, Option<&str>, &[u8])]) -> Request<Body> {
+    let mut req = multipart(parts);
+    *req.uri_mut() = uri.parse().unwrap();
+    req
+}
+
+#[tokio::test]
+async fn create_from_templates_and_reject_bad_requests_without_leaving_folders() {
+    let h = harness();
+    assert_eq!(
+        h.get("/api/templates").await.json()["templates"][0]["id"],
+        "starter"
+    );
+
+    let r = h
+        .post(
+            "/api/projects",
+            json!({ "name": "My Thesis", "template": "starter" }),
+        )
+        .await;
+    assert_eq!(
+        (r.status, r.json()),
+        (StatusCode::OK, json!({ "id": "My Thesis" }))
+    );
+    let tree = h.get("/api/files?projectId=My%20Thesis").await.json();
+    let names: Vec<_> = tree["tree"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|n| n["name"].as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(names, ["Fonts", "main.tex"]);
+    let main = h
+        .get("/api/files?projectId=My%20Thesis&path=main.tex")
+        .await
+        .json();
+    assert!(
+        main["content"]
+            .as_str()
+            .unwrap()
+            .contains("compiles your documents right on your computer")
+    );
+    assert!(!main["content"].as_str().unwrap().contains("in the cloud"));
+
+    // A new project opens main.tex straight away rather than an empty editor.
+    let prefs = h
+        .get("/api/editor-prefs?projectId=My%20Thesis")
+        .await
+        .json();
+    assert_eq!(prefs["prefs"]["lastOpenFile"], "main.tex");
+
+    // Same name again is de-duplicated; blank template is minimal; default template is the starter.
+    let r = h
+        .post(
+            "/api/projects",
+            json!({ "name": "My Thesis", "template": "blank" }),
+        )
+        .await;
+    assert_eq!(r.json(), json!({ "id": "My Thesis 2" }));
+    let blank = h.get("/api/files?projectId=My%20Thesis%202").await.json();
+    assert_eq!(blank["tree"].as_array().unwrap().len(), 1);
+    let r = h.post("/api/projects", json!({ "name": "Default" })).await;
+    assert_eq!(r.json(), json!({ "id": "Default" }));
+    assert!(h.root.path().join("Default/Fonts").is_dir());
+
+    for (body, status, msg) in [
+        (
+            json!({ "name": "  " }),
+            StatusCode::BAD_REQUEST,
+            "Project name is required",
+        ),
+        (
+            json!({ "name": "X", "template": "../../etc" }),
+            StatusCode::BAD_REQUEST,
+            "Unknown template",
+        ),
+        (
+            json!({ "name": "X", "template": "nope" }),
+            StatusCode::BAD_REQUEST,
+            "Unknown template",
+        ),
+    ] {
+        let r = h.post("/api/projects", body).await;
+        assert_eq!((r.status, r.json()), (status, json!({ "error": msg })));
+    }
+    assert!(
+        !h.root.path().join("X").exists(),
+        "a rejected create must not leave a folder"
+    );
+}
+
+#[tokio::test]
+async fn project_lifecycle_list_rename_trash_restore_purge() {
+    let h = harness(); // starts with a project folder named "p1"
+    let ids = |v: Value| -> Vec<String> {
+        v["projects"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|p| p["id"].as_str().unwrap().to_owned())
+            .collect()
+    };
+    h.post(
+        "/api/projects",
+        json!({ "name": "Paper", "template": "blank" }),
+    )
+    .await;
+    let listed = h.get("/api/projects").await.json();
+    assert_eq!(ids(listed.clone()).len(), 2);
+    assert!(listed["projects"][0]["updatedAt"].as_u64().unwrap() > 0);
+
+    let r = h
+        .post(
+            "/api/projects/rename",
+            json!({ "id": "Paper", "name": "Final Paper" }),
+        )
+        .await;
+    assert_eq!(r.json(), json!({ "id": "Final Paper" }));
+    assert!(h.get("/api/files?projectId=Paper").await.status == StatusCode::NOT_FOUND);
+    assert_eq!(
+        h.get("/api/project/name?projectId=Final%20Paper")
+            .await
+            .json(),
+        json!({ "name": "Final Paper" })
+    );
+    let r = h
+        .post(
+            "/api/projects/rename",
+            json!({ "id": "Final Paper", "name": "" }),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::BAD_REQUEST);
+
+    let r = h
+        .post("/api/projects/delete", json!({ "id": "Final Paper" }))
+        .await;
+    assert_eq!(r.json(), json!({ "success": true }));
+    assert_eq!(ids(h.get("/api/projects").await.json()), ["p1"]);
+    let trash = h.get("/api/trash").await.json();
+    assert_eq!(trash["items"][0]["name"], "Final Paper");
+    let trash_id = trash["items"][0]["id"].as_str().unwrap().to_owned();
+
+    let r = h
+        .post("/api/trash/restore", json!({ "id": trash_id }))
+        .await;
+    assert_eq!(r.json(), json!({ "id": "Final Paper" }));
+    assert!(h.file("../Final Paper/main.tex").exists());
+
+    h.post("/api/projects/delete", json!({ "id": "Final Paper" }))
+        .await;
+    let trash_id = h.get("/api/trash").await.json()["items"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert_eq!(
+        h.post("/api/trash/purge", json!({ "id": trash_id }))
+            .await
+            .json(),
+        json!({ "success": true })
+    );
+    assert_eq!(h.get("/api/trash").await.json(), json!({ "items": [] }));
+
+    // Traversal through the trash endpoints is refused, and nothing outside is touched.
+    let r = h.post("/api/trash/purge", json!({ "id": "../p1" })).await;
+    assert_eq!(r.status, StatusCode::BAD_REQUEST);
+    assert!(h.root.path().join("p1").is_dir());
+}
+
+#[tokio::test]
+async fn zip_export_then_import_round_trips_over_http() {
+    let h = harness();
+    h.post(
+        "/api/projects",
+        json!({ "name": "Source", "template": "blank" }),
+    )
+    .await;
+    std::fs::write(h.root.path().join("Source/notes.txt"), "สวัสดี").unwrap();
+
+    let r = h.get("/api/projects/export?id=Source").await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert_eq!(r.headers[header::CONTENT_TYPE], "application/zip");
+    assert!(
+        r.headers[header::CONTENT_DISPOSITION]
+            .to_str()
+            .unwrap()
+            .contains("filename=\"Source.zip\"")
+    );
+    let zip = r.body;
+
+    // Name comes from the form field, or else from the uploaded file's name.
+    let r = h
+        .send(multipart_to(
+            "/api/projects/import",
+            &[("name", None, b"Copy"), ("file", Some("x.zip"), &zip)],
+        ))
+        .await;
+    assert_eq!(r.json(), json!({ "id": "Copy" }));
+    assert_eq!(
+        std::fs::read_to_string(h.root.path().join("Copy/notes.txt")).unwrap(),
+        "สวัสดี"
+    );
+    assert!(h.root.path().join("Copy/main.tex").exists());
+    let r = h
+        .send(multipart_to(
+            "/api/projects/import",
+            &[("file", Some("Thesis Backup.zip"), &zip)],
+        ))
+        .await;
+    assert_eq!(r.json(), json!({ "id": "Thesis Backup" }));
+
+    // A bad archive fails cleanly and leaves no half-imported project behind.
+    let before: Vec<_> = std::fs::read_dir(h.root.path())
+        .unwrap()
+        .map(|e| e.unwrap().file_name())
+        .collect();
+    let r = h
+        .send(multipart_to(
+            "/api/projects/import",
+            &[
+                ("name", None, b"Broken"),
+                ("file", Some("b.zip"), b"not a zip"),
+            ],
+        ))
+        .await;
+    assert_eq!(r.status, StatusCode::BAD_REQUEST);
+    assert!(!h.root.path().join("Broken").exists());
+    let after: Vec<_> = std::fs::read_dir(h.root.path())
+        .unwrap()
+        .map(|e| e.unwrap().file_name())
+        .collect();
+    assert_eq!(before.len(), after.len());
+    let r = h
+        .send(multipart_to(
+            "/api/projects/import",
+            &[("name", None, b"Empty")],
+        ))
+        .await;
+    assert_eq!(
+        (r.status, r.json()),
+        (
+            StatusCode::BAD_REQUEST,
+            json!({ "error": "ZIP file is required" })
+        )
+    );
+}
+
+#[tokio::test]
+async fn changing_the_library_folder_switches_projects_and_is_remembered() {
+    let h = harness();
+    let other = tempfile::tempdir().unwrap();
+    let cfg = other.path().join("cfg/config.json");
+    let new_root = other.path().join("My Projects");
+
+    // Rebuild the router with a config path so persistence is observable.
+    let library = Arc::new(Library::new(h.root.path().to_path_buf()));
+    let state = ApiState {
+        library,
+        tex: Arc::new(TexTools::new("never-run".into(), "never-run".into())),
+        templates_dir: std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("templates"),
+        config_path: Some(cfg.clone()),
+    };
+    let h = Harness {
+        app: router::<ApiState>().with_state(state),
+        root: h.root,
+    };
+
+    assert_eq!(
+        h.get("/api/settings").await.json()["libraryPath"],
+        h.root.path().to_str().unwrap()
+    );
+    let r = h
+        .post("/api/settings", json!({ "libraryPath": "relative/dir" }))
+        .await;
+    assert_eq!(r.status, StatusCode::BAD_REQUEST);
+
+    let r = h
+        .post(
+            "/api/settings",
+            json!({ "libraryPath": new_root.to_str().unwrap() }),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert!(
+        new_root.is_dir(),
+        "the folder is created if it doesn't exist"
+    );
+    assert_eq!(
+        h.get("/api/projects").await.json(),
+        json!({ "projects": [] }),
+        "now looking at the new folder"
+    );
+    h.post(
+        "/api/projects",
+        json!({ "name": "Fresh", "template": "blank" }),
+    )
+    .await;
+    assert!(new_root.join("Fresh/main.tex").exists());
+    assert_eq!(
+        crate::config::load(&cfg)
+            .library_path
+            .unwrap()
+            .file_name()
+            .unwrap(),
+        "My Projects"
+    );
+}
+
+#[tokio::test]
+async fn an_unreadable_library_folder_is_reported_with_its_path_not_a_generic_500() {
+    let h = harness();
+    let gone = h.root.path().join("unplugged-drive");
+    let state = ApiState {
+        library: Arc::new(Library::new(gone.clone())),
+        tex: Arc::new(TexTools::new("never-run".into(), "never-run".into())),
+        templates_dir: std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("templates"),
+        config_path: None,
+    };
+    let h = Harness {
+        app: router::<ApiState>().with_state(state),
+        root: h.root,
+    };
+
+    let r = h.get("/api/projects").await;
+    assert_eq!(r.status, StatusCode::INTERNAL_SERVER_ERROR);
+    let msg = r.json()["error"].as_str().unwrap().to_owned();
+    assert!(
+        msg.contains("Can't read the library folder") && msg.contains("unplugged-drive"),
+        "{msg}"
+    );
+
+    // Pointing the app at a usable folder repairs it without a restart.
+    let fixed = h.root.path().join("fixed");
+    let r = h
+        .post(
+            "/api/settings",
+            json!({ "libraryPath": fixed.to_str().unwrap() }),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert_eq!(
+        h.get("/api/projects").await.json(),
+        json!({ "projects": [] })
     );
 }
