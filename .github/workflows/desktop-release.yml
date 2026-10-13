@@ -111,8 +111,7 @@ jobs:
 
           | Platform | Download | Notes |
           |---|---|---|
-          | macOS, Apple Silicon | \`SomeScript-${VERSION}-macos-arm64.dmg\` | ${mac} |
-          | macOS, Intel | \`SomeScript-${VERSION}-macos-x64.dmg\` | Same as above. |
+          | macOS (Apple Silicon and Intel) | \`SomeScript-${VERSION}-macos-universal.dmg\` (or \`.app.zip\`) | ${mac} |
           | Windows 10/11, x64 | \`SomeScript-${VERSION}-windows-x64-setup.exe\` | **Not signed.** Windows SmartScreen will say the publisher is unknown: choose More info, then Run anyway. |
           | Linux, x64 | \`SomeScript-${VERSION}-linux-x64.deb\`, \`.rpm\`, \`.AppImage\` | Needs glibc 2.39 or newer (Ubuntu 24.04, Debian 13, Fedora 40 or later). |
 

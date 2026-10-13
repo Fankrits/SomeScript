@@ -77,12 +77,16 @@ editor module in `src/shims/` (mirror the alias in **both** `vite.config.ts` and
 
 ```sh
 bun run desktop:sidecars && bun run desktop:build      # .app + .dmg under src-tauri/target/release/bundle
+# macOS, one file for Apple Silicon and Intel (this is what CI ships); needs both Rust targets
+# (`rustup target add aarch64-apple-darwin x86_64-apple-darwin`). Output: target/universal-apple-darwin/release/bundle
+bun run desktop:sidecars:universal && bun run desktop:build:universal
 ```
 
 `desktop:build` merges `src-tauri/tauri.bundle.conf.json` (sidecars + templates); on Linux use `desktop:build:linux`,
 whose sidecars live in the app's lib dir because `/usr/bin/synctex` would collide with TeX Live's package. The bundle
-configs are separate from `tauri.conf.json` so `cargo test` and `tauri dev` don't need the binaries. CI builds for macOS (Apple Silicon and
-Intel), Windows x64 and Linux x64; `scripts/fetch-sidecars.sh` pins a SHA-256 per platform for the official Tectonic
+configs are separate from `tauri.conf.json` so `cargo test` and `tauri dev` don't need the binaries. CI builds one universal
+installer for macOS (Apple Silicon + Intel via `tauri build --target universal-apple-darwin`, verified on both Apple Silicon and Intel runners),
+and x64 installers for Windows and Linux; `scripts/fetch-sidecars.sh` pins a SHA-256 per platform for the official Tectonic
 build (Linux needs the glibc build, not musl, which breaks Thai/CJK line breaking, and it needs glibc 2.39+).
 Builds are **unsigned** until signing secrets are configured: macOS shows a Gatekeeper warning, Windows a SmartScreen
 warning. Windows/Linux on ARM are not built.

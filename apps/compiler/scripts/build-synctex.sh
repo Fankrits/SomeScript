@@ -38,8 +38,9 @@ SHIM
     "${CC:-gcc}" -O2 -static -DSYNCTEX_STANDALONE -I"$tmp/synctex" -I"$tmp/shim" -I"$z" -o "$dir/bin/synctex" $sources -lshlwapi
     ;;
   *)
+    # SYNCTEX_ARCH (macOS only) cross-compiles for that architecture, for universal app builds.
     # shellcheck disable=SC2086
-    cc -O2 -DSYNCTEX_STANDALONE -I"$tmp/synctex" -o "$dir/bin/synctex" $sources -lz -lm
+    cc ${SYNCTEX_ARCH:+-arch "$SYNCTEX_ARCH"} -O2 -DSYNCTEX_STANDALONE -I"$tmp/synctex" -o "$dir/bin/synctex" $sources -lz -lm
     ;;
 esac
 echo "Built $dir/bin/synctex (upstream commit $(git -C "$tmp/synctex" rev-parse HEAD))"

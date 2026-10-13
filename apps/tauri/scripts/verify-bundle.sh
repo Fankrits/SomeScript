@@ -6,6 +6,7 @@
 #                                                                           AppImage) tree, or /
 #                                                                           Windows: the install dir
 #   REQUIRE_SIGNED=1 sh scripts/verify-bundle.sh ...     also enforce code signing + Gatekeeper (macOS)
+#   EXPECT_UNIVERSAL=1 sh scripts/verify-bundle.sh ...   require both arm64 and x86_64 slices (macOS)
 set -u
 
 app="${1:?usage: verify-bundle.sh path/to/bundle [expected-version]}"
@@ -52,8 +53,21 @@ for exe in somescript-desktop tectonic synctex; do
   case "$kind" in
     macos)
       # Only OS-provided libraries: a Homebrew dylib works on the build machine and nowhere else.
-      extra="$(otool -L "$path" | tail -n +2 | awk '{print $1}' | grep -v '^/System/' | grep -v '^/usr/lib/' || true)"
+      # (Library lines are indented; a universal binary also prints an unindented header per architecture.)
+      extra="$(otool -L "$path" | awk '/^[[:space:]]/ {print $1}' | grep -v '^/System/' | grep -v '^/usr/lib/' || true)"
       [ -z "$extra" ] || bad "$exe links non-system libraries: $(echo "$extra" | tr '\n' ' ')"
+      if [ "${EXPECT_UNIVERSAL:-0}" = "1" ]; then
+        archs="$(lipo -archs "$path" 2>/dev/null || true)"
+        case " $archs " in
+          *" arm64 "*|*" aarch64 "*)
+            case " $archs " in
+              *" x86_64 "*) ;;
+              *) bad "$exe is not universal: architectures are '$archs' (missing x86_64)" ;;
+            esac
+            ;;
+          *) bad "$exe is not universal: architectures are '$archs'" ;;
+        esac
+      fi
       ;;
     linux)
       libs="$(ldd "$path" 2>&1)"
