@@ -4,10 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**SomeScript** is a LaTeX editing platform with three integrated surfaces:
+**SomeScript** is a LaTeX editing platform with four integrated surfaces:
 - **`apps/web/`** — public marketing site, Clerk auth shell, workspace dashboard, project management
 - **`apps/editor/`** — core LaTeX editor with CodeMirror, PDF preview, file tree, search, embedded Eve AI assistant
 - **`apps/compiler/`** — standalone Bun service that runs Tectonic and returns compiled PDFs/logs
+- **`apps/tauri/`** — free, local desktop app (Tauri v2): reuses the editor's UI source and re-implements its `/api/*` contract in Rust. See [apps/tauri/README.md](apps/tauri/README.md)
 
 This is a Bun-managed Turbo monorepo. The root workspace is intentionally small; each app has its own `package.json` and dev scripts.
 
@@ -121,6 +122,16 @@ This applies to every app in the monorepo, not just the compiler — e.g. LaTeX-
 1. Edit `apps/compiler/index.ts`
 2. Restart compiler service: `cd apps/compiler && bun index.ts`
 3. Test via `POST http://localhost:3001/compile` or through editor UI
+
+## Desktop app (apps/tauri)
+
+A free, offline-first desktop build. **No auth, collaboration or AI in v1** (AI returns later as BYOK).
+
+- **The editor UI is not forked.** `apps/tauri/vite.config.ts` aliases `@/` to `apps/editor` and stubs `next/*`, Clerk, Sentry, analytics and the Eve chat in `apps/tauri/src/shims/`. Do not add desktop-only branches to `apps/editor`.
+- **The Rust server (`apps/tauri/src-tauri/src/api/`) re-implements the editor's `/api/*` routes.** Each file names the Next route it ports; keep response shapes identical. When you add a Next/Clerk import or an `/api` call to the editor's *client* code, give it a shim or a Rust route. `cd apps/tauri && bun run web:build && bun test` fails and names the path if you forget.
+- Keep the aliases in `vite.config.ts` and `tsconfig.json` `paths` in sync. `cd apps/tauri && bun run typecheck` type-checks the editor source too.
+- Projects are folders under the user's library; there is no database. Never edit anything under a user's library from tests; use `SOMESCRIPT_LIBRARY` with a temp dir.
+- Rust tests: `cd apps/tauri/src-tauri && cargo test`. Sidecars (Tectonic, SyncTeX) come from `bun run desktop:sidecars` and are only needed for release builds and the `--ignored real_` test.
 
 ## Further Reading
 
