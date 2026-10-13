@@ -1,10 +1,11 @@
 name: Desktop bundle
 
-# Reusable. Builds the desktop app installers from source on macOS (Apple Silicon and Intel),
+# Reusable. Builds the desktop app installers from source on macOS (universal: Apple Silicon + Intel),
 # Windows and Linux, then proves each one works before anything is published: verifies the
 # contents (sidecars beside the executable, only expected libraries, templates, licenses), installs
-# it the way a user would (Windows: the NSIS installer; Linux: the .deb in a clean Ubuntu container)
-# and starts it headless in a clean environment to drive its HTTP surface.
+# it the way a user would (Windows: the NSIS installer; Linux: the .deb in a clean Ubuntu container),
+# starts it headless in a clean environment to drive its HTTP surface, and runs the universal macOS
+# app on a real Intel runner (macos-15-intel) to prove the x86_64 slice works.
 #
 # With `release: true` it also signs and notarizes the macOS apps (when the Apple secrets below are
 # set; otherwise they are unsigned) and runs the compile smoke test, which needs the network.
@@ -69,15 +70,10 @@ jobs:
       fail-fast: false # one platform's failure should not hide another's
       matrix:
         include:
-          - name: macOS (Apple Silicon)
+          - name: macOS (universal: Apple Silicon + Intel)
             os: macos-latest
             kind: macos
-            arch: arm64
-            bundles: app,dmg
-          - name: macOS (Intel)
-            os: macos-15-intel
-            kind: macos
-            arch: x64
+            arch: universal
             bundles: app,dmg
           - name: Windows (x64)
             os: windows-latest
@@ -98,7 +94,8 @@ jobs:
       VERSION: ${{ needs.meta.outputs.version }}
       # Deliberately not named SIGN: linuxdeploy's AppImage plugin reads that variable as "sign with GPG".
       APPLE_SIGN: ${{ needs.meta.outputs.signed == 'true' && matrix.kind == 'macos' }}
-      BUNDLE_DIR: src-tauri/target/release/bundle
+      BUNDLE_DIR: ${{ matrix.kind == 'macos' && 'src-tauri/target/universal-apple-darwin/release/bundle' || 'src-tauri/target/release/bundle' }}
+      TARGET: ${{ matrix.kind == 'macos' && 'universal-apple-darwin' || '' }}
       # Linux ships the sidecars in the app's lib dir, not /usr/bin (see tauri.bundle.linux.conf.json).
       BUILD_SCRIPT: ${{ matrix.kind == 'linux' && 'desktop:build:linux' || 'desktop:build' }}
       # The macOS .dmg step is flaky on runners (see scripts/retry.sh); nothing else is retried.
@@ -116,10 +113,11 @@ jobs:
       - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
         with:
           toolchain: stable
+          targets: ${{ matrix.kind == 'macos' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       # First, because it is the part most likely to differ per platform (and needs no JS install).
       - name: Fetch sidecars (Tectonic, checksum-verified; SyncTeX, built from source)
-        run: sh scripts/fetch-sidecars.sh
+        run: sh scripts/fetch-sidecars.sh ${{ matrix.kind == 'macos' && 'universal' || '' }}
 
       - uses: ./.github/actions/setup-js
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
@@ -135,18 +133,19 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: sh scripts/retry.sh "$BUILD_ATTEMPTS" bun run "$BUILD_SCRIPT" --bundles "${{ matrix.bundles }}" ${VERBOSE:+"$VERBOSE"}
+        run: sh scripts/retry.sh "$BUILD_ATTEMPTS" bun run "$BUILD_SCRIPT" --bundles "${{ matrix.bundles }}" ${VERBOSE:+"$VERBOSE"} ${TARGET:+--target "$TARGET"}
 
       # Apple variables must be absent, not empty, or the tauri CLI tries to import a certificate.
       - name: Build (unsigned)
         if: env.APPLE_SIGN != 'true'
-        run: sh scripts/retry.sh "$BUILD_ATTEMPTS" bun run "$BUILD_SCRIPT" --bundles "${{ matrix.bundles }}" ${VERBOSE:+"$VERBOSE"}
+        run: sh scripts/retry.sh "$BUILD_ATTEMPTS" bun run "$BUILD_SCRIPT" --bundles "${{ matrix.bundles }}" ${VERBOSE:+"$VERBOSE"} ${TARGET:+--target "$TARGET"}
 
       # ---- Verify and smoke-test what a user would actually get ----
 
       - name: Verify and smoke test (macOS app)
         if: matrix.kind == 'macos'
         env:
+          EXPECT_UNIVERSAL: "1"
           REQUIRE_SIGNED: ${{ env.APPLE_SIGN == 'true' && '1' || '0' }}
           COMPILE: ${{ inputs.release && '--compile' || '' }}
         run: |
@@ -234,3 +233,35 @@ jobs:
           path: dist/*
           if-no-files-found: error
           retention-days: ${{ inputs.release && 30 || 3 }}
+
+  macos-intel:
+    name: macOS Intel (run the universal app on x86_64)
+    needs: [meta, bundle]
+    runs-on: macos-15-intel
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+        working-directory: apps/tauri
+    env:
+      VERSION: ${{ needs.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Download universal macOS bundle
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: desktop-macos-universal
+          path: dist
+      # Running the unpacked .app on a real Intel runner proves that the x86_64 slice works.
+      - name: Verify and smoke test on Intel
+        env:
+          EXPECT_UNIVERSAL: "1"
+          COMPILE: ${{ inputs.release && '--compile' || '' }}
+        run: |
+          mkdir -p extracted
+          ditto -x -k "dist/SomeScript-${VERSION}-macos-universal.app.zip" extracted
+          app="extracted/SomeScript.app"
+          sh scripts/verify-bundle.sh "$app" "$VERSION"
+          sh scripts/smoke-bundle.sh "$app" ${COMPILE:+"$COMPILE"}
