@@ -1,7 +1,7 @@
 name: Desktop
 
 # The desktop app compiles apps/editor's UI source, so editor changes can break it: the cheap
-# JS checks run on those too, while the macOS jobs only run when the Rust app itself changes.
+# JS checks run on those too, while the Rust and bundle jobs only run when the Rust app itself changes.
 # Required status check: "Desktop success".
 
 on:
@@ -75,16 +75,35 @@ jobs:
         run: shellcheck -s sh scripts/*.sh
 
   rust:
-    name: Rust (macOS)
+    name: Rust (${{ matrix.name }})
     needs: changes
     if: needs.changes.outputs.rust == 'true' || github.event_name != 'pull_request'
-    runs-on: macos-latest
-    timeout-minutes: 40
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS
+            os: macos-latest
+            triple: aarch64-apple-darwin
+          - name: Linux
+            os: ubuntu-24.04
+            triple: x86_64-unknown-linux-gnu
+          - name: Windows
+            os: windows-latest
+            triple: x86_64-pc-windows-msvc
+            exe: .exe
+    defaults:
+      run:
+        shell: bash
+        working-directory: apps/tauri
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-js
+      - uses: ./.github/actions/desktop-deps
       - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
         with:
           toolchain: stable
@@ -94,7 +113,6 @@ jobs:
           workspaces: apps/tauri/src-tauri
       # tauri::generate_context! embeds the built frontend, so it must exist before cargo runs.
       - name: Build the frontend
-        working-directory: apps/tauri
         run: bun run web:build
       - name: rustfmt and clippy
         working-directory: apps/tauri/src-tauri
@@ -105,15 +123,19 @@ jobs:
         working-directory: apps/tauri/src-tauri
         run: cargo test
       - name: Fetch sidecars
-        working-directory: apps/tauri
-        run: bun run desktop:sidecars
+        run: sh scripts/fetch-sidecars.sh
       # Real Tectonic + SyncTeX. It downloads TeX packages, so a network blip must not gate merges.
       - name: Real Tectonic round trip
         continue-on-error: true
         working-directory: apps/tauri/src-tauri
+        env:
+          TRIPLE: ${{ matrix.triple }}
+          EXE: ${{ matrix.exe }}
         run: |
-          TECTONIC_BIN="$PWD/binaries/tectonic-aarch64-apple-darwin" \
-          SYNCTEX_BIN="$PWD/binaries/synctex-aarch64-apple-darwin" \
+          # pwd -W: the native Windows path, which the test binary needs (MSYS paths are Git Bash only)
+          here="$(pwd -W 2>/dev/null || pwd)"
+          TECTONIC_BIN="$here/binaries/tectonic-$TRIPLE$EXE" \
+          SYNCTEX_BIN="$here/binaries/synctex-$TRIPLE$EXE" \
           cargo test -- --ignored real_
 
   bundle:

@@ -4,7 +4,7 @@ name: Desktop release
 # reviews the draft and publishes it. Running it by hand (workflow_dispatch) builds everything
 # but publishes nothing.
 #
-# Unsigned until these repository secrets exist: APPLE_CERTIFICATE (base64 .p12),
+# macOS is unsigned until these repository secrets exist (Windows is unsigned regardless): APPLE_CERTIFICATE (base64 .p12),
 # APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY, APPLE_ID, APPLE_PASSWORD (app-specific),
 # APPLE_TEAM_ID. See docs/ci-cd.md.
 
@@ -81,8 +81,14 @@ jobs:
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: desktop-macos-arm64
+          pattern: desktop-*
+          merge-multiple: true
           path: dist
+      - name: Checksums
+        working-directory: dist
+        run: |
+          sha256sum -- * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
       - name: Attest build provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
@@ -96,16 +102,21 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           if [ "$SIGNED" = "true" ]; then
-            trust="Signed with a Developer ID certificate and notarized by Apple."
+            mac="Signed with a Developer ID certificate and notarized by Apple."
           else
-            trust="**Not signed or notarized.** macOS will warn that the app is from an unidentified developer: open it with right-click, then Open, once."
+            mac="**Not signed or notarized.** macOS will warn that the app is from an unidentified developer: open it with right-click, then Open, once."
           fi
           cat > notes.md <<NOTES
-          SomeScript Desktop ${VERSION} for macOS (Apple Silicon). A free, local LaTeX editor: your projects are plain folders and compiling uses a bundled Tectonic.
+          SomeScript Desktop ${VERSION}: a free, local LaTeX editor. Your projects are plain folders and compiling uses a bundled Tectonic.
 
-          ${trust}
+          | Platform | Download | Notes |
+          |---|---|---|
+          | macOS, Apple Silicon | \`SomeScript-${VERSION}-macos-arm64.dmg\` | ${mac} |
+          | macOS, Intel | \`SomeScript-${VERSION}-macos-x64.dmg\` | Same as above. |
+          | Windows 10/11, x64 | \`SomeScript-${VERSION}-windows-x64-setup.exe\` | **Not signed.** Windows SmartScreen will say the publisher is unknown: choose More info, then Run anyway. |
+          | Linux, x64 | \`SomeScript-${VERSION}-linux-x64.deb\`, \`.rpm\`, \`.AppImage\` | Needs glibc 2.39 or newer (Ubuntu 24.04, Debian 13, Fedora 40 or later). |
 
-          Verify a download with \`shasum -a 256 -c SHA256SUMS.txt\`, or check its build provenance with \`gh attestation verify <file> --repo ${REPO}\`.
+          Verify a download with \`sha256sum -c SHA256SUMS.txt\` (macOS: \`shasum -a 256 -c\`), or check its build provenance with \`gh attestation verify <file> --repo ${REPO}\`.
 
           ---
           NOTES
