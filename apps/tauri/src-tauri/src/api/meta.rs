@@ -29,6 +29,18 @@ pub fn write_initial_prefs(project: &Project, file: &str) -> ApiResult<()> {
     )
 }
 
+/// An imported project opens its root document too, unless the ZIP carried prefs of its own.
+pub fn open_main_file_initially(project: &Project) -> ApiResult<()> {
+    if read_json(project, PREFS_PATH).is_some() {
+        return Ok(());
+    }
+    let main = main_file_path(project);
+    if project.resolve(&main).is_ok_and(|full| full.is_file()) {
+        write_initial_prefs(project, &main)?;
+    }
+    Ok(())
+}
+
 const MAX_TASKS: usize = 500;
 const MAX_NAME: usize = 200;
 const MAX_DESCRIPTION: usize = 5000;

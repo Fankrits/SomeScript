@@ -737,6 +737,9 @@ async fn zip_export_then_import_round_trips_over_http() {
         "สวัสดี"
     );
     assert!(h.root.path().join("Copy/main.tex").exists());
+    // The imported project opens its main file, not an empty editor.
+    let prefs = h.get("/api/editor-prefs?projectId=Copy").await.json();
+    assert_eq!(prefs["prefs"]["lastOpenFile"], "main.tex");
     let r = h
         .send(multipart_to(
             "/api/projects/import",

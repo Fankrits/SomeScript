@@ -42,6 +42,8 @@ async function ok(res: Awaited<ReturnType<APIRequestContext["get"]>>) {
 }
 
 export const test = base.extend<{ provider: MockProvider; api: Api; project: Project }>({
+  // Playwright reads the fixture's dependencies off the destructured argument, so it must be `{}`.
+  // eslint-disable-next-line no-empty-pattern
   provider: async ({}, use) => {
     const provider = await new MockProvider().start();
     await use(provider);

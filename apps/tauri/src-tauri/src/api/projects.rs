@@ -184,7 +184,10 @@ pub async fn import(State(s): State<ApiState>, mut form: Multipart) -> ApiResult
         let dir = library.root().join(&id);
         let result = Project::open(dir.clone())
             .map_err(ApiError::from)
-            .and_then(|project| zipio::import_zip(&project, &bytes));
+            .and_then(|project| {
+                zipio::import_zip(&project, &bytes)?;
+                meta::open_main_file_initially(&project)
+            });
         if let Err(e) = result {
             let _ = fs::remove_dir_all(&dir); // never leave a half-imported project behind
             return Err(e);
