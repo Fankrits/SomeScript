@@ -261,7 +261,8 @@ jobs:
           COMPILE: ${{ inputs.release && '--compile' || '' }}
         run: |
           mkdir -p extracted
-          ditto -x -k "dist/SomeScript-${VERSION}-macos-universal.app.zip" extracted
+          # download-artifact writes under the workspace root, not under this job's working directory.
+          ditto -x -k "$GITHUB_WORKSPACE/dist/SomeScript-${VERSION}-macos-universal.app.zip" extracted
           app="extracted/SomeScript.app"
           sh scripts/verify-bundle.sh "$app" "$VERSION"
           sh scripts/smoke-bundle.sh "$app" ${COMPILE:+"$COMPILE"}
