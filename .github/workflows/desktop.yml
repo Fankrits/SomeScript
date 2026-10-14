@@ -199,6 +199,67 @@ jobs:
     permissions:
       contents: read
 
+  # The packaged Windows app in its real webview. Everything above drives the Rust server's UI in Chromium,
+  # which can't show what only WebView2 does: loading the app from the loopback server with the
+  # per-launch cookie, Tauri's IPC reaching that origin, or the OS's own Documents folder on a first
+  # launch (where creating a project broke). It needs a window on the runner, which is new here, so it
+  # reports without gating (continue-on-error, and not in "Desktop success") until it has proven stable.
+  webview2:
+    name: Windows (WebView2, first launch)
+    needs: bundle
+    runs-on: windows-latest
+    continue-on-error: true
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+        working-directory: apps/tauri
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-js
+      - name: Download the Windows installer
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: desktop-windows-x64
+          path: ${{ github.workspace }}/installer
+      - name: Install it the way a person would, run it, and drive its window
+        run: |
+          setup="$(ls "$GITHUB_WORKSPACE"/installer/SomeScript-*-windows-x64-setup.exe)"
+          dir="$RUNNER_TEMP\\SomeScript-installed"
+          MSYS2_ARG_CONV_EXCL='*' "$setup" /S "/D=$dir"
+          for _ in $(seq 1 60); do [ -f "$dir/somescript-desktop.exe" ] && break; sleep 1; done
+          ls -la "$dir"
+
+          # No SOMESCRIPT_LIBRARY and no stand-in Documents folder: the OS's own default, as on a first launch.
+          export SOMESCRIPT_PORT=47123 SOMESCRIPT_TOKEN=webview2-ci-token-0123456789abcdef
+          export WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS="--remote-debugging-port=9222"
+          "$dir/somescript-desktop.exe" > "$RUNNER_TEMP/somescript.log" 2>&1 &
+          app=$!
+          trap 'kill "$app" 2>/dev/null || true' EXIT
+          for _ in $(seq 1 90); do curl -s -o /dev/null http://127.0.0.1:9222/json/version && break; sleep 1; done
+          curl -s http://127.0.0.1:9222/json/version
+
+          APP_URL=http://127.0.0.1:47123 bun run e2e:webview2
+      - name: Where the app wrote its log
+        if: always()
+        run: echo "APP_LOGS=$(cygpath -w "$LOCALAPPDATA")\\com.fankrits.somescript\\logs" >> "$GITHUB_ENV"
+      - name: Keep the screenshots and the logs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: webview2-run
+          path: |
+            apps/tauri/e2e/.run/webview2-shots
+            apps/tauri/e2e/.run/webview2-results
+            ${{ runner.temp }}/somescript.log
+            ${{ env.APP_LOGS }}
+          if-no-files-found: ignore
+          retention-days: 7
+
   desktop-success:
     name: Desktop success
     needs: [changes, web, rust, e2e, bundle]

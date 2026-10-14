@@ -153,7 +153,7 @@ jobs:
           sh scripts/verify-bundle.sh "$app" "$VERSION"
           # A release also compiles for real: it needs the network (Tectonic fetches packages), which
           # an ordinary PR check should not depend on.
-          sh scripts/smoke-bundle.sh "$app" ${COMPILE:+"$COMPILE"}
+          sh scripts/smoke-bundle.sh "$app" --real-documents ${COMPILE:+"$COMPILE"}
 
       - name: Verify and smoke test (Windows - install with the NSIS installer, then run the install)
         if: matrix.kind == 'windows'
@@ -166,7 +166,7 @@ jobs:
           for _ in $(seq 1 60); do [ -f "$dir/somescript-desktop.exe" ] && break; sleep 1; done
           ls -la "$dir"
           sh scripts/verify-bundle.sh "$dir" "$VERSION"
-          sh scripts/smoke-bundle.sh "$dir/somescript-desktop.exe" ${COMPILE:+"$COMPILE"}
+          sh scripts/smoke-bundle.sh "$dir/somescript-desktop.exe" --real-documents ${COMPILE:+"$COMPILE"}
 
       - name: Verify (Linux .deb, extracted)
         if: matrix.kind == 'linux'
@@ -186,7 +186,7 @@ jobs:
           docker run --rm -v "$PWD:/w:ro" -e DEBIAN_FRONTEND=noninteractive -e COMPILE="$COMPILE" ubuntu:24.04 sh -ec '
             apt-get update -qq
             apt-get install -y -qq --no-install-recommends /w/'"$BUNDLE_DIR"'/deb/*.deb xvfb curl ca-certificates
-            sh /w/scripts/smoke-bundle.sh /usr/bin/somescript-desktop ${COMPILE:+"$COMPILE"}
+            sh /w/scripts/smoke-bundle.sh /usr/bin/somescript-desktop --real-documents ${COMPILE:+"$COMPILE"}
           '
 
       - name: Verify (Linux .rpm and .AppImage)
@@ -265,4 +265,4 @@ jobs:
           ditto -x -k "$GITHUB_WORKSPACE/dist/SomeScript-${VERSION}-macos-universal.app.zip" extracted
           app="extracted/SomeScript.app"
           sh scripts/verify-bundle.sh "$app" "$VERSION"
-          sh scripts/smoke-bundle.sh "$app" ${COMPILE:+"$COMPILE"}
+          sh scripts/smoke-bundle.sh "$app" --real-documents ${COMPILE:+"$COMPILE"}

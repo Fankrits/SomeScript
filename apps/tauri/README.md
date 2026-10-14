@@ -37,13 +37,38 @@ uses; without them the editor does not even render. `src/shims/polyfills.ts` fil
 `e2e/old-webview.e2e.ts` strips them from the browser to prove the app still works. If the editor starts using
 another recent web API, add it to the polyfills and that spec.
 
-A project is a **folder** in the library (default `~/Documents/SomeScript`); its name is its id. There is no
-database. Deleted projects move to `<library>/.trash/` for 7 days.
+A project is a **folder** in the library; its name is its id. There is no database. Deleted projects move to
+`<library>/.trash/` for 7 days.
+
+**Where the library is.** `SOMESCRIPT_LIBRARY` beats the folder saved by setup or Settings, which beats
+`<Documents>/SomeScript`. When the OS can't say where Documents is (a Linux without XDG user folders) the default is
+`~/SomeScript`, then a `Projects` folder in the app's data directory: never a relative path. The app's own default
+folder is made when it is first needed, not at launch, so any permission prompt from the OS appears in the setup
+screen, next to its explanation. If a folder you chose later vanishes (a moved folder, an unplugged drive) the app
+says so and offers to pick another; it never recreates it empty, which would look like your projects were lost.
+
+**First run.** A fresh install opens setup (`/welcome`) instead of the dashboard:
+
+1. **Welcome**: what the app is, and where projects will be saved. _Skip setup_ still makes that folder, and can't
+   skip past one that doesn't work.
+2. **Projects folder**: the default path, a native folder picker, and a live check as you type (will be created /
+   ready / "found 3 projects here" / a file in the way / not a full path), with warnings for cloud-synced folders
+   (OneDrive, Dropbox, iCloud), network shares and install folders. _Create folder & continue_ makes the
+   folder, proves it can be written to (by writing and removing a small file) and remembers it. A folder that fails
+   says why, what to try, and offers alternatives that passed the same check.
+3. **Offline packages** (optional): the same download as _Prepare for offline use_.
+4. **First project**: name, template, or import a ZIP.
+
+Setup counts as done once the folder step succeeds (`onboarded` in `config.json`). It is also treated as done when a
+folder was saved by 0.1.0/0.1.1 or `SOMESCRIPT_LIBRARY` is set, so users who chose a folder never see it. A user who
+kept the default folder sees it once, and the folder step recognises their projects ("Found 3 projects here"): one
+click. _Settings > General > Run setup again_ opens it again at the folder step.
 
 | Path                           | What                                                                                 |
 | ------------------------------ | ------------------------------------------------------------------------------------ |
 | `src/main.tsx`, `src/root.tsx` | Host entry. `/dashboard` is the library, `/?projectId=…` is the editor               |
 | `src/library/`                 | Library screen (new project, import/export ZIP, trash, library folder, offline prep) |
+| `src/onboarding/`              | First-run setup (`/welcome`) and the gate that sends a first launch to it            |
 | `src/settings/`                | App-wide Settings screen (`/settings`): AI providers and keys, library folder        |
 | `src/chat/`                    | The chat panel: streaming UI, tool cards with diffs and Undo, history                |
 | `src/shims/`                   | Stand-ins for `next/*`, Clerk, Sentry, analytics, the cloud chat; web-API polyfills  |
@@ -69,6 +94,7 @@ In dev, `/api` is proxied by Vite to the Rust server, so the UI also works in a 
 | Env var                               | Effect                                                                                |
 | ------------------------------------- | ------------------------------------------------------------------------------------- |
 | `SOMESCRIPT_LIBRARY`                  | Project folder (beats the saved setting)                                              |
+| `SOMESCRIPT_DOCUMENTS_DIR`            | Stands in for the OS's Documents folder: where `SomeScript` is made by default        |
 | `TECTONIC_BIN`, `SYNCTEX_BIN`         | Use these binaries instead of the bundled / `PATH` ones                               |
 | `SOMESCRIPT_DEV_API_PORT`             | Rust API port in debug builds (default 1430; keep in sync with `vite.config.ts`)      |
 | `SOMESCRIPT_PORT`, `SOMESCRIPT_TOKEN` | Pin the release server's port and token (≥16 chars), so a test can open the app's URL |
@@ -88,6 +114,12 @@ bun run web:build && (cd src-tauri && cargo build)
 bun run e2e:install                        # once: the Chromium Playwright drives
 bun run e2e                                # E2E_APP=<release binary> runs the same suite against it
 ```
+
+First-run setup is tested in `e2e/onboarding.e2e.ts`, where every test starts an app instance of its own (own port,
+home, Documents and config; `e2e/first-run.ts`), because the state under test is "nothing configured yet". That
+includes the regression for "File not found" when creating a project: a missing default folder, a Documents "folder"
+that is really a file, and a chosen folder that vanished. `bun run e2e:webview2` drives the packaged Windows app in its
+real WebView2 (over CDP); CI runs it, without gating, in the "Windows (WebView2, first launch)" job.
 
 The end-to-end suite covers the Settings screen (adding, testing, editing and removing providers; the key
 never coming back), the whole chat (streaming, every tool, Undo, errors, Stop, history, both protocols),
@@ -124,6 +156,10 @@ bun run desktop:verify                                  # sidecars beside the ex
 sh scripts/smoke-bundle.sh <SomeScript.app | somescript-desktop[.exe]> --compile   # starts it headless in a clean env and drives the HTTP surface
 ```
 
+The smoke test also starts the app a second time with nothing configured (a first launch: setup makes the folder, a
+project can be created in it, an unusable folder is named in the error). `--real-documents` adds a launch that uses the
+folder the OS names for Documents (on Windows the real one, so use it on a throwaway machine: CI does).
+
 `verify-bundle.sh` and `smoke-bundle.sh` take a macOS `.app`, a Linux tree from `dpkg-deb -x`, or a Windows install
 directory (run them from Git Bash there). On Linux the smoke test starts Xvfb if there is no display.
 
@@ -132,6 +168,28 @@ A release is a tag: `desktop-vX.Y.Z` on a commit that is on `main` (`scripts/che
 smoke-tests every platform, then creates a **draft** GitHub release with the installers and one `SHA256SUMS.txt`.
 
 Licenses of everything bundled are in `src-tauri/THIRD_PARTY_LICENSES.md`.
+
+## Troubleshooting
+
+**"Couldn't create the project", or setup can't make the folder.** The message names the folder and the reason.
+The usual causes:
+
+- **Windows: Controlled folder access.** Windows Security (Virus & threat protection > Ransomware protection) can stop
+  an unsigned app writing to Documents, Desktop and Pictures. Choose a folder outside them (setup offers
+  `C:\Users\<you>\SomeScript`), or allow the app: Ransomware protection > _Allow an app through Controlled folder
+  access_ > add `somescript-desktop.exe`, then restart SomeScript. The rule is per exe path.
+- **macOS: the Documents prompt.** macOS asks the first time an app uses Documents, Desktop or Downloads. If it was
+  refused: System Settings > Privacy & Security > Files & Folders (or Full Disk Access) > SomeScript, or choose
+  another folder in setup.
+- **A synced folder (OneDrive, Dropbox, iCloud) or a network share.** It works, but a sync client or antivirus can hold
+  a file for a moment (saves, renames and deletes are retried for about 1.6 s on Windows), and the temporary files
+  LaTeX writes get synced too. Setup warns about these.
+
+**Diagnostics.** _Settings > General > Copy diagnostics_ puts a plain-text report on the clipboard (`GET /api/diagnostics`:
+versions, folders and their state, tool paths, the end of the log; never API keys, chats or file contents). _Show log
+file_ reveals `somescript.log`, a rotating file in the OS log folder (Windows `%LOCALAPPDATA%\com.fankrits.somescript\logs`,
+macOS `~/Library/Logs/com.fankrits.somescript`, Linux `~/.local/share/com.fankrits.somescript/logs`). A release build
+on Windows has no console, so this file is where its errors go, panics included.
 
 ## Security model
 
