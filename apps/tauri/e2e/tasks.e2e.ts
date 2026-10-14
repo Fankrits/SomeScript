@@ -155,19 +155,22 @@ test("selecting text in the PDF and choosing Create task saves it with its page"
   await openEditor(page, project);
   await page.getByRole("button", { name: "Compile", exact: true }).click();
   await expect(page.getByRole("button", { name: /Download PDF/ })).toBeVisible();
-  // The stand-in engine's PDF is one line of text. The viewer takes about a second after the
-  // compile to make it selectable, so the first drag often selects nothing: retry until it does.
-  const line = { x: 965, y: 262 };
+  // The stand-in engine's PDF is one 595x842 page with a single line of text that starts 72 points in,
+  // on a baseline 142 points from the top. Aim at it relative to the page, wherever the viewer puts it.
+  // The viewer takes about a second after the compile to make the text selectable, so the first drag
+  // often selects nothing: retry until it does.
   await expect(async () => {
     // Every try starts with the menu closed: the one a failed try leaves open swallows the next drag.
     await page.keyboard.press("Escape");
     await expect(page.getByRole("menu")).toHaveCount(0, { timeout: 1_000 });
-    await page.mouse.move(line.x, line.y);
+    const box = (await page.locator('[data-page-index="0"]').boundingBox())!;
+    const y = box.y + 136;
+    await page.mouse.move(box.x + 74, y);
     await page.mouse.down();
-    await page.mouse.move(1200, line.y, { steps: 8 });
-    await page.mouse.move(1305, line.y, { steps: 8 });
+    await page.mouse.move(box.x + 309, y, { steps: 8 });
+    await page.mouse.move(box.x + 414, y, { steps: 8 });
     await page.mouse.up();
-    await page.mouse.click(1100, line.y, { button: "right" });
+    await page.mouse.click(box.x + 209, y, { button: "right" });
     await expect(page.getByRole("menuitem", { name: "Create task from selection" })).toBeEnabled({
       timeout: 1_000,
     });
