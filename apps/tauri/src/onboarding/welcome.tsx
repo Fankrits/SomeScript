@@ -226,35 +226,48 @@ function FolderStep({
 
   const ready = !checking && check !== null && check.issue === null && path.trim() !== "";
   return (
-    <section className="grid gap-5" data-testid="step-folder">
-      <header className="grid gap-2">
-        <Title>Where should your projects live?</Title>
-        <p className="text-muted-foreground">
-          Each project is a normal folder in here, so you can open it in {fileManager}, back it up
-          or sync it. Your system may ask permission when SomeScript creates the folder.
-        </p>
-      </header>
-      <FolderPicker value={path} onChange={setPath} disabled={busy} />
-      <FolderStatus
-        check={check}
-        checking={checking}
-        error={checkError}
-        onUse={setPath}
-        onRecheck={recheck}
-      />
-      {error !== null && <FailureAlert title="Couldn't set up that folder" error={error} />}
-      <div className="flex items-center gap-2">
-        {onBack && (
-          <Button variant="outline" onClick={onBack} disabled={busy}>
-            <ArrowLeft /> Back
+    <section data-testid="step-folder">
+      <form
+        className="grid gap-5"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (ready && !busy) void confirm();
+        }}
+      >
+        <header className="grid gap-2">
+          <Title>Where should your projects live?</Title>
+          <p className="text-muted-foreground">
+            Each project is a normal folder in here, so you can open it in {fileManager}, back it up
+            or sync it. Your system may ask permission when SomeScript creates the folder.
+          </p>
+        </header>
+        <FolderPicker
+          value={path}
+          onChange={setPath}
+          disabled={busy}
+          browseFrom={check?.exists ? path : null}
+        />
+        <FolderStatus
+          check={check}
+          checking={checking}
+          error={checkError}
+          onUse={setPath}
+          onRecheck={recheck}
+        />
+        {error !== null && <FailureAlert title="Couldn't set up that folder" error={error} />}
+        <div className="flex items-center gap-2">
+          {onBack && (
+            <Button type="button" variant="outline" onClick={onBack} disabled={busy}>
+              <ArrowLeft /> Back
+            </Button>
+          )}
+          <Button type="submit" disabled={!ready || busy} data-testid="folder-continue">
+            {busy && <Spinner />}
+            {check?.exists ? "Use this folder" : "Create folder & continue"}
+            {!busy && <ArrowRight />}
           </Button>
-        )}
-        <Button onClick={confirm} disabled={!ready || busy} data-testid="folder-continue">
-          {busy && <Spinner />}
-          {check?.exists ? "Use this folder" : "Create folder & continue"}
-          {!busy && <ArrowRight />}
-        </Button>
-      </div>
+        </div>
+      </form>
     </section>
   );
 }

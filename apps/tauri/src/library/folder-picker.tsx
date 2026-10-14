@@ -11,15 +11,23 @@ export function FolderPicker({
   onChange,
   disabled,
   testId = "folder-path-input",
+  browseFrom,
 }: {
   value: string;
   onChange: (path: string) => void;
   disabled?: boolean;
   testId?: string;
+  /**
+   * Where the system picker opens. Defaults to what is in the box; pass null when that folder
+   * doesn't exist yet (the proposed default before setup makes it), so the picker opens where the
+   * system likes instead of on a path that isn't there.
+   */
+  browseFrom?: string | null;
 }) {
   const browse = async () => {
     try {
-      const chosen = await pickFolder({ directory: true, defaultPath: value || undefined });
+      const start = browseFrom === undefined ? value : browseFrom;
+      const chosen = await pickFolder({ directory: true, defaultPath: start || undefined });
       if (typeof chosen === "string") onChange(chosen);
     } catch (e) {
       toast.error(`Couldn't open the folder picker: ${e instanceof Error ? e.message : String(e)}`);

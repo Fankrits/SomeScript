@@ -3,7 +3,7 @@
 //! can manage projects in Finder/Explorer. Deleted projects move to `.trash/` for a week.
 
 use crate::{
-    error::{ApiError, ApiResult, Os, explain, in_windows_protected_folder},
+    error::{ApiError, ApiResult, Os, explain},
     fsutil::retry_busy,
     storage::Project,
 };
@@ -409,8 +409,6 @@ pub enum WarningKind {
     /// OneDrive, Dropbox, iCloud...: syncing can hold files while they are being saved.
     CloudSynced,
     NetworkShare,
-    /// The OS may ask permission (macOS) or block apps (Windows' Controlled folder access).
-    ProtectedFolder,
     /// Program Files, /Applications: an update or uninstall can take projects with it.
     InstallFolder,
 }
@@ -524,23 +522,6 @@ fn warnings_for(path: &Path, os: Os) -> Vec<Warning> {
             "This is a network folder. It can be slow, and it drops out when the connection does. \
              A folder on this computer is more reliable.",
         );
-    }
-    match os {
-        Os::Windows if in_windows_protected_folder(path) => warn(
-            WarningKind::ProtectedFolder,
-            "Windows protects Documents, Desktop and Pictures. If Controlled folder access is on, \
-             it can stop SomeScript writing here; if that happens you'll be shown how to allow it.",
-        ),
-        Os::Mac
-            if parts.first() == Some(&"users")
-                && matches!(parts.get(2), Some(&("documents" | "desktop" | "downloads"))) =>
-        {
-            warn(
-                WarningKind::ProtectedFolder,
-                "macOS asks permission the first time an app uses Documents, Desktop or Downloads.",
-            )
-        }
-        _ => {}
     }
     let in_install_folder = match os {
         Os::Windows => parts
@@ -1107,7 +1088,7 @@ mod tests {
         use WarningKind::*;
         assert_eq!(
             kinds(r"C:\Users\Ann\OneDrive\Documents\SomeScript", Os::Windows),
-            [CloudSynced, ProtectedFolder]
+            [CloudSynced]
         );
         assert_eq!(kinds(r"\\nas\share\tex", Os::Windows), [NetworkShare]);
         assert_eq!(
@@ -1115,10 +1096,11 @@ mod tests {
             [InstallFolder]
         );
         assert!(kinds(r"C:\Users\Ann\SomeScript", Os::Windows).is_empty());
-        assert_eq!(
-            kinds("/Users/ann/Documents/SomeScript", Os::Mac),
-            [ProtectedFolder]
-        );
+        // Documents itself is not a warning: the folder check proves writability by writing, and a
+        // refusal comes back as an issue with the specific advice (Controlled folder access, macOS
+        // privacy), so the happy path isn't covered in warnings that mostly don't apply.
+        assert!(kinds("/Users/ann/Documents/SomeScript", Os::Mac).is_empty());
+        assert!(kinds(r"C:\Users\Ann\Documents\SomeScript", Os::Windows).is_empty());
         assert_eq!(
             kinds(
                 "/Users/ann/Library/Mobile Documents/com~apple~CloudDocs/tex",

@@ -90,7 +90,7 @@ export interface FolderIssue {
   hint: string | null;
 }
 export interface FolderWarning {
-  kind: "cloud_synced" | "network_share" | "protected_folder" | "install_folder";
+  kind: "cloud_synced" | "network_share" | "install_folder";
   message: string;
 }
 export interface FolderCheck {

@@ -36,6 +36,9 @@ fn locate_library(app: &tauri::App, config_path: Option<&Path>) -> library::Reso
 
 /// A rotating `somescript.log` in the OS log folder. A release build on Windows has no console
 /// (`windows_subsystem = "windows"`), so without a file nothing it says is ever seen.
+///
+/// Added from `setup`, not on the builder: a plugin that fails to start (a log folder that can't be
+/// made) would stop the whole app, and missing logs must never cost the user their editor.
 fn logging<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
     use tauri_plugin_log::{RotationStrategy, Target, TargetKind};
     tauri_plugin_log::Builder::new()
@@ -80,10 +83,12 @@ pub fn run() {
     let headless = std::env::var_os("SOMESCRIPT_HEADLESS").is_some();
     log_panics();
     tauri::Builder::default()
-        .plugin(logging())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(move |app| {
+            if let Err(e) = app.handle().plugin(logging()) {
+                eprintln!("[log] no log file: {e}");
+            }
             let config_path = app
                 .path()
                 .app_config_dir()

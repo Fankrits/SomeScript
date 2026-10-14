@@ -116,6 +116,27 @@ test("the folder is checked as you type", async ({ launch }) => {
   expect(existsSync(mine)).toBe(true);
 });
 
+test("Enter in the folder box continues once the folder is ready, and not before", async ({
+  launch,
+}) => {
+  const app = await launch();
+  const { page } = app;
+  await page.goto("/welcome");
+  await page.getByTestId("get-started").click();
+  const input = page.getByTestId("folder-path-input");
+
+  await input.fill("relative/dir"); // not usable: Enter must not move on
+  await expect(page.getByTestId("folder-status")).toContainText("Enter the full path");
+  await input.press("Enter");
+  await expect(page.getByTestId("step-folder")).toBeVisible();
+
+  await input.fill(join(app.root, "Typed"));
+  await expect(page.getByTestId("folder-status")).toHaveAttribute("data-state", "ok");
+  await input.press("Enter");
+  await expect(page.getByTestId("step-engine")).toBeVisible();
+  expect(existsSync(join(app.root, "Typed"))).toBe(true);
+});
+
 test("a user of an earlier version who chose a folder is not sent through setup", async ({
   launch,
 }) => {
