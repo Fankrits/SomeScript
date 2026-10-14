@@ -52,6 +52,7 @@ import {
   RenameDialog,
 } from "./dialogs";
 import { daysLeft, timeAgo } from "./format";
+import { useFolderCheck } from "./use-folder-check";
 
 type Dialog = "new" | "import" | "folder" | "offline" | null;
 
@@ -62,7 +63,7 @@ export default function Library() {
   const [projects, setProjects] = useState<api.Project[] | null>(null);
   const [trash, setTrash] = useState<api.TrashItem[]>([]);
   const [libraryPath, setLibraryPath] = useState("");
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [tab, setTab] = useState<"projects" | "trash">("projects");
   const [dialog, setDialog] = useState<Dialog>(null);
   const [renaming, setRenaming] = useState<api.Project | null>(null);
@@ -70,17 +71,15 @@ export default function Library() {
 
   const refresh = useCallback(async () => {
     try {
-      const [p, t, path] = await Promise.all([
-        api.listProjects(),
-        api.listTrash(),
-        api.getLibraryPath(),
-      ]);
+      // The path comes from the settings, which never open the folder, so it is known (and shown)
+      // even when the folder can't be read.
+      setLibraryPath(await api.getLibraryPath());
+      const [p, t] = await Promise.all([api.listProjects(), api.listTrash()]);
       setProjects(p);
       setTrash(t);
-      setLibraryPath(path);
       setLoadError(null);
     } catch (e) {
-      setLoadError(e instanceof Error ? e.message : String(e));
+      setLoadError(e);
     }
   }, []);
   useEffect(() => void refresh(), [refresh]);
@@ -163,21 +162,14 @@ export default function Library() {
         </TabsList>
       </Tabs>
 
-      {loadError ? (
-        <Empty className="border">
-          <EmptyHeader>
-            <EmptyTitle>Couldn't read your library</EmptyTitle>
-            <EmptyDescription>{loadError}</EmptyDescription>
-          </EmptyHeader>
-          <EmptyContent>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setDialog("folder")}>
-                Choose another folder
-              </Button>
-              <Button onClick={() => void refresh()}>Try again</Button>
-            </div>
-          </EmptyContent>
-        </Empty>
+      {loadError !== null ? (
+        <LibraryProblem
+          error={loadError}
+          path={libraryPath}
+          onChoose={() => setDialog("folder")}
+          onRetry={() => void refresh()}
+          onUse={(path) => act("Couldn't use that folder", () => api.setLibraryPath(path))}
+        />
       ) : tab === "projects" ? (
         <ProjectList
           projects={projects}
@@ -245,6 +237,64 @@ export default function Library() {
         </AlertDialogContent>
       </AlertDialog>
     </main>
+  );
+}
+
+/** The library folder can't be read: say why, and offer folders that would work. */
+function LibraryProblem({
+  error,
+  path,
+  onChoose,
+  onRetry,
+  onUse,
+}: {
+  error: unknown;
+  path: string;
+  onChoose: () => void;
+  onRetry: () => void;
+  onUse: (path: string) => void;
+}) {
+  const { check } = useFolderCheck(path);
+  const hint = error instanceof api.ApiFailure ? error.hint : null;
+  return (
+    <Empty className="border" data-testid="library-error">
+      <EmptyHeader>
+        <EmptyTitle>Couldn't read your library</EmptyTitle>
+        <EmptyDescription>
+          {error instanceof Error ? error.message : String(error)}
+          {hint && (
+            <>
+              <br />
+              {hint}
+            </>
+          )}
+        </EmptyDescription>
+      </EmptyHeader>
+      <EmptyContent>
+        {check && check.alternatives.length > 0 && (
+          <div className="grid w-full gap-1.5">
+            <p className="text-xs font-medium">Use a folder that works:</p>
+            {check.alternatives.map((alt) => (
+              <Button
+                key={alt}
+                variant="outline"
+                size="sm"
+                className="h-auto justify-start py-1.5 font-mono text-xs break-all whitespace-normal"
+                onClick={() => onUse(alt)}
+              >
+                {alt}
+              </Button>
+            ))}
+          </div>
+        )}
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={onChoose}>
+            Choose another folder
+          </Button>
+          <Button onClick={onRetry}>Try again</Button>
+        </div>
+      </EmptyContent>
+    </Empty>
   );
 }
 

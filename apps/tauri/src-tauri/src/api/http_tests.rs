@@ -915,6 +915,7 @@ async fn the_first_run_gate_reads_settings_without_touching_the_library_folder()
             "source": "default",
             "onboarded": false,
             "defaultLibraryPath": default.to_str().unwrap(),
+            "logFile": null,
         })
     );
     assert!(

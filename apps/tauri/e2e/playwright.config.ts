@@ -8,18 +8,16 @@
 // E2E_APP=/path/to/release-binary uses that build instead (the release server needs a port and a
 // token, which this config supplies), so the same suite can gate a packaged app.
 import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "@playwright/test";
 import { samplePdf } from "./sample-pdf";
+import { appPath, release, token } from "./target";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const exe = process.platform === "win32" ? ".exe" : "";
-const release = Boolean(process.env.E2E_APP);
-const app =
-  process.env.E2E_APP ?? resolve(here, `../src-tauri/target/debug/somescript-desktop${exe}`);
+const app = appPath;
 const port = Number(process.env.E2E_PORT ?? 1471);
-const token = release ? "e2e-token-0123456789abcdef" : undefined;
+const sessionToken = release ? token : undefined;
 const baseURL = `http://127.0.0.1:${port}`;
 
 // Fresh library, config dir and stand-in engine for every run. Workers load this file too, so
@@ -71,12 +69,12 @@ export default defineConfig({
     // The release server wants its per-launch token as a cookie on every request, API calls and
     // downloads included. A real cookie (what the webview holds after the /?t=<token> redirect), not an
     // extra header: the browser's download manager does not send those.
-    storageState: token
+    storageState: sessionToken
       ? {
           cookies: [
             {
               name: "ss_token",
-              value: token,
+              value: sessionToken,
               domain: "127.0.0.1",
               path: "/",
               httpOnly: true,
@@ -104,9 +102,12 @@ export default defineConfig({
       // Keep the app's own config (AI keys!) out of the developer's real profile.
       XDG_CONFIG_HOME: join(run, "config"),
       APPDATA: join(run, "config"),
+      // ...and its log file (somescript.log).
+      XDG_DATA_HOME: join(run, "data"),
+      LOCALAPPDATA: join(run, "data"),
       ...(process.platform === "darwin" ? { HOME: join(run, "home") } : {}),
       ...(release
-        ? { SOMESCRIPT_PORT: String(port), SOMESCRIPT_TOKEN: token! }
+        ? { SOMESCRIPT_PORT: String(port), SOMESCRIPT_TOKEN: sessionToken! }
         : { SOMESCRIPT_DEV_API_PORT: String(port) }),
     },
   },

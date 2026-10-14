@@ -3,11 +3,14 @@ import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import {
   ArrowLeft,
   Check,
+  ClipboardCopy,
+  FileText,
   FolderOpen,
   FolderSync,
   KeyRound,
   Pencil,
   Plus,
+  RotateCw,
   Sparkles,
   Trash2,
   WifiOff,
@@ -319,15 +322,29 @@ function AiSection() {
 
 function GeneralSection() {
   const [libraryPath, setLibraryPath] = useState<string | null>(null);
+  const [logFile, setLogFile] = useState<string | null>(null);
   const [dialog, setDialog] = useState<"folder" | "offline" | null>(null);
 
   const load = useCallback(() => {
     library
-      .getLibraryPath()
-      .then(setLibraryPath)
+      .getSettings()
+      .then((s) => {
+        setLibraryPath(s.libraryPath);
+        setLogFile(s.logFile);
+      })
       .catch(() => setLibraryPath(""));
   }, []);
   useEffect(load, [load]);
+
+  // Where the system lets us, put the report on the clipboard; otherwise say so, rather than fail silently.
+  const copyDiagnostics = async () => {
+    try {
+      await navigator.clipboard.writeText(await library.diagnostics());
+      toast.success("Copied. Paste it into your bug report.");
+    } catch (e) {
+      toast.error(`Couldn't copy the report: ${errorText(e)}`);
+    }
+  };
 
   return (
     <div className="grid gap-8">
@@ -367,6 +384,49 @@ function GeneralSection() {
           <Button variant="outline" onClick={() => setDialog("offline")}>
             <WifiOff /> Prepare for offline use…
           </Button>
+        </div>
+      </section>
+
+      <section className="grid gap-3">
+        <div className="grid">
+          <h2 className="text-sm font-semibold">Setup</h2>
+          <p className="text-sm text-muted-foreground">
+            Go through the first-run steps again: projects folder, offline packages, a first
+            project. Your projects and settings stay as they are.
+          </p>
+        </div>
+        <div>
+          <Button
+            variant="outline"
+            onClick={() => window.location.assign("/welcome?rerun=1")}
+            data-testid="run-setup-again"
+          >
+            <RotateCw /> Run setup again
+          </Button>
+        </div>
+      </section>
+
+      <section className="grid gap-3">
+        <div className="grid">
+          <h2 className="text-sm font-semibold">Diagnostics</h2>
+          <p className="text-sm text-muted-foreground">
+            If something doesn't work, copy this report into your bug report. It lists versions,
+            folders and the end of the log. It never includes your API keys or the contents of your
+            files.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => void copyDiagnostics()}>
+            <ClipboardCopy /> Copy diagnostics
+          </Button>
+          {library.inTauri() && logFile && (
+            <Button
+              variant="outline"
+              onClick={() => revealItemInDir(logFile).catch((e) => toast.error(errorText(e)))}
+            >
+              <FileText /> Show log file
+            </Button>
+          )}
         </div>
       </section>
 

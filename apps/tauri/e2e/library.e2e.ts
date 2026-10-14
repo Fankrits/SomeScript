@@ -158,3 +158,15 @@ test("the library folder can be changed, and projects there are listed", async (
     await request.post("/api/settings", { data: { libraryPath: current } });
   }
 });
+
+test("the New project dialog says what the folder will be called when it differs from the name", async ({
+  page,
+}) => {
+  await page.goto("/dashboard");
+  await page.getByRole("button", { name: "New project" }).first().click();
+  const name = page.getByLabel("Name", { exact: true });
+  await name.fill("a/b");
+  await expect(page.getByTestId("folder-name-preview")).toContainText("a-b");
+  await name.fill("A plain name");
+  await expect(page.getByTestId("folder-name-preview")).toHaveCount(0);
+});

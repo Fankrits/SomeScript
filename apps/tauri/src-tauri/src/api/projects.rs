@@ -239,6 +239,8 @@ fn settings_json(s: &ApiState) -> Value {
         "source": source,
         "onboarded": onboarded,
         "defaultLibraryPath": s.default_library,
+        // Where somescript.log is (`Show log file` in Settings); a path, not a read of the disk.
+        "logFile": s.log_dir.as_ref().map(|d| d.join("somescript.log")),
     })
 }
 

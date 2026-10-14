@@ -79,6 +79,50 @@ export interface LibrarySettings {
   onboarded: boolean;
   /** Where the library would be with nothing chosen: what setup proposes. */
   defaultLibraryPath: string;
+  /** Where somescript.log is, if the app could work that out. */
+  logFile: string | null;
+}
+
+/** What setup and Settings learn about a folder before choosing it (src-tauri/src/library.rs). */
+export interface FolderIssue {
+  kind: "not_absolute" | "not_a_folder" | "permission" | "unavailable" | "other";
+  message: string;
+  hint: string | null;
+}
+export interface FolderWarning {
+  kind: "cloud_synced" | "network_share" | "protected_folder" | "install_folder";
+  message: string;
+}
+export interface FolderCheck {
+  /** The path as the user should see it. */
+  path: string;
+  exists: boolean;
+  isDir: boolean;
+  /** Proven by writing a file there and removing it again. */
+  writable: boolean;
+  /** Doesn't exist yet, but can be made. */
+  creatable: boolean;
+  /** Subfolders that would show up as projects. */
+  projectCount: number;
+  issue: FolderIssue | null;
+  warnings: FolderWarning[];
+  /** Other places that work; only sent when this one has an issue. */
+  alternatives: string[];
+}
+
+/** Looks at a folder without creating it (it may write and remove one small probe file). */
+export const checkFolder = (path: string) =>
+  call<FolderCheck>(`/api/library/check?path=${encodeURIComponent(path)}`);
+/** The folder name a typed project name will get: illegal characters swapped, a number added if taken. */
+export const folderName = (name: string) =>
+  call<{ id: string; changed: boolean }>(
+    `/api/projects/folder-name?name=${encodeURIComponent(name)}`,
+  );
+/** A plain-text report (versions, folders, tool paths, log tail) to paste into a bug report. */
+export async function diagnostics(): Promise<string> {
+  const res = await fetch("/api/diagnostics");
+  if (!res.ok) throw new ApiFailure(`Request failed (${res.status})`, res.status);
+  return res.text();
 }
 
 /** Read from the config and environment only: it never touches the library folder. */
