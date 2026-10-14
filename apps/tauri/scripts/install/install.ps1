@@ -35,14 +35,9 @@ function Install-SomeScript {
 
         # Read checksums file and parse expected hash
         $expectedHash = $null
-        Get-Content -Path $sumsPath | ForEach-Object {
-            $line = $_.Trim()
-            if ($line -match '^([a-fA-F0-9]{64})\s+\*?(.+)$') {
-                $hash = $matches[1]
-                $file = $matches[2].Trim()
-                if ($file -eq $assetName) {
-                    $expectedHash = $hash
-                }
+        foreach ($line in Get-Content -Path $sumsPath) {
+            if ($line.Trim() -match '^([a-fA-F0-9]{64})\s+\*?(.+)$' -and $matches[2].Trim() -eq $assetName) {
+                $expectedHash = $matches[1]
             }
         }
 

@@ -66,7 +66,8 @@ jobs:
             exit 1
           }
           if (Get-Module -ListAvailable -Name PSScriptAnalyzer) {
-            $results = Invoke-ScriptAnalyzer -Path apps/tauri/scripts/install/install.ps1 -Severity Error,Warning
+            # Write-Host is deliberate: the script is run interactively (`irm | iex`) and its progress is for the person, not the pipeline.
+            $results = Invoke-ScriptAnalyzer -Path apps/tauri/scripts/install/install.ps1 -Severity Error,Warning -ExcludeRule PSAvoidUsingWriteHost
             if ($results) {
               $results | Format-Table -AutoSize
               exit 1
