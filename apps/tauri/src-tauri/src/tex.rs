@@ -53,6 +53,24 @@ impl TexTools {
             find_tool("synctex", "SYNCTEX_BIN", resource_dir),
         )
     }
+
+    /// Where the sidecars were found (or the bare name that will be looked up on `PATH`), for the
+    /// diagnostics report.
+    pub fn paths(&self) -> (&Path, &Path) {
+        (&self.tectonic, &self.synctex)
+    }
+}
+
+/// A child process for a bundled tool. On Windows the app has no console of its own
+/// (`windows_subsystem = "windows"`), so without CREATE_NO_WINDOW every console program it starts
+/// gets a black window of its own: one flashing up on each compile (auto-compile makes that every
+/// few seconds) and on each SyncTeX click.
+fn tool_command(program: &Path) -> Command {
+    #[allow(unused_mut)] // only Windows changes it
+    let mut command = Command::new(program);
+    #[cfg(windows)]
+    command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    command
 }
 
 fn find_tool(name: &str, env_var: &str, resource_dir: Option<&Path>) -> PathBuf {
@@ -235,7 +253,7 @@ async fn attempt(
     tx: &mpsc::Sender<Bytes>,
     log: &mut String,
 ) -> Attempt {
-    let spawned = Command::new(&tools.tectonic)
+    let spawned = tool_command(&tools.tectonic)
         .args(args)
         .current_dir(root)
         .env("TECTONIC_UNTRUSTED_MODE", "1")
@@ -328,7 +346,7 @@ pub fn parse_synctex_output(text: &str) -> Vec<std::collections::HashMap<String,
 
 async fn run_synctex(tools: &TexTools, root: &Path, args: &[String]) -> ApiResult<String> {
     // A non-zero exit just means "no match": use whatever was printed.
-    let out = Command::new(&tools.synctex)
+    let out = tool_command(&tools.synctex)
         .args(args)
         .current_dir(root)
         .stdin(Stdio::null())

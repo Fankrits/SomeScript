@@ -1,16 +1,22 @@
 //! The `/api/*` contract apps/editor's UI already speaks. Each submodule documents the
 //! Next route handler it is a port of; keep response shapes identical to those.
 
+mod ai;
 mod compile;
+mod diagnostics;
 mod files;
-mod meta;
+pub(crate) mod meta;
 mod projects;
-mod search;
+pub(crate) mod search;
 
 #[cfg(test)]
 mod http_tests;
 
-use crate::{library::Library, tex::TexTools};
+use crate::{
+    ai::{AiHttp, settings::AiStore},
+    library::Library,
+    tex::TexTools,
+};
 use axum::{
     Router,
     extract::{DefaultBodyLimit, FromRef},
@@ -27,6 +33,17 @@ pub struct ApiState {
     pub templates_dir: PathBuf,
     /// Where the chosen library folder is remembered; `None` in tests.
     pub config_path: Option<PathBuf>,
+    /// Where the library would be with nothing chosen (`<Documents>/SomeScript`): what setup proposes.
+    pub default_library: PathBuf,
+    /// Places to offer when the chosen folder can't be used (outside the folders the OS protects).
+    pub alternatives: Vec<PathBuf>,
+    /// Where `somescript.log` is, for the diagnostics report.
+    pub log_dir: Option<PathBuf>,
+    /// The system webview's version (WebView2 on Windows), for the diagnostics report.
+    pub webview_version: Option<String>,
+    /// Global AI settings (providers and keys), shared by every project.
+    pub ai: Arc<AiStore>,
+    pub http: AiHttp,
 }
 
 pub fn router<S>() -> Router<S>
@@ -77,8 +94,39 @@ where
             "/api/settings",
             get(projects::settings_get).post(projects::settings_post),
         )
+        // First-run setup: look at a folder before choosing it, preview a project's folder name,
+        // and a report to paste into a bug report.
+        .route("/api/library/check", get(projects::library_check))
+        .route("/api/projects/folder-name", get(projects::folder_name))
+        .route("/api/diagnostics", get(diagnostics::get))
         .route("/api/prepare-offline", post(projects::prepare_offline))
+        // AI assistant (desktop only): global provider settings, streaming chat, per-project history
+        .route(
+            "/api/ai/settings",
+            get(ai::settings_get).post(ai::settings_post),
+        )
+        .route("/api/ai/providers", post(ai::provider_save))
+        .route("/api/ai/providers/delete", post(ai::provider_delete))
+        .route("/api/ai/providers/test", post(ai::provider_test))
+        .route(
+            "/api/ai/chat",
+            post(ai::chat).layer(DefaultBodyLimit::max(CHAT_BODY_LIMIT)),
+        )
+        .route(
+            "/api/chat/threads",
+            get(ai::threads_get).put(ai::threads_put),
+        )
+        .route(
+            "/api/chat/thread",
+            get(ai::thread_get)
+                .put(ai::thread_put)
+                .delete(ai::thread_delete)
+                .layer(DefaultBodyLimit::max(CHAT_BODY_LIMIT)),
+        )
 }
+
+/// A conversation carries file diffs and compile logs; the default 2 MB is too small for a long one.
+const CHAT_BODY_LIMIT: usize = 32 * 1024 * 1024;
 
 /// JS truthiness for the few request fields the Next routes test that way (`if (body.isDir)`).
 pub(crate) fn truthy(v: Option<&Value>) -> bool {

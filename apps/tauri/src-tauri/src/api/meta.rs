@@ -29,6 +29,18 @@ pub fn write_initial_prefs(project: &Project, file: &str) -> ApiResult<()> {
     )
 }
 
+/// An imported project opens its root document too, unless the ZIP carried prefs of its own.
+pub fn open_main_file_initially(project: &Project) -> ApiResult<()> {
+    if read_json(project, PREFS_PATH).is_some() {
+        return Ok(());
+    }
+    let main = main_file_path(project);
+    if project.resolve(&main).is_ok_and(|full| full.is_file()) {
+        write_initial_prefs(project, &main)?;
+    }
+    Ok(())
+}
+
 const MAX_TASKS: usize = 500;
 const MAX_NAME: usize = 200;
 const MAX_DESCRIPTION: usize = 5000;
@@ -165,6 +177,23 @@ pub fn sanitize_settings(input: Option<&Value>) -> Value {
         .filter(|e| e.chars().count() <= 64)
         .unwrap_or("tectonic");
     json!({ "mainFilePath": main_file, "compilerEngine": engine })
+}
+
+/// The project's root document: the configured one if it exists, else the conventional
+/// `main.tex` / `Main.tex`, else whatever is configured (so the error names it).
+pub(crate) fn main_file_path(project: &Project) -> String {
+    let configured = sanitize_settings(read_json(project, SETTINGS_PATH).as_ref())["mainFilePath"]
+        .as_str()
+        .unwrap_or("main.tex")
+        .to_owned();
+    let exists = |p: &str| project.resolve(p).is_ok_and(|full| full.is_file());
+    if exists(&configured) {
+        return configured;
+    }
+    ["main.tex", "Main.tex"]
+        .into_iter()
+        .find(|p| exists(p))
+        .map_or(configured, str::to_owned)
 }
 
 pub async fn settings_get(

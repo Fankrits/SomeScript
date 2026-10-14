@@ -2,17 +2,12 @@ name: Desktop
 
 # The desktop app compiles apps/editor's UI source, so editor changes can break it: the cheap
 # JS checks run on those too, while the Rust and bundle jobs only run when the Rust app itself changes.
-# Required status check: "Desktop success".
+# Required status check: "Desktop success". It must report on EVERY pull request (a required check
+# that never appears blocks the merge), so there is deliberately no workflow-level `paths:` filter:
+# the "Detect changes" job decides what runs and the aggregate job always answers.
 
 on:
   pull_request:
-    paths:
-      - "apps/tauri/**"
-      - "apps/editor/**"
-      - "apps/compiler/scripts/build-synctex.sh"
-      - "bun.lock"
-      - ".github/workflows/desktop*.yml"
-      - ".github/actions/**"
   push:
     branches: [main]
   workflow_dispatch:
@@ -33,6 +28,7 @@ jobs:
       contents: read
       pull-requests: read
     outputs:
+      web: ${{ steps.filter.outputs.web }}
       rust: ${{ steps.filter.outputs.rust }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -42,6 +38,13 @@ jobs:
         id: filter
         with:
           filters: |
+            web:
+              - 'apps/tauri/**'
+              - 'apps/editor/**'
+              - 'apps/compiler/scripts/build-synctex.sh'
+              - 'bun.lock'
+              - '.github/workflows/desktop*.yml'
+              - '.github/actions/**'
             rust:
               - 'apps/tauri/src-tauri/**'
               - 'apps/tauri/scripts/**'
@@ -52,6 +55,8 @@ jobs:
 
   web:
     name: Frontend, scripts and drift guard
+    needs: changes
+    if: needs.changes.outputs.web == 'true' || github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -138,6 +143,67 @@ jobs:
           SYNCTEX_BIN="$here/binaries/synctex-$TRIPLE$EXE" \
           cargo test -- --ignored real_
 
+  # The whole app, as a person uses it: the real Rust server with the UI it embeds, driven in a real
+  # browser, with a scripted model provider (so the AI chat, its tools, the Settings screen and the
+  # key handling are exercised without a key) and a stand-in for Tectonic (auto-compile, the
+  # tasks board). Tectonic itself is covered by the "Real Tectonic round trip" above.
+  e2e:
+    name: End-to-end (app, AI chat, settings, editor)
+    needs: changes
+    if: needs.changes.outputs.web == 'true' || needs.changes.outputs.rust == 'true' || github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: bash
+        working-directory: apps/tauri
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-js
+      - uses: ./.github/actions/desktop-deps
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: apps/tauri/src-tauri
+      # The binary serves the UI it embedded at build time, so the frontend comes first.
+      - name: Build the frontend
+        run: bun run web:build
+      - name: Build the app
+        working-directory: apps/tauri/src-tauri
+        run: cargo build
+      - name: Install the browsers
+        run: bun x playwright install --with-deps chromium webkit
+      # The app needs a display even though it opens no window when headless.
+      - name: Run the end-to-end tests
+        run: xvfb-run -a bun run e2e
+      # The editor specs again, the way `bun run tauri dev` serves the app: unbundled by the Vite dev
+      # server instead of the bundle the binary embeds. Two failures got past every other check that
+      # way (a package missing from the dev server's module graph, and a stale dependency cache that
+      # loaded CodeMirror twice and left a blank editor).
+      - name: Run the editor specs against the Vite dev server
+        run: xvfb-run -a bun run e2e:dev e2e/tasks.e2e.ts e2e/autocompile.e2e.ts e2e/editor.e2e.ts
+      # The whole suite again in WebKit, the engine under the Mac app's WKWebView (nothing else here
+      # runs it). Playwright's own current WebKit, so it finds what differs from Chromium, not what an
+      # old macOS lacks (e2e/old-webview.e2e.ts covers that). It found a blank-editor bug that
+      # Chromium never showed: a project's file was dropped when the server answered before React
+      # had rendered the selection.
+      - name: Run the end-to-end tests in WebKit
+        run: xvfb-run -a bun run e2e:webkit
+      - name: Keep the report
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-report
+          path: |
+            apps/tauri/e2e/.run/report
+            apps/tauri/e2e/.run/results
+          if-no-files-found: ignore
+          retention-days: 7
+
   bundle:
     name: Bundle
     needs: changes
@@ -146,9 +212,119 @@ jobs:
     permissions:
       contents: read
 
+  # The app in its real Windows webview. Everything above drives the Rust server's UI in Chromium,
+  # which can't show what only WebView2 does: loading the app from the loopback server with the
+  # per-launch cookie, Tauri's IPC reaching that origin, or the OS's own Documents folder on a first
+  # launch (where creating a project broke). It is driven over the Chrome DevTools Protocol, which needs
+  # the browser started with a debugging port. WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS did not get one
+  # there (the first runs of this job showed the browser's command line without it), and a release
+  # build has the web inspector off, so the app is built here with the `devtools` feature, which no
+  # build that ships turns on: with it, SOMESCRIPT_CDP_PORT gives the window a debugging port. It
+  # needs a window on the runner, which is new here, so it reports without gating (continue-on-error,
+  # and not in "Desktop success") until it has proven stable.
+  webview2:
+    name: Windows (WebView2, first launch)
+    needs: changes
+    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.web == 'true' || github.event_name != 'pull_request'
+    runs-on: windows-latest
+    continue-on-error: true
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+        working-directory: apps/tauri
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-js
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: apps/tauri/src-tauri
+      # tauri::generate_context! embeds the built frontend, so it must exist before cargo runs.
+      - name: Build the frontend
+        run: bun run web:build
+      - name: Build the app with the web inspector on
+        working-directory: apps/tauri/src-tauri
+        run: cargo build --release --features devtools
+      - name: Run it, and drive its window
+        run: |
+          app_dir="$PWD/src-tauri/target/release"
+          # Where a Windows install puts the bundled templates: next to the executable.
+          cp -r src-tauri/templates "$app_dir/templates"
+
+          # No SOMESCRIPT_LIBRARY and no stand-in Documents folder: the OS's own default, as on a first launch.
+          export SOMESCRIPT_PORT=47123 SOMESCRIPT_TOKEN=webview2-ci-token-0123456789abcdef
+          export SOMESCRIPT_CDP_PORT=9222
+          "$app_dir/somescript-desktop.exe" > "$RUNNER_TEMP/somescript.log" 2>&1 &
+          app=$!
+          trap 'kill "$app" 2>/dev/null || true' EXIT
+          cdp=""
+          for _ in $(seq 1 30); do
+            if curl -s --connect-timeout 2 --max-time 4 -o /dev/null http://127.0.0.1:9222/json/version; then cdp=1; break; fi
+            sleep 2
+          done
+          if [ -z "$cdp" ]; then
+            echo "::group::The window never opened its debugging port: what the app and the machine say"
+            echo "--- the app's own output ---"
+            cat "$RUNNER_TEMP/somescript.log" || true
+            echo "--- processes ---"
+            tasklist | grep -iE "somescript|msedgewebview2" || echo "none"
+            echo "--- ports ---"
+            netstat -ano | grep -E ":(9222|47123) " || echo "none"
+            echo "--- the app's report about itself (/api/diagnostics) ---"
+            curl -s -c "$RUNNER_TEMP/jar" -o /dev/null "http://127.0.0.1:47123/?t=$SOMESCRIPT_TOKEN" || true
+            curl -s -b "$RUNNER_TEMP/jar" http://127.0.0.1:47123/api/diagnostics || echo "(its server does not answer)"
+            echo "--- the WebView2 runtime ---"
+            MSYS2_ARG_CONV_EXCL='*' reg query 'HKLM\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}' /v pv || echo "none in the registry"
+            echo "--- how the WebView2 browser process was started ---"
+            cat > "$RUNNER_TEMP/cmdline.ps1" <<'PS'
+          Get-CimInstance Win32_Process -Filter "Name = 'msedgewebview2.exe'" | ForEach-Object { $_.CommandLine }
+          PS
+            powershell -NoProfile -ExecutionPolicy Bypass -File "$(cygpath -w "$RUNNER_TEMP/cmdline.ps1")" | grep -v -e "--type=" | cut -c1-1500 || true
+            echo "::endgroup::"
+            # A dialog the app is waiting on would show up here.
+            mkdir -p e2e/.run/webview2-shots
+            cat > "$RUNNER_TEMP/shot.ps1" <<'PS'
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          $screen = [System.Windows.Forms.SystemInformation]::VirtualScreen
+          $bitmap = New-Object System.Drawing.Bitmap $screen.Width, $screen.Height
+          $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+          $graphics.CopyFromScreen($screen.Location, [System.Drawing.Point]::Empty, $screen.Size)
+          $bitmap.Save($args[0])
+          PS
+            powershell -NoProfile -ExecutionPolicy Bypass -File "$(cygpath -w "$RUNNER_TEMP/shot.ps1")" "$(cygpath -w "$PWD/e2e/.run/webview2-shots/desktop.png")" || true
+            exit 1
+          fi
+          curl -s http://127.0.0.1:9222/json/version
+
+          APP_URL=http://127.0.0.1:47123 bun run e2e:webview2
+      - name: Gather the logs
+        if: always()
+        run: |
+          mkdir -p e2e/.run/webview2-logs
+          cp "$RUNNER_TEMP/somescript.log" e2e/.run/webview2-logs/ || true
+          cp -r "$(cygpath -u "$LOCALAPPDATA")/com.fankrits.somescript/logs/." e2e/.run/webview2-logs/ || true
+      - name: Keep the screenshots and the logs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: webview2-run
+          path: |
+            apps/tauri/e2e/.run/webview2-shots
+            apps/tauri/e2e/.run/webview2-results
+            apps/tauri/e2e/.run/webview2-logs
+          if-no-files-found: ignore
+          retention-days: 7
+
   desktop-success:
     name: Desktop success
-    needs: [changes, web, rust, bundle]
+    needs: [changes, web, rust, e2e, bundle]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 2

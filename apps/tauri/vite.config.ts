@@ -41,6 +41,23 @@ export default defineConfig({
     ],
   },
 
+  // src/shims/polyfills.ts is the first thing the app imports. Naming its packages here has Vite
+  // pre-bundle them at startup. Left to discovery, a dev server whose cache predates them finds
+  // them late, re-optimizes and reloads in the middle of loading the editor, and a page that kept
+  // modules from both bundle generations loads @codemirror/state twice ("Unrecognized extension
+  // value ... multiple instances of @codemirror/state") and renders blank. Changing this list also
+  // changes Vite's cache hash, so a stale cache is rebuilt cleanly on the next start.
+  optimizeDeps: {
+    include: [
+      "core-js/actual/array/at",
+      "core-js/actual/array/to-reversed",
+      "core-js/actual/array/to-sorted",
+      "core-js/actual/object/has-own",
+      "core-js/actual/string/at",
+      "uuid",
+    ],
+  },
+
   // The editor reads these through Next's build-time inlining; there is no process.env here.
   define: {
     "process.env.NEXT_PUBLIC_COLLAB_ENABLED": '"false"',
@@ -70,8 +87,9 @@ export default defineConfig({
     // changeOrigin: the Rust server only accepts its own Host (DNS-rebinding guard).
     proxy: { "/api": { target: `http://127.0.0.1:${apiPort}`, changeOrigin: true } },
     watch: {
-      // 3. tell Vite to ignore watching `src-tauri`
-      ignored: ["**/src-tauri/**"],
+      // 3. tell Vite to ignore watching `src-tauri`, and the end-to-end run folder: Playwright writes
+      // HTML trace files there, and each one made the dev server reload the page mid-test.
+      ignored: ["**/src-tauri/**", "**/e2e/.run/**"],
     },
   },
 });

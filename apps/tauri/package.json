@@ -1,13 +1,13 @@
 {
   "name": "somescript-desktop",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "type": "module",
   "scripts": {
     "sync:public": "bun scripts/sync-public.mjs",
     "web:dev": "bun run sync:public && vite",
     "web:build": "bun run sync:public && tsc && vite build",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p e2e",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
     "format": "oxfmt",
@@ -20,7 +20,12 @@
     "desktop:build:universal": "tauri build --config src-tauri/tauri.bundle.conf.json --target universal-apple-darwin",
     "desktop:build:linux": "tauri build --config src-tauri/tauri.bundle.linux.conf.json",
     "desktop:verify": "sh scripts/verify-bundle.sh src-tauri/target/release/bundle/macos/SomeScript.app",
-    "desktop:smoke": "sh scripts/smoke-bundle.sh src-tauri/target/release/bundle/macos/SomeScript.app"
+    "desktop:smoke": "sh scripts/smoke-bundle.sh src-tauri/target/release/bundle/macos/SomeScript.app",
+    "e2e": "playwright test --config e2e/playwright.config.ts",
+    "e2e:dev": "playwright test --config e2e/playwright.dev.config.ts",
+    "e2e:webkit": "playwright test --config e2e/playwright.webkit.config.ts",
+    "e2e:webview2": "playwright test --config e2e/webview2/playwright.config.ts",
+    "e2e:install": "playwright install chromium"
   },
   "dependencies": {
     "@fontsource-variable/geist": "5.3.0",
@@ -29,12 +34,15 @@
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2.8.2",
     "@tauri-apps/plugin-opener": "^2",
+    "core-js": "^3.50.0",
     "lucide-react": "^1.49.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "sonner": "^2.0.8"
+    "sonner": "^2.0.8",
+    "uuid": "^14.0.1"
   },
   "devDependencies": {
+    "@playwright/test": "1.56.1",
     "@tailwindcss/vite": "^4.3.3",
     "@tauri-apps/cli": "^2",
     "@types/node": "^26.6.3",

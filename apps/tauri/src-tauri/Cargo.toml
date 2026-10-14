@@ -1,6 +1,6 @@
 [package]
 name = "somescript-desktop"
-version = "0.1.1"
+version = "0.1.2"
 description = "SomeScript desktop: free, local LaTeX editor"
 authors = ["Fankrits"]
 publish = false
@@ -14,6 +14,12 @@ edition = "2024"
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
 name = "somescript_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
+
+[features]
+# A release build has the web inspector off. CI builds the app with this on to drive its real window over
+# the Chrome DevTools Protocol (.github/workflows/desktop.yml, "Windows (WebView2, first launch)"): with
+# it, SOMESCRIPT_CDP_PORT=<port> gives the window a debugging port. No build that ships turns it on.
+devtools = ["tauri/devtools"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -36,6 +42,9 @@ tokio = { version = "1.53.2", features = [
 ] }
 getrandom = "0.4.3"
 tauri-plugin-dialog = "2.8.2"
+# Rotating log file in the OS log folder: a release build on Windows has no console to print to.
+tauri-plugin-log = "2"
+log = "0.4"
 tempfile = "3.27.0"
 # canonicalize() without Windows' \\?\ prefix, which Tectonic and the UI would otherwise see.
 dunce = "1.0.5"
@@ -44,6 +53,18 @@ regex = "1.13.1"
 percent-encoding = "2.3.2"
 tokio-stream = "0.1.19"
 zip = { version = "9.0.2", default-features = false, features = ["deflate"] }
+# HTTP client for the AI chat (bring-your-own-key providers, custom endpoints). rustls with `ring`
+# rather than reqwest's default aws-lc-rs: pure Rust + a small C core, no cmake/NASM on the Windows
+# runner, and it links statically so the Linux bundle needs no libssl. System roots (and the OS
+# proxy settings) are honoured, so corporate proxies and local CAs keep working.
+reqwest = { version = "0.13.5", default-features = false, features = [
+  "rustls-no-provider",
+  "system-proxy",
+  "stream",
+  "json",
+] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+globset = "0.4"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

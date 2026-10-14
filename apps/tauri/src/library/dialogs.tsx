@@ -1,6 +1,4 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { open as pickFolder } from "@tauri-apps/plugin-dialog";
-import { CheckCircle2, FolderOpen, WifiOff } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,10 +11,15 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Spinner } from "@/components/ui/spinner";
 import * as api from "./api";
+import { FailureAlert } from "./failure-alert";
+import { FolderPicker } from "./folder-picker";
+import { FolderStatus } from "./folder-status";
 import { stripZip } from "./format";
+import { NewProjectFields, useNewProject } from "./new-project";
+import { OfflineStatus, useOfflinePrep } from "./offline";
+import { useFolderCheck } from "./use-folder-check";
 
 interface DialogProps {
   open: boolean;
@@ -80,30 +83,7 @@ const failed = (what: string, e: unknown) =>
   toast.error(`${what}: ${e instanceof Error ? e.message : String(e)}`);
 
 export function NewProjectDialog({ open, onOpenChange }: DialogProps) {
-  const [name, setName] = useState("");
-  const [template, setTemplate] = useState("starter");
-  const [templates, setTemplates] = useState<api.Template[]>([]);
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    if (!open) return;
-    setName("");
-    api
-      .listTemplates()
-      .then(setTemplates)
-      .catch((e) => failed("Couldn't load templates", e));
-  }, [open]);
-
-  const create = async () => {
-    setBusy(true);
-    try {
-      api.openProject(await api.createProject(name, template));
-    } catch (e) {
-      failed("Couldn't create the project", e);
-      setBusy(false);
-    }
-  };
-
+  const form = useNewProject(open);
   return (
     <FormDialog
       open={open}
@@ -111,35 +91,11 @@ export function NewProjectDialog({ open, onOpenChange }: DialogProps) {
       title="New project"
       description="It's created as a folder in your library."
       submitLabel="Create"
-      busy={busy}
-      canSubmit={name.trim() !== ""}
-      onSubmit={create}
+      busy={form.busy}
+      canSubmit={form.canCreate}
+      onSubmit={form.create}
     >
-      <div className="grid gap-2">
-        <Label htmlFor="project-name">Name</Label>
-        <Input
-          id="project-name"
-          autoFocus
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="My thesis"
-        />
-      </div>
-      <RadioGroup value={template} onValueChange={setTemplate} className="gap-2">
-        {templates.map((t) => (
-          <Label
-            key={t.id}
-            htmlFor={`template-${t.id}`}
-            className="flex cursor-pointer items-start gap-3 rounded-lg border p-3 has-[[data-checked]]:border-primary has-[[data-state=checked]]:border-primary"
-          >
-            <RadioGroupItem value={t.id} id={`template-${t.id}`} className="mt-0.5" />
-            <span className="grid gap-0.5">
-              <span className="font-medium">{t.name}</span>
-              <span className="text-xs font-normal text-muted-foreground">{t.description}</span>
-            </span>
-          </Label>
-        ))}
-      </RadioGroup>
+      <NewProjectFields form={form} />
     </FormDialog>
   );
 }
@@ -253,25 +209,28 @@ export function FolderDialog({
 }: DialogProps & { current: string; onDone: () => void }) {
   const [path, setPath] = useState(current);
   const [busy, setBusy] = useState(false);
-  useEffect(() => setPath(current), [open, current]);
+  const [error, setError] = useState<unknown>(null);
+  useEffect(() => {
+    setPath(current);
+    setError(null);
+  }, [open, current]);
+  const { check, error: checkError, checking, recheck } = useFolderCheck(open ? path : "");
 
-  const browse = async () => {
-    const chosen = await pickFolder({ directory: true, defaultPath: path || undefined });
-    if (typeof chosen === "string") setPath(chosen);
-  };
   const save = async () => {
     setBusy(true);
+    setError(null);
     try {
       await api.setLibraryPath(path.trim());
       onOpenChange(false);
       onDone();
     } catch (e) {
-      failed("Couldn't use that folder", e);
+      setError(e);
     } finally {
       setBusy(false);
     }
   };
 
+  const unchanged = path.trim() === current;
   return (
     <FormDialog
       open={open}
@@ -280,50 +239,36 @@ export function FolderDialog({
       description="Where your projects live. Existing projects stay where they are; the app shows whatever is in the folder you pick."
       submitLabel="Use this folder"
       busy={busy}
-      canSubmit={path.trim() !== "" && path.trim() !== current}
+      canSubmit={path.trim() !== "" && !unchanged && !checking && check?.issue === null}
       onSubmit={save}
     >
-      <div className="flex gap-2">
-        <Input
-          aria-label="Folder path"
-          value={path}
-          onChange={(e) => setPath(e.target.value)}
-          className="font-mono text-xs"
+      <FolderPicker value={path} onChange={setPath} disabled={busy} />
+      {!unchanged && (
+        <FolderStatus
+          check={check}
+          checking={checking}
+          error={checkError}
+          onUse={setPath}
+          onRecheck={recheck}
         />
-        {api.inTauri() && (
-          <Button type="button" variant="outline" onClick={browse}>
-            <FolderOpen /> Browse
-          </Button>
-        )}
-      </div>
+      )}
+      {error !== null && <FailureAlert title="Couldn't use that folder" error={error} />}
     </FormDialog>
   );
 }
 
-type Offline = { state: "running" | "done" | "failed"; log: string };
-
 /** Compiles a warm-up document so common packages are cached for use without a connection. */
 export function OfflineDialog({ open, onOpenChange }: DialogProps) {
-  const [run, setRun] = useState<Offline>({ state: "running", log: "" });
+  const { run: current, start } = useOfflinePrep();
+  const run = current ?? { state: "running" as const, log: "" };
   const started = useRef(false);
-
-  const start = () => {
-    setRun({ state: "running", log: "" });
-    api
-      .prepareOffline((log) => setRun({ state: "running", log }))
-      .then((log) => setRun({ state: log.includes("[SUCCESS]") ? "done" : "failed", log }))
-      .catch((e) => setRun({ state: "failed", log: String(e) }));
-  };
   useEffect(() => {
     if (open && !started.current) {
       started.current = true;
       start();
     }
     if (!open) started.current = false;
-  }, [open]);
-
-  const offlineIssue = run.log.includes("[NETWORK]");
-  const tail = run.log.trim().split("\n").slice(-6).join("\n");
+  }, [open, start]);
 
   return (
     <Dialog open={open} onOpenChange={(o) => (run.state !== "running" || !o) && onOpenChange(o)}>
@@ -336,32 +281,7 @@ export function OfflineDialog({ open, onOpenChange }: DialogProps) {
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex items-center gap-2 text-sm" role="status">
-          {run.state === "running" && (
-            <>
-              <Spinner /> Downloading packages. The first run can take a minute or two.
-            </>
-          )}
-          {run.state === "done" && (
-            <>
-              <CheckCircle2 className="size-4 text-emerald-600" /> All set. These packages now work
-              offline.
-            </>
-          )}
-          {run.state === "failed" && (
-            <>
-              <WifiOff className="size-4 text-destructive" />
-              {offlineIssue
-                ? "Couldn't reach the package server. Check your connection and try again."
-                : "Preparing failed. See the log below."}
-            </>
-          )}
-        </div>
-        {tail && run.state !== "done" && (
-          <pre className="max-h-40 overflow-auto rounded-md bg-muted p-3 font-mono text-[11px] leading-relaxed whitespace-pre-wrap">
-            {tail}
-          </pre>
-        )}
+        <OfflineStatus run={run} />
         <DialogFooter>
           {run.state === "failed" && (
             <Button variant="outline" onClick={start}>

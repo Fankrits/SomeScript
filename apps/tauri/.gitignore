@@ -30,3 +30,6 @@ public/icon.svg
 # Downloaded/built by scripts/fetch-sidecars.sh
 src-tauri/binaries/*
 !src-tauri/binaries/.gitkeep
+
+# End-to-end run state (library, config, report)
+e2e/.run

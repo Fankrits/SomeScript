@@ -1,3 +1,4 @@
+import "./shims/polyfills"; // first: it must run before any editor code
 import React from "react";
 import ReactDOM from "react-dom/client";
 import "./styles.css";

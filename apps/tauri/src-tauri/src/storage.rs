@@ -196,7 +196,8 @@ impl Project {
                 .unwrap_or(0o644);
             fs::set_permissions(tmp.path(), fs::Permissions::from_mode(mode & 0o7777))?;
         }
-        tmp.persist(&full).map_err(|e| ApiError::from(e.error))?;
+        // Retried on Windows while an antivirus scan or a sync client briefly has the file open.
+        crate::fsutil::persist_with_retry(tmp, &full)?;
         Ok(())
     }
 
@@ -215,7 +216,7 @@ impl Project {
         if let Some(parent) = to.parent() {
             fs::create_dir_all(parent)?;
         }
-        fs::rename(from, to)?;
+        crate::fsutil::retry_busy(|| fs::rename(&from, &to))?;
         Ok(())
     }
 
@@ -238,8 +239,8 @@ impl Project {
         let _guard = write_lock();
         let full = self.resolve_not_root(rel)?;
         match fs::symlink_metadata(&full) {
-            Ok(m) if m.is_dir() => fs::remove_dir_all(&full)?,
-            Ok(_) => fs::remove_file(&full)?,
+            Ok(m) if m.is_dir() => crate::fsutil::retry_busy(|| fs::remove_dir_all(&full))?,
+            Ok(_) => crate::fsutil::retry_busy(|| fs::remove_file(&full))?,
             Err(e) if e.kind() == io::ErrorKind::NotFound => {}
             Err(e) => return Err(e.into()),
         }
@@ -282,6 +283,17 @@ pub fn copy_recursive(src: &Path, dst: &Path) -> io::Result<()> {
         }
     } else if meta.is_file() {
         fs::copy(src, dst)?;
+        // Windows copies the source's read-only attribute along with its contents (files installed
+        // by the app can carry it), and a read-only project file can't be saved.
+        #[cfg(windows)]
+        {
+            let mut permissions = fs::metadata(dst)?.permissions();
+            if permissions.readonly() {
+                #[allow(clippy::permissions_set_readonly_false)] // only ever compiled on Windows
+                permissions.set_readonly(false);
+                fs::set_permissions(dst, permissions)?;
+            }
+        }
     } // symlinks are skipped: copying one could pull in files from outside the project.
     Ok(())
 }

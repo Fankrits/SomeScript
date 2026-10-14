@@ -78,7 +78,7 @@ pub async fn start(app: AppHandle, api: ApiState) -> std::io::Result<Started> {
 
     tauri::async_runtime::spawn(async move {
         if let Err(e) = axum::serve(listener, router).await {
-            eprintln!("[server] stopped: {e}");
+            log::error!("[server] stopped: {e}");
         }
     });
     Ok(Started { port, token })
