@@ -106,6 +106,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # What a Linux desktop has: the webview and GTK libraries the app links against, and a display for the smoke test.
+      - uses: ./.github/actions/desktop-deps
+        if: runner.os == 'Linux'
 
       - name: Stage release fixture
         env:
@@ -289,6 +292,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # What a Linux desktop has: the webview and GTK libraries the app links against, and a display for the smoke test.
+      - uses: ./.github/actions/desktop-deps
+        if: runner.os == 'Linux'
       - name: Wait for release asset availability
         run: |
           url="https://github.com/Fankrits/SomeScript/releases/latest/download/SomeScript-linux-x64.AppImage"
