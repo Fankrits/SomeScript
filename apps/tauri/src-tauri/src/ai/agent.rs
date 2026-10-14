@@ -9,7 +9,7 @@
 //! {"type":"text","delta":"..."}            {"type":"reasoning","delta":"..."}
 //! {"type":"tool-call","id","name","args","step"}  {"type":"tool-result","id","ok","result","output"}
 //! {"type":"usage","input","output"}        {"type":"notice","message":"..."}
-//! {"type":"error","message":"..."}         {"type":"done","reason":"stop"|"max-steps"|"error"}
+//! {"type":"error","message":"..."}         {"type":"done","reason":"stop"|"max-steps"|"stalled"|"error"}
 //! ```
 //!
 //! The client going away (the stop button, closing the panel) closes `tx`; every await point
@@ -32,6 +32,9 @@ use tokio_stream::StreamExt;
 /// Tool-call rounds per user message. Generous for a multi-file edit, still a hard stop for a
 /// model stuck in a loop.
 pub const MAX_STEPS: usize = 25;
+/// The same call failing the same way this many times in a row means the model is not going to
+/// fix it by trying again, so the turn stops there instead of spending every step on it.
+pub const MAX_REPEATED_FAILURES: usize = 3;
 /// No bytes for this long means the connection is dead or the model hung.
 const IDLE_TIMEOUT: Duration = Duration::from_secs(180);
 const RETRY_DELAY: Duration = Duration::from_millis(1500);
@@ -105,6 +108,9 @@ pub async fn run(mut input: RunInput, tx: mpsc::Sender<Bytes>) {
     let mut id_counter = 0usize;
     let id_prefix = random_prefix();
     let mut step_no = 0usize;
+    // (tool, arguments) of the last failed call and how many times in a row it has failed.
+    let mut last_failure: Option<(String, String)> = None;
+    let mut repeated_failures = 0usize;
 
     let reason = loop {
         if step_no >= MAX_STEPS {
@@ -202,11 +208,34 @@ pub async fn run(mut input: RunInput, tx: mpsc::Sender<Bytes>) {
             {
                 return;
             }
+            if outcome.ok {
+                last_failure = None;
+                repeated_failures = 0;
+            } else {
+                let signature = (call.name.clone(), call.args.to_string());
+                if last_failure.as_ref() == Some(&signature) {
+                    repeated_failures += 1;
+                } else {
+                    last_failure = Some(signature);
+                    repeated_failures = 1;
+                }
+            }
             input.history.push(Msg::Tool {
                 call_id: call.id,
                 name: call.name,
                 content: outcome.model,
             });
+        }
+        if repeated_failures >= MAX_REPEATED_FAILURES {
+            let tool = last_failure.map(|(name, _)| name).unwrap_or_default();
+            emit(
+                &tx,
+                json!({ "type": "notice", "message": format!(
+                    "The model called {tool} with the same arguments {MAX_REPEATED_FAILURES} times and got an error each time, so the assistant stopped. This model may not handle tool calls well. Try a different model in Settings."
+                ) }),
+            )
+            .await;
+            break "stalled";
         }
     };
     emit(&tx, json!({ "type": "done", "reason": reason })).await;
@@ -1263,6 +1292,59 @@ mod tests {
             MAX_STEPS
         );
         assert!(events.iter().any(|e| e["type"] == "notice"));
+    }
+
+    // A model that sends the same broken call again and again (it never gets the arguments right)
+    // must be stopped after a few tries, not left to spend all MAX_STEPS rounds on it.
+    #[tokio::test]
+    async fn a_model_repeating_the_same_failing_call_is_stopped_early() {
+        let s = setup();
+        let replies = (0..MAX_STEPS)
+            .map(|_| Reply::Sse(openai_tool("x", "read_file", "{}")))
+            .collect();
+        let mock = spawn_mock(replies).await;
+        let events = collect(input(
+            &s,
+            ProviderKind::Openai,
+            &mock.url,
+            vec![user("read it")],
+        ))
+        .await;
+        assert_eq!(events.last().unwrap()["reason"], "stalled");
+        assert_eq!(
+            events.iter().filter(|e| e["type"] == "tool-call").count(),
+            MAX_REPEATED_FAILURES
+        );
+        let notice = events.iter().find(|e| e["type"] == "notice").unwrap();
+        let message = notice["message"].as_str().unwrap();
+        assert!(message.contains("read_file"), "{message}");
+        assert!(message.contains("different model"), "{message}");
+    }
+
+    #[tokio::test]
+    async fn a_model_that_corrects_its_call_is_not_stopped() {
+        let s = setup();
+        let mock = spawn_mock(vec![
+            Reply::Sse(openai_tool("a", "read_file", "{}")),
+            Reply::Sse(openai_tool("b", "read_file", "{}")),
+            Reply::Sse(openai_tool("c", "read_file", r#"{"path":"main.tex"}"#)),
+            Reply::Sse(openai_text(&["Done."])),
+        ])
+        .await;
+        let events = collect(input(
+            &s,
+            ProviderKind::Openai,
+            &mock.url,
+            vec![user("read it")],
+        ))
+        .await;
+        assert_eq!(events.last().unwrap()["reason"], "stop");
+        let oks: Vec<_> = events
+            .iter()
+            .filter(|e| e["type"] == "tool-result")
+            .map(|e| e["ok"].as_bool().unwrap())
+            .collect();
+        assert_eq!(oks, [false, false, true]);
     }
 
     #[tokio::test]

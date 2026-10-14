@@ -528,3 +528,68 @@ test("text sent from elsewhere in the editor becomes an attachment chip and reac
   expect(sent).toContain('<attachment name="main.tex:3-4">\n\\title{Untitled}\n</attachment>');
   await sidebarTab(page, "Agent").click();
 });
+
+// Open-weight and local models often get tool arguments subtly wrong. These are the ways the
+// assistant used to loop on "path is required." until the step limit.
+test.describe("models that send tool arguments in another shape", () => {
+  test("accepts `file_path` for `path`", async ({ page, project, provider, api }) => {
+    await api.addProvider({ baseUrl: provider.openai });
+    await openEditor(page, project);
+    await openChat(page);
+    await ask(page, "alias call");
+    await expect(page.getByTestId("assistant-text")).toContainText("Read it with an alias.");
+    await waitForTurnEnd(page);
+    await expect(page.getByTestId("tool-read_file")).toHaveCount(1);
+    const messages = provider.chatRequests().at(-1)!.body.messages as any[];
+    const result = messages.find((m) => m.role === "tool");
+    expect(String(result.content)).not.toMatch(/^Error/);
+    expect(String(result.content)).toContain("documentclass");
+  });
+
+  test("accepts arguments sent as an object rather than a string", async ({
+    page,
+    project,
+    provider,
+    api,
+  }) => {
+    await api.addProvider({ baseUrl: provider.openai });
+    await openEditor(page, project);
+    await openChat(page);
+    await ask(page, "objectargs call");
+    await expect(page.getByTestId("assistant-text")).toContainText(
+      "Read it from object arguments.",
+    );
+    await waitForTurnEnd(page);
+    const messages = provider.chatRequests().at(-1)!.body.messages as any[];
+    const result = messages.find((m) => m.role === "tool");
+    expect(String(result.content)).not.toMatch(/^Error/);
+    expect(String(result.content)).toContain("documentclass");
+  });
+
+  test("a model stuck repeating a failing call is stopped, told what to send, and the chat keeps working", async ({
+    page,
+    project,
+    provider,
+    api,
+  }) => {
+    await api.addProvider({ baseUrl: provider.openai });
+    await openEditor(page, project);
+    await openChat(page);
+    await ask(page, "stuck call");
+    await expect(page.getByText(/same arguments 3 times/)).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText(/different model/)).toBeVisible();
+    await waitForTurnEnd(page);
+    // Three attempts, not the 25-step limit.
+    await expect(page.getByTestId("tool-read_file")).toHaveCount(3);
+    // The error the model saw says what to send and what it sent.
+    const messages = provider.chatRequests().at(-1)!.body.messages as any[];
+    const failure = messages.filter((m) => m.role === "tool").at(-1);
+    expect(String(failure.content)).toContain('{"path": "main.tex"}');
+    expect(String(failure.content)).toContain("arrived empty");
+
+    // Not wedged: the next message gets an answer.
+    await ask(page, "hello again");
+    await expect(page.getByTestId("assistant-text").last()).toContainText("markdown");
+    await waitForTurnEnd(page);
+  });
+});

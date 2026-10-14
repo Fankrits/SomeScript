@@ -13,6 +13,9 @@
 //   a key containing "reject" gets a 401 on every request
 //   "slow ..."     streams a word every 150 ms until the client disconnects
 //   "boom ..."     a stream error event halfway through
+//   "alias ..."    read_file with `file_path` (another tool's name for the argument) -> text
+//   "objectargs"   read_file whose `arguments` are sent as an object, as some local servers do -> text
+//   "stuck ..."    read_file with no arguments, every time, never an answer
 //   anything else  a short markdown answer
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -111,7 +114,7 @@ export class MockProvider {
       });
     }
     const chunks: Chunk[] =
-      plan.kind === "tool"
+      plan.kind === "tool" && plan.wire === "object"
         ? [
             {
               choices: [
@@ -122,18 +125,9 @@ export class MockProvider {
                         index: 0,
                         id: `call_${turnTools}`,
                         type: "function",
-                        function: { name: plan.name, arguments: "" },
+                        function: { name: plan.name, arguments: plan.args },
                       },
                     ],
-                  },
-                },
-              ],
-            },
-            {
-              choices: [
-                {
-                  delta: {
-                    tool_calls: [{ index: 0, function: { arguments: JSON.stringify(plan.args) } }],
                   },
                 },
               ],
@@ -141,17 +135,49 @@ export class MockProvider {
             { choices: [{ delta: {}, finish_reason: "tool_calls" }] },
             "[DONE]",
           ]
-        : [
-            ...(plan.kind === "text" ? plan.parts : []).map((p) => ({
-              choices: [{ delta: { content: p } }],
-            })),
-            ...(plan.kind === "stream-error"
-              ? [
-                  { choices: [{ delta: { content: "Partial answer " } }] },
-                  { error: { message: "The mock model crashed mid-answer" } },
-                ]
-              : [{ choices: [{ delta: {}, finish_reason: "stop" }] }, "[DONE]"]),
-          ];
+        : plan.kind === "tool"
+          ? [
+              {
+                choices: [
+                  {
+                    delta: {
+                      tool_calls: [
+                        {
+                          index: 0,
+                          id: `call_${turnTools}`,
+                          type: "function",
+                          function: { name: plan.name, arguments: "" },
+                        },
+                      ],
+                    },
+                  },
+                ],
+              },
+              {
+                choices: [
+                  {
+                    delta: {
+                      tool_calls: [
+                        { index: 0, function: { arguments: JSON.stringify(plan.args) } },
+                      ],
+                    },
+                  },
+                ],
+              },
+              { choices: [{ delta: {}, finish_reason: "tool_calls" }] },
+              "[DONE]",
+            ]
+          : [
+              ...(plan.kind === "text" ? plan.parts : []).map((p) => ({
+                choices: [{ delta: { content: p } }],
+              })),
+              ...(plan.kind === "stream-error"
+                ? [
+                    { choices: [{ delta: { content: "Partial answer " } }] },
+                    { error: { message: "The mock model crashed mid-answer" } },
+                  ]
+                : [{ choices: [{ delta: {}, finish_reason: "stop" }] }, "[DONE]"]),
+            ];
     await this.stream(
       req,
       res,
@@ -230,7 +256,7 @@ export class MockProvider {
     credential: string,
   ):
     | { kind: "text"; parts: string[] }
-    | { kind: "tool"; name: string; args: Record<string, unknown> }
+    | { kind: "tool"; name: string; args: Record<string, unknown>; wire?: "object" }
     | { kind: "http-error"; status: number; message: (auth: string) => string }
     | { kind: "stream-error" }
     | { kind: "slow" } {
@@ -243,6 +269,17 @@ export class MockProvider {
         status: 401,
         message: (auth) => `Incorrect API key provided: ${auth}`,
       };
+    }
+    if (p.includes("stuck")) return { kind: "tool", name: "read_file", args: {} };
+    if (p.includes("alias")) {
+      if (turnTools === 0)
+        return { kind: "tool", name: "read_file", args: { file_path: "main.tex" } };
+      return say("Read it with an alias.");
+    }
+    if (p.includes("objectargs")) {
+      if (turnTools === 0)
+        return { kind: "tool", name: "read_file", args: { path: "main.tex" }, wire: "object" };
+      return say("Read it from object arguments.");
     }
     if (p.includes("boom")) return { kind: "stream-error" };
     if (p.includes("slow")) return { kind: "slow" };

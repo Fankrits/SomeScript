@@ -291,6 +291,14 @@ fn parse_args(raw: &str) -> (Value, Option<String>) {
     }
     match serde_json::from_str::<Value>(raw) {
         Ok(v @ Value::Object(_)) => (v, None),
+        // Some servers double-encode: the arguments are a JSON string that holds the JSON object.
+        Ok(Value::String(inner)) => match serde_json::from_str::<Value>(&inner) {
+            Ok(v @ Value::Object(_)) => (v, None),
+            _ => (
+                json!({}),
+                Some("The tool arguments must be a JSON object.".into()),
+            ),
+        },
         Ok(_) => (
             json!({}),
             Some("The tool arguments must be a JSON object.".into()),
@@ -317,6 +325,9 @@ struct PendingCall {
     id: String,
     name: String,
     args: String,
+    /// The arguments arrived whole (not streamed). A later fragment replaces them instead of
+    /// being appended to them.
+    whole: bool,
 }
 
 #[derive(Default)]
@@ -370,8 +381,20 @@ impl OpenAiDecoder {
             if let Some(name) = f.get("name").and_then(Value::as_str) {
                 entry.name.push_str(name);
             }
-            if let Some(args) = f.get("arguments").and_then(Value::as_str) {
-                entry.args.push_str(args);
+            match f.get("arguments") {
+                Some(Value::String(args)) => {
+                    if entry.whole {
+                        entry.args.clear();
+                        entry.whole = false;
+                    }
+                    entry.args.push_str(args);
+                }
+                // Some local servers send the arguments as an object rather than a string.
+                Some(args @ Value::Object(_)) => {
+                    entry.args = args.to_string();
+                    entry.whole = true;
+                }
+                _ => {}
             }
         }
     }
@@ -511,12 +534,18 @@ impl StreamDecoder for AnthropicDecoder {
                             .unwrap_or("")
                             .to_owned()
                     };
+                    // The real API starts every block with `input: {}` and streams the JSON in
+                    // fragments; some gateways send the whole input here and no fragments.
+                    let whole = block
+                        .and_then(|b| b.get("input"))
+                        .filter(|i| i.as_object().is_some_and(|o| !o.is_empty()));
                     self.blocks.insert(
                         index,
                         PendingCall {
                             id: text("id"),
                             name: text("name"),
-                            args: String::new(),
+                            args: whole.map(Value::to_string).unwrap_or_default(),
+                            whole: whole.is_some(),
                         },
                     );
                 }
@@ -539,6 +568,10 @@ impl StreamDecoder for AnthropicDecoder {
                         if let (Some(call), Some(part)) =
                             (self.blocks.get_mut(&index), field("partial_json"))
                         {
+                            if call.whole {
+                                call.args.clear();
+                                call.whole = false;
+                            }
                             call.args.push_str(part);
                         }
                     }
@@ -931,6 +964,70 @@ mod tests {
         assert_eq!(c.id, "call_1");
         assert!(c.args_error.as_deref().unwrap().contains("not valid JSON"));
         assert_eq!(c.args, json!({}));
+    }
+
+    // Some local servers and gateways (Ollama and LM Studio builds, LiteLLM-style proxies) send
+    // `arguments` as a JSON object, or as a JSON string that holds a quoted JSON string. Dropping
+    // them left every call empty, so the tool answered "path is required." and the model retried forever.
+    #[test]
+    fn openai_arguments_sent_as_an_object_are_kept() {
+        let (items, err) = decode(
+            ProviderKind::Openai,
+            concat!(
+                "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"id\":\"a\",\"function\":{\"name\":\"read_file\",\"arguments\":{\"path\":\"main.tex\"}}}]},\"finish_reason\":\"tool_calls\"}]}\n\n",
+                "data: [DONE]\n\n",
+            ),
+        );
+        assert_eq!(err, None);
+        assert_eq!(
+            items[0],
+            StreamItem::ToolCall(call("a", "read_file", json!({ "path": "main.tex" })))
+        );
+    }
+
+    #[test]
+    fn double_encoded_arguments_are_unwrapped() {
+        let (items, _) = decode(
+            ProviderKind::Openai,
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"id\":\"a\",\"function\":{\"name\":\"read_file\",\"arguments\":\"\\\"{\\\\\\\"path\\\\\\\":\\\\\\\"main.tex\\\\\\\"}\\\"\"}}]},\"finish_reason\":\"tool_calls\"}]}\n\n",
+        );
+        assert_eq!(
+            items[0],
+            StreamItem::ToolCall(call("a", "read_file", json!({ "path": "main.tex" })))
+        );
+    }
+
+    #[test]
+    fn anthropic_input_given_whole_in_the_start_block_is_kept() {
+        let (items, err) = decode(
+            ProviderKind::Anthropic,
+            concat!(
+                "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"t1\",\"name\":\"read_file\",\"input\":{\"path\":\"main.tex\"}}}\n\n",
+                "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n",
+            ),
+        );
+        assert_eq!(err, None);
+        assert_eq!(
+            items[0],
+            StreamItem::ToolCall(call("t1", "read_file", json!({ "path": "main.tex" })))
+        );
+    }
+
+    #[test]
+    fn anthropic_streamed_input_still_wins_over_an_empty_start_input() {
+        // The real API starts every block with `input: {}` and streams the JSON in deltas.
+        let (items, _) = decode(
+            ProviderKind::Anthropic,
+            concat!(
+                "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"t1\",\"name\":\"read_file\",\"input\":{}}}\n\n",
+                "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"path\\\":\\\"a.tex\\\"}\"}}\n\n",
+                "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n",
+            ),
+        );
+        assert_eq!(
+            items[0],
+            StreamItem::ToolCall(call("t1", "read_file", json!({ "path": "a.tex" })))
+        );
     }
 
     #[test]

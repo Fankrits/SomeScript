@@ -66,7 +66,7 @@ export type ChatEvent =
   | { type: "usage"; input: number; output: number }
   | { type: "notice"; message: string }
   | { type: "error"; message: string }
-  | { type: "done"; reason: "stop" | "max-steps" | "error" };
+  | { type: "done"; reason: "stop" | "max-steps" | "stalled" | "error" };
 
 export interface Todo {
   content: string;

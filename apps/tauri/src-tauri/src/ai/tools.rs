@@ -184,8 +184,8 @@ impl ToolEnv {
     }
 
     async fn read_file(&self, a: &Value) -> Outcome {
-        let Some(path) = str_arg(a, "path") else {
-            return Outcome::fail(None, "path is required.");
+        let Some(path) = str_arg_any(a, PATH_KEYS) else {
+            return missing_args("read_file", "path is", r#"{"path": "main.tex"}"#, a);
         };
         if let Err(e) = guard_path(&path) {
             return Outcome::fail(Some(&path), e);
@@ -348,14 +348,19 @@ impl ToolEnv {
     }
 
     async fn edit_file(&self, a: &Value) -> Outcome {
-        let Some(path) = str_arg(a, "path") else {
-            return Outcome::fail(None, "path is required.");
+        let Some(path) = str_arg_any(a, PATH_KEYS) else {
+            return missing_args(
+                "edit_file",
+                "path is",
+                r#"{"path": "main.tex", "oldText": "text to replace", "newText": "replacement"}"#,
+                a,
+            );
         };
         if let Err(e) = guard_path(&path) {
             return Outcome::fail(Some(&path), e);
         }
-        let old = str_arg(a, "oldText").unwrap_or_default();
-        let new = str_arg(a, "newText").unwrap_or_default();
+        let old = str_arg_any(a, OLD_TEXT_KEYS).unwrap_or_default();
+        let new = str_arg_any(a, NEW_TEXT_KEYS).unwrap_or_default();
         let project = self.project.clone();
         let p = path.clone();
         // Read, splice and write in one blocking step: whatever the user typed while the model
@@ -390,14 +395,22 @@ impl ToolEnv {
     }
 
     async fn write_file(&self, a: &Value) -> Outcome {
-        let Some(path) = str_arg(a, "path") else {
-            return Outcome::fail(None, "path is required.");
+        let Some(path) = str_arg_any(a, PATH_KEYS) else {
+            return missing_args(
+                "write_file",
+                "path is",
+                r#"{"path": "notes.tex", "content": "the whole file"}"#,
+                a,
+            );
         };
         if let Err(e) = guard_path(&path) {
             return Outcome::fail(Some(&path), e);
         }
-        let Some(content) = str_arg(a, "content") else {
-            return Outcome::fail(Some(&path), "content is required.");
+        let Some(content) = str_arg_any(a, CONTENT_KEYS) else {
+            return Outcome::fail(
+                Some(&path),
+                r#"content is required. Call write_file with {"path": "notes.tex", "content": "the whole file"}."#,
+            );
         };
         if let Err(e) = ensure_size(&content) {
             return Outcome::fail(Some(&path), e.message);
@@ -457,8 +470,8 @@ impl ToolEnv {
     }
 
     async fn delete_file(&self, a: &Value) -> Outcome {
-        let Some(path) = str_arg(a, "path") else {
-            return Outcome::fail(None, "path is required.");
+        let Some(path) = str_arg_any(a, PATH_KEYS) else {
+            return missing_args("delete_file", "path is", r#"{"path": "old.tex"}"#, a);
         };
         if let Err(e) = guard_path(&path) {
             return Outcome::fail(Some(&path), e);
@@ -492,8 +505,13 @@ impl ToolEnv {
     }
 
     async fn move_file(&self, a: &Value) -> Outcome {
-        let (Some(from), Some(to)) = (str_arg(a, "from"), str_arg(a, "to")) else {
-            return Outcome::fail(None, "from and to are required.");
+        let (Some(from), Some(to)) = (str_arg_any(a, FROM_KEYS), str_arg_any(a, TO_KEYS)) else {
+            return missing_args(
+                "move_file",
+                "from and to are",
+                r#"{"from": "old.tex", "to": "new.tex"}"#,
+                a,
+            );
         };
         for p in [&from, &to] {
             if let Err(e) = guard_path(p) {
@@ -736,6 +754,55 @@ fn todo_write(a: &Value) -> Outcome {
 
 fn str_arg(a: &Value, key: &str) -> Option<String> {
     a.get(key).and_then(Value::as_str).map(str::to_owned)
+}
+
+/// The first of `keys` that holds a string. Models trained on other tools' schemas send those
+/// names (`file_path`, `old_string`, ...); accepting them beats looping on "path is required".
+fn str_arg_any(a: &Value, keys: &[&str]) -> Option<String> {
+    keys.iter().find_map(|k| str_arg(a, k))
+}
+
+const PATH_KEYS: &[&str] = &[
+    "path",
+    "file_path",
+    "filePath",
+    "filepath",
+    "file",
+    "filename",
+    "file_name",
+    "target_file",
+];
+const OLD_TEXT_KEYS: &[&str] = &["oldText", "old_text", "old_string", "oldString", "old_str"];
+const NEW_TEXT_KEYS: &[&str] = &["newText", "new_text", "new_string", "newString", "new_str"];
+const CONTENT_KEYS: &[&str] = &["content", "contents", "file_text", "file_content", "text"];
+const FROM_KEYS: &[&str] = &["from", "source", "src", "old_path", "oldPath", "from_path"];
+const TO_KEYS: &[&str] = &[
+    "to",
+    "destination",
+    "dest",
+    "new_path",
+    "newPath",
+    "to_path",
+];
+
+/// A missing-argument error that shows the model what to send and what it sent, so it can fix
+/// the call instead of repeating it.
+fn missing_args(tool: &str, what: &str, example: &str, a: &Value) -> Outcome {
+    let sent = a
+        .as_object()
+        .map(|o| o.keys().map(|k| format!("\"{k}\"")).collect::<Vec<_>>())
+        .unwrap_or_default();
+    let sent = if sent.is_empty() {
+        "none (the arguments arrived empty)".to_owned()
+    } else {
+        sent.join(", ")
+    };
+    Outcome::fail(
+        None,
+        format!(
+            "{what} required. Call {tool} with a JSON object like {example}. Arguments received: {sent}."
+        ),
+    )
 }
 
 /// Models sometimes send numbers as strings.
@@ -1494,10 +1561,15 @@ mod tests {
     #[tokio::test]
     async fn bad_arguments_and_unknown_tools_come_back_as_errors_the_model_can_act_on() {
         let (_d, env) = env(&[]);
-        assert_eq!(
-            run(&env, "read_file", json!({})).await.model,
-            "Error: path is required."
-        );
+        // The error says what to send and what arrived, so the model can fix the call.
+        let empty = run(&env, "read_file", json!({})).await.model;
+        assert!(empty.starts_with("Error: path is required."), "{empty}");
+        assert!(empty.contains(r#"{"path": "main.tex"}"#), "{empty}");
+        assert!(empty.contains("arrived empty"), "{empty}");
+        let wrong = run(&env, "read_file", json!({ "folder": "x", "n": 1 }))
+            .await
+            .model;
+        assert!(wrong.contains(r#""folder", "n""#), "{wrong}");
         assert!(
             run(&env, "teleport", json!({}))
                 .await
@@ -1507,6 +1579,53 @@ mod tests {
         let mut c = call("read_file", json!({}));
         c.args_error = Some("The tool arguments were not valid JSON (x).".into());
         assert!(env.execute(&c).await.model.contains("not valid JSON"));
+    }
+
+    // Open-weight models often use another tool's argument names. They are accepted, so the call
+    // works the first time instead of looping on "path is required".
+    #[tokio::test]
+    async fn the_common_alternative_argument_names_are_accepted() {
+        let (d, env) = env(&[("main.tex", "hello world\n"), ("old.tex", "x\n")]);
+        for key in ["file_path", "filePath", "filename", "file", "target_file"] {
+            let o = run(&env, "read_file", json!({ key: "main.tex" })).await;
+            assert!(o.ok, "{key}: {}", o.model);
+            assert!(o.model.contains("hello world"), "{key}: {}", o.model);
+        }
+
+        let o = run(
+            &env,
+            "edit_file",
+            json!({ "file_path": "main.tex", "old_string": "hello", "new_string": "goodbye" }),
+        )
+        .await;
+        assert!(o.ok, "{}", o.model);
+        assert_eq!(
+            std::fs::read_to_string(d.path().join("proj").join("main.tex")).unwrap(),
+            "goodbye world\n"
+        );
+
+        let o = run(
+            &env,
+            "write_file",
+            json!({ "filepath": "new.tex", "contents": "fresh\n" }),
+        )
+        .await;
+        assert!(o.ok, "{}", o.model);
+        assert_eq!(
+            std::fs::read_to_string(d.path().join("proj").join("new.tex")).unwrap(),
+            "fresh\n"
+        );
+
+        let o = run(
+            &env,
+            "move_file",
+            json!({ "source": "new.tex", "destination": "moved.tex" }),
+        )
+        .await;
+        assert!(o.ok, "{}", o.model);
+        let o = run(&env, "delete_file", json!({ "file_path": "old.tex" })).await;
+        assert!(o.ok, "{}", o.model);
+        assert!(!d.path().join("proj").join("old.tex").exists());
     }
 
     #[tokio::test]
