@@ -40,19 +40,13 @@ import {
 import { AI_SETTINGS_CHANGED } from "../chat/use-ai-settings";
 import { FolderDialog, OfflineDialog } from "../library/dialogs";
 import * as library from "../library/api";
+import { backTarget } from "./back-target";
 import { ProviderDialog } from "./provider-dialog";
 
 type Section = "ai" | "general";
 
 const sectionFromUrl = (): Section =>
   new URLSearchParams(window.location.search).get("section") === "general" ? "general" : "ai";
-
-/** Where "Back" goes: the editor that sent us here, else the project dashboard. */
-function backTarget(): string {
-  const from = new URLSearchParams(window.location.search).get("from");
-  // Only same-app paths: this value comes from the URL.
-  return from && from.startsWith("/") && !from.startsWith("//") ? from : "/dashboard";
-}
 
 const changed = () => window.dispatchEvent(new Event(AI_SETTINGS_CHANGED));
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -76,7 +70,7 @@ export default function SettingsPage() {
           variant="ghost"
           size="icon"
           aria-label="Back"
-          onClick={() => window.location.assign(backTarget())}
+          onClick={() => window.location.assign(backTarget(window.location.search))}
         >
           <ArrowLeft />
         </Button>

@@ -216,3 +216,17 @@ test("the General tab shows where projects are stored", async ({ page }) => {
   await page.getByTestId("tab-ai").click();
   await expect(page).toHaveURL(/section=ai/);
 });
+
+test("Back never follows a `from` that points outside the app", async ({ page }) => {
+  for (const from of [
+    "/\\evil.example",
+    "//evil.example",
+    "https://evil.example/",
+    "/\t/evil.example",
+  ]) {
+    await page.goto(`/settings?section=ai&from=${encodeURIComponent(from)}`);
+    await page.getByRole("button", { name: "Back" }).click();
+    await expect(page).toHaveURL(/\/dashboard$/);
+    expect(new URL(page.url()).hostname).toBe("127.0.0.1");
+  }
+});
