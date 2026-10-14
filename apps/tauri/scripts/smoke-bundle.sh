@@ -170,10 +170,20 @@ stop_app() {
 }
 case "$os" in
   MINGW* | MSYS* | CYGWIN*)
-    fresh_env() { clean_env USERPROFILE="$(winpath "$fr/home")" APPDATA="$(winpath "$fr/config")" LOCALAPPDATA="$(winpath "$fr/data")" "$@"; }
+    # The OS names a user's folders (AppData\Roaming, AppData\Local, Documents) from the profile and
+    # gives no path for one that doesn't exist. With a bare home folder the app found no config or
+    # log folder ("unknown path" in CI), so setup couldn't be remembered ("onboarded":false after it
+    # was done). The stand-in profile therefore has the shape of a real one, and the three variables
+    # agree about it. Native (backslash) paths: these go to Windows, not to Rust.
+    fresh_env() {
+      clean_env USERPROFILE="$(cygpath -w "$fr/home")" APPDATA="$(cygpath -w "$fr/home/AppData/Roaming")" \
+        LOCALAPPDATA="$(cygpath -w "$fr/home/AppData/Local")" "$@"
+    }
+    prepare_profile() { mkdir -p "$fr/home/AppData/Roaming" "$fr/home/AppData/Local" "$fr/home/Documents"; }
     ;;
   *)
     fresh_env() { clean_env HOME="$fr/home" XDG_CONFIG_HOME="$fr/config" XDG_DATA_HOME="$fr/data" "$@"; }
+    prepare_profile() { mkdir -p "$fr/home" "$fr/config" "$fr/data"; }
     ;;
 esac
 # start_fresh <label> [VAR=value ...]: a new instance on the next port, with no library configured
@@ -183,7 +193,7 @@ start_fresh() {
   fresh_count=$((fresh_count + 1)) # a port of its own, so an instance that outlives its kill is no obstacle
   fresh_port=$((port + fresh_count))
   fresh_base="http://127.0.0.1:$fresh_port"
-  mkdir -p "$fr/home" "$fr/config" "$fr/data"
+  prepare_profile
   fresh_env SOMESCRIPT_HEADLESS=1 SOMESCRIPT_PORT="$fresh_port" SOMESCRIPT_TOKEN="$token" "$@" \
     "$exe" >"$work/app-$label.log" 2>&1 &
   pid=$!
@@ -232,6 +242,11 @@ stop_app
 if [ -n "$real_documents" ]; then
   fr="$work/real-documents"
   jar3="$work/cookies-real-documents"
+  # On Windows this launch gets the runner's own profile, not a stand-in one: the Documents folder
+  # the OS names is the real one, which is the point of this step.
+  case "$os" in
+    MINGW* | MSYS* | CYGWIN*) fresh_env() { clean_env "$@"; } ;;
+  esac
   start_fresh real-documents
   status "real Documents: the token is exchanged for a cookie" 303 -c "$jar3" "$fresh_base/?t=$token"
   settings="$(curl -s -b "$jar3" "$fresh_base/api/settings")"
