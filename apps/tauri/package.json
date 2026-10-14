@@ -23,6 +23,7 @@
     "desktop:smoke": "sh scripts/smoke-bundle.sh src-tauri/target/release/bundle/macos/SomeScript.app",
     "e2e": "playwright test --config e2e/playwright.config.ts",
     "e2e:dev": "playwright test --config e2e/playwright.dev.config.ts",
+    "e2e:webkit": "playwright test --config e2e/playwright.webkit.config.ts",
     "e2e:webview2": "playwright test --config e2e/webview2/playwright.config.ts",
     "e2e:install": "playwright install chromium"
   },

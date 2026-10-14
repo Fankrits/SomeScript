@@ -114,6 +114,7 @@ bun run web:build && (cd src-tauri && cargo build)
 bun run e2e:install                        # once: the Chromium Playwright drives
 bun run e2e                                # E2E_APP=<release binary> runs the same suite against it
 bun run e2e:dev e2e/tasks.e2e.ts           # the same specs through the Vite dev server (`tauri dev`'s flow)
+bun x playwright install webkit && bun run e2e:webkit   # the same specs in WebKit, the Mac app's engine
 ```
 
 First-run setup is tested in `e2e/onboarding.e2e.ts`, where every test starts an app instance of its own (own port,
@@ -134,6 +135,11 @@ unbundled by the Vite dev server on port 1420, with `/api` proxied to the Rust d
 failures that only a dev server has (a package missing from its module graph, and a stale dependency cache that
 loads CodeMirror twice and leaves a blank editor), so CI runs the editor specs this way too (tasks, auto-compile,
 editor). The first page load compiles hundreds of modules on demand, hence the longer timeouts.
+
+`bun run e2e:webkit` (`e2e/playwright.webkit.config.ts`) runs the whole suite in Playwright's WebKit instead of Chromium.
+WebKit is the engine under the Mac app's WKWebView and the Linux build's WebKitGTK, and nothing else in CI runs it. It is
+Playwright's current WebKit, not the system's, so it finds what differs between engines (focus, events, drag and drop,
+layout), not what only an old macOS lacks: `e2e/old-webview.e2e.ts` covers that.
 
 **Editor drift.** Because the desktop app compiles the editor, a future editor change can add an `/api` call
 the Rust server lacks. `scripts/api-coverage.test.ts` checks the built bundle against the Rust routes and

@@ -210,7 +210,14 @@ test("Run setup again starts at the folder step with the current folder", async 
   await expect(page.getByTestId("folder-continue")).toBeEnabled();
 });
 
-test("Settings can copy a diagnostics report, which holds no secrets", async ({ launch }) => {
+test("Settings can copy a diagnostics report, which holds no secrets", async ({
+  launch,
+  browserName,
+}) => {
+  test.skip(
+    browserName !== "chromium",
+    "reading the clipboard needs a permission only Chromium has",
+  );
   const app = await launch({
     prepare: ({ root }) => {
       const library = join(root, "Mine");

@@ -175,8 +175,8 @@ jobs:
       - name: Build the app
         working-directory: apps/tauri/src-tauri
         run: cargo build
-      - name: Install the browser
-        run: bun x playwright install --with-deps chromium
+      - name: Install the browsers
+        run: bun x playwright install --with-deps chromium webkit
       # The app needs a display even though it opens no window when headless.
       - name: Run the end-to-end tests
         run: xvfb-run -a bun run e2e
@@ -186,8 +186,16 @@ jobs:
       # loaded CodeMirror twice and left a blank editor).
       - name: Run the editor specs against the Vite dev server
         run: xvfb-run -a bun run e2e:dev e2e/tasks.e2e.ts e2e/autocompile.e2e.ts e2e/editor.e2e.ts
+      # The whole suite again in WebKit, the engine under the Mac app's WKWebView (nothing else here
+      # runs it). Playwright's own current WebKit, so it finds what differs from Chromium, not what an
+      # old macOS lacks (e2e/old-webview.e2e.ts covers that). Reports without failing the job until it
+      # has been stable for a few runs.
+      - name: Run the end-to-end tests in WebKit
+        id: webkit
+        continue-on-error: true
+        run: xvfb-run -a bun run e2e:webkit
       - name: Keep the report
-        if: failure()
+        if: failure() || steps.webkit.outcome == 'failure'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: e2e-report
