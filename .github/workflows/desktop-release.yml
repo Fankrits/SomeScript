@@ -67,6 +67,8 @@ jobs:
       APPLE_ID: ${{ secrets.APPLE_ID }}
       APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
   publish:
     name: Draft the GitHub release
@@ -79,11 +81,27 @@ jobs:
       id-token: write # sign the build provenance
       attestations: write
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-js
+        with:
+          install: "false"
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: desktop-*
           merge-multiple: true
           path: dist
+      - name: Copy install scripts
+        run: |
+          cp apps/tauri/scripts/install/install.sh dist/
+          cp apps/tauri/scripts/install/install.ps1 dist/
+      - name: Generate updater manifest (latest.json)
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: bun apps/tauri/scripts/make-latest-json.mjs "$VERSION" "$REPO" "$TAG" dist
       - name: Checksums
         working-directory: dist
         run: |
@@ -106,6 +124,11 @@ jobs:
           else
             mac="**Not signed or notarized.** macOS will warn that the app is from an unidentified developer: open it with right-click, then Open, once."
           fi
+          if [ -f dist/latest.json ]; then
+            feed="In-app updates will be served from this release once published (a draft release has no public \`latest.json\`)."
+          else
+            feed="In-app updates are not enabled for this build (unsigned release)."
+          fi
           cat > notes.md <<NOTES
           SomeScript Desktop ${VERSION}: a free, local LaTeX editor. Your projects are plain folders and compiling uses a bundled Tectonic.
 
@@ -114,6 +137,16 @@ jobs:
           | macOS (Apple Silicon and Intel) | \`SomeScript-${VERSION}-macos-universal.dmg\` (or \`.app.zip\`) | ${mac} |
           | Windows 10/11, x64 | \`SomeScript-${VERSION}-windows-x64-setup.exe\` | **Not signed.** Windows SmartScreen will say the publisher is unknown: choose More info, then Run anyway. |
           | Linux, x64 | \`SomeScript-${VERSION}-linux-x64.deb\`, \`.rpm\`, \`.AppImage\` | Needs glibc 2.39 or newer (Ubuntu 24.04, Debian 13, Fedora 40 or later). |
+
+          ### Install from the command line
+
+          \`\`\`
+          brew tap Fankrits/somescript https://github.com/Fankrits/SomeScript && brew install --cask somescript
+          curl -fsSL https://github.com/Fankrits/SomeScript/releases/latest/download/install.sh | sh
+          irm https://github.com/Fankrits/SomeScript/releases/latest/download/install.ps1 | iex
+          \`\`\`
+
+          ${feed}
 
           Verify a download with \`sha256sum -c SHA256SUMS.txt\` (macOS: \`shasum -a 256 -c\`), or check its build provenance with \`gh attestation verify <file> --repo ${REPO}\`.
 

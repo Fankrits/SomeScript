@@ -9,6 +9,36 @@ No authentication and no collaboration. An optional **AI assistant** is built in
 provider (OpenAI, Anthropic, OpenRouter, Gemini, a local model such as Ollama, or any OpenAI-compatible custom
 endpoint) in **Settings** and the chat panel works on the open project. See _AI assistant_.
 
+## Install from the command line
+
+```sh
+# macOS (Homebrew cask)
+brew tap Fankrits/somescript https://github.com/Fankrits/SomeScript && brew install --cask somescript
+
+# macOS or Linux (shell installer)
+curl -fsSL https://github.com/Fankrits/SomeScript/releases/latest/download/install.sh | sh
+
+# Windows (PowerShell)
+irm https://github.com/Fankrits/SomeScript/releases/latest/download/install.ps1 | iex
+```
+
+### What each installer does
+
+- **Checksum verification**: Both `install.sh` and `install.ps1` fetch `SHA256SUMS.txt` directly from the release and strictly verify the asset's SHA-256 hash before running or installing. A missing checksum or mismatch immediately aborts the installation.
+- **Where it installs**:
+  - **macOS (Homebrew)**: Installs `SomeScript.app` to `/Applications`.
+  - **macOS (`install.sh`)**: Mounts the DMG, replaces `SomeScript.app` in `/Applications` (falls back to `~/Applications` if `/Applications` is not writable; overridable via `SOMESCRIPT_INSTALL_DIR`), and launches the app.
+  - **Linux (`install.sh`)**: Downloads the AppImage to `~/.local/share/somescript/SomeScript.AppImage` (or `${XDG_DATA_HOME}/somescript`, overridable via `SOMESCRIPT_INSTALL_DIR`), symlinks `~/.local/bin/somescript` (or `SOMESCRIPT_BIN_DIR`), and creates a desktop shortcut in `~/.local/share/applications/somescript.desktop`. An AppImage is used on Linux because the in-app updater can replace it in place.
+  - **Windows (`install.ps1`)**: Runs the NSIS installer silently (`/S`) into `%LOCALAPPDATA%\Programs\SomeScript` (overridable via `SOMESCRIPT_INSTALL_DIR`, passed as NSIS `/D=`).
+- **How it updates**: The desktop app updates itself automatically via its built-in Tauri updater (cryptographically verified with minisign against `latest.json`). The installers only handle the initial installation.
+- **Uninstallation**:
+  - **macOS (Homebrew)**: `brew uninstall --cask somescript` (optionally `brew untap Fankrits/somescript`).
+  - **macOS (`install.sh`)**: Delete `/Applications/SomeScript.app` (or `~/Applications/SomeScript.app`).
+  - **Linux**: Delete the AppImage directory (`rm -rf ~/.local/share/somescript`), the CLI symlink (`rm ~/.local/bin/somescript`), and the desktop file (`rm ~/.local/share/applications/somescript.desktop`).
+  - **Windows**: Uninstall via Windows **Settings > Apps > Installed apps**, or run `%LOCALAPPDATA%\Programs\SomeScript\Uninstall SomeScript.exe /S`.
+- **Unsigned application notes**: Releases are currently unsigned. Files downloaded via `curl` or `Invoke-WebRequest` do not receive macOS quarantine (`com.apple.quarantine`) or Windows Mark-of-the-Web attributes, so Gatekeeper and SmartScreen do not block their launch. The Homebrew cask strips `com.apple.quarantine` during postflight until Developer ID signing and notarization are configured.
+- **CI verification**: The `.github/workflows/desktop-install.yml` workflow tests these commands via a `fixture` job (staging release assets and testing positive/negative tamper scenarios across macOS, Ubuntu, and Windows). The `live` test runs on release events against real CDN URLs once the first release publishing the unversioned alias assets is shipped. Adding the install jobs to the required checks is the maintainer's call.
+
 ## How it works
 
 ```
@@ -64,19 +94,20 @@ folder was saved by 0.1.0/0.1.1 or `SOMESCRIPT_LIBRARY` is set, so users who cho
 kept the default folder sees it once, and the folder step recognises their projects ("Found 3 projects here"): one
 click. _Settings > General > Run setup again_ opens it again at the folder step.
 
-| Path                           | What                                                                                 |
-| ------------------------------ | ------------------------------------------------------------------------------------ |
-| `src/main.tsx`, `src/root.tsx` | Host entry. `/dashboard` is the library, `/?projectId=…` is the editor               |
-| `src/library/`                 | Library screen (new project, import/export ZIP, trash, library folder, offline prep) |
-| `src/onboarding/`              | First-run setup (`/welcome`) and the gate that sends a first launch to it            |
-| `src/settings/`                | App-wide Settings screen (`/settings`): AI providers and keys, library folder        |
-| `src/chat/`                    | The chat panel: streaming UI, tool cards with diffs and Undo, history                |
-| `src/shims/`                   | Stand-ins for `next/*`, Clerk, Sentry, analytics, the cloud chat; web-API polyfills  |
-| `src-tauri/src/api/`           | Route-by-route ports of `apps/editor/app/api/*`; each file names its source          |
-| `src-tauri/src/ai/`            | The assistant (see below). `api/ai.rs` holds its HTTP routes                         |
-| `e2e/`                         | End-to-end tests (Playwright) against the real server and UI                         |
-| `src-tauri/templates/`         | Bundled project templates (Starter with Thai fonts, Blank)                           |
-| `scripts/`                     | `fetch-sidecars.sh`, `sync-public.mjs`, `api-coverage.test.ts`                       |
+| Path                           | What                                                                                             |
+| ------------------------------ | ------------------------------------------------------------------------------------------------ |
+| `src/main.tsx`, `src/root.tsx` | Host entry. `/dashboard` is the library, `/?projectId=…` is the editor                           |
+| `src/library/`                 | Library screen (new project, import/export ZIP, trash, library folder, offline prep)             |
+| `src/onboarding/`              | First-run setup (`/welcome`) and the gate that sends a first launch to it                        |
+| `src/settings/`                | App-wide Settings screen (`/settings`): AI providers and keys, library folder, About and updates |
+| `src/updater/`                 | Auto-update check hook, updater API client, and throttle storage helpers                         |
+| `src/chat/`                    | The chat panel: streaming UI, tool cards with diffs and Undo, history                            |
+| `src/shims/`                   | Stand-ins for `next/*`, Clerk, Sentry, analytics, the cloud chat; web-API polyfills              |
+| `src-tauri/src/api/`           | Route-by-route ports of `apps/editor/app/api/*`; each file names its source                      |
+| `src-tauri/src/ai/`            | The assistant (see below). `api/ai.rs` holds its HTTP routes                                     |
+| `e2e/`                         | End-to-end tests (Playwright) against the real server and UI                                     |
+| `src-tauri/templates/`         | Bundled project templates (Starter with Thai fonts, Blank)                                       |
+| `scripts/`                     | `fetch-sidecars.sh`, `sync-public.mjs`, `api-coverage.test.ts`                                   |
 
 ## Develop
 
@@ -209,6 +240,16 @@ versions, folders and their state, tool paths, the end of the log; never API key
 file_ reveals `somescript.log`, a rotating file in the OS log folder (Windows `%LOCALAPPDATA%\com.fankrits.somescript\logs`,
 macOS `~/Library/Logs/com.fankrits.somescript`, Linux `~/.local/share/com.fankrits.somescript/logs`). A release build
 on Windows has no console, so this file is where its errors go, panics included.
+
+## In-app updates
+
+The desktop app checks for updates automatically in the background (every 12 hours while on the dashboard, throttled via `localStorage`) and allows manual checking under **Settings > About**.
+
+- **Update feed**: checks `https://github.com/Fankrits/SomeScript/releases/latest/download/latest.json`.
+- **Signing & Verification**: releases are cryptographically signed with minisign / Ed25519 using Tauri's official updater plugin.
+- **Workflow secrets**: release builds require repository secrets `TAURI_SIGNING_PRIVATE_KEY` (raw private key contents) and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (only if the key has a password; the generated key has none).
+- **Key security**: **losing the private key means existing installations can never update.**
+- **Linux packages**: `.deb` and `.rpm` installations cannot be replaced in place by the updater; users update manually by downloading the latest package from GitHub Releases.
 
 ## Security model
 

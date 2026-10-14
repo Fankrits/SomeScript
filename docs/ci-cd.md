@@ -28,9 +28,42 @@ gate what is merged, watch what the platforms report, and ship the desktop app.
 | `desktop.yml`         | PR / push touching `apps/tauri`, `apps/editor`, `bun.lock` | Frontend, unit tests and drift guard on Linux (also on editor changes, because the desktop app compiles the editor); rustfmt, clippy, tests and a real Tectonic round trip on **macOS, Linux and Windows**; **end-to-end tests** (the real server and UI in a browser, with a scripted AI provider: Settings, the AI chat and its tools, auto-compile, tasks, and first-run setup, each setup test starting an app of its own with nothing configured; the editor specs run again through the Vite dev server that `tauri dev` uses, and the whole suite in WebKit, the Mac app's engine); a **Windows WebView2** job that builds the app with the `devtools` feature (a shipped build has the inspector off; with it, `SOMESCRIPT_CDP_PORT` gives the window a debugging port) and drives its real window over CDP (reports without gating: it is not in Desktop success); and the bundle matrix below. Aggregates into **Desktop success**.   |
 | `desktop-bundle.yml`  | called by the two above                                    | Builds the installers on **macOS (universal - Apple Silicon and Intel), Windows and Linux**, **verifies** each (sidecars beside the executable, expected libraries only, templates, licenses), **smoke-tests** it headless in a clean environment, including a **first launch with nothing configured** (setup makes the default folder, a project can be created in it, an unusable folder is named in the error) and a launch in the folder the OS names for Documents (the Windows build is installed with its own installer first, the Linux `.deb` is installed in a bare `ubuntu:24.04` container, and the universal macOS app is run on a real Intel runner `macos-15-intel` to prove the x86_64 slice works). With `release: true`: signs/notarizes the macOS apps if possible and also compiles a document for real. |
 | `desktop-release.yml` | tag `desktop-v*`, manual                                   | Checks the tag matches the versions and is on `main`, builds and tests every platform, attests build provenance, creates a **draft** GitHub release with all installers and one `SHA256SUMS.txt`. Manual runs build but publish nothing.                                                                                                                                                                                                                                                                                          |
+| `desktop-install.yml` | PR / push on install scripts, cask or workflow; release published; manual | Lints shell/Ruby/PowerShell, runs fixture matrix (macOS, Linux, Windows) with locally served releases and negative tamper tests; runs live tests on release events and manual runs.                                                                                                                                                                                                                                                                                                                                             |
 | `security.yml`        | PR, push to `main`, **weekly**                             | CodeQL (JS/TS and the workflows themselves), dependency review on PRs, JS audit gate, `cargo-deny`, gitleaks over the full history, zizmor. Aggregates into **Security success**.                                                                                                                                                                                                                                                                                                                                                 |
 | `deploy-verify.yml`   | every GitHub deployment status                             | For production environments only: opens an issue when a deploy fails, smoke-checks the live site after a success, closes the issue on recovery.                                                                                                                                                                                                                                                                                                                                                                                   |
 | `openwiki-update.yml` | nightly                                                    | Pre-existing. Pinned to commit SHAs now.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+
+## Install from the command line
+
+Command-line one-liners allow installing SomeScript Desktop without manually downloading assets from GitHub Releases:
+
+```sh
+# macOS (Homebrew cask)
+brew tap Fankrits/somescript https://github.com/Fankrits/SomeScript && brew install --cask somescript
+
+# macOS or Linux (shell installer)
+curl -fsSL https://github.com/Fankrits/SomeScript/releases/latest/download/install.sh | sh
+
+# Windows (PowerShell)
+irm https://github.com/Fankrits/SomeScript/releases/latest/download/install.ps1 | iex
+```
+
+### Details
+
+- **Checksum verification**: Both `install.sh` and `install.ps1` fetch `SHA256SUMS.txt` from the release and strictly verify the SHA-256 hash before executing or installing. Any checksum mismatch or missing entry aborts immediately.
+- **Where each installer installs**:
+  - **Homebrew cask**: `/Applications/SomeScript.app`.
+  - **macOS `install.sh`**: Mounts DMG, replaces `/Applications/SomeScript.app` (falls back to `~/Applications` if not writable; overridable via `SOMESCRIPT_INSTALL_DIR`).
+  - **Linux `install.sh`**: Installs AppImage to `~/.local/share/somescript/SomeScript.AppImage` (or `${XDG_DATA_HOME}/somescript`, overridable via `SOMESCRIPT_INSTALL_DIR`), symlinks `~/.local/bin/somescript` (or `SOMESCRIPT_BIN_DIR`), and creates desktop shortcut `~/.local/share/applications/somescript.desktop`. An AppImage is used on Linux because the in-app updater can replace it in place.
+  - **Windows `install.ps1`**: Runs the NSIS installer silently (`/S`) for the current user, at the installer's default per-user location (overridable via `SOMESCRIPT_INSTALL_DIR` / NSIS `/D=`).
+- **Updates**: The app updates itself automatically via the built-in Tauri updater (checking signed `latest.json`). The installers only handle the initial installation.
+- **Uninstallation**:
+  - **Homebrew**: `brew uninstall --cask somescript && brew untap Fankrits/somescript`.
+  - **macOS (`install.sh`)**: Delete `/Applications/SomeScript.app` (or `~/Applications/SomeScript.app`).
+  - **Linux**: Remove AppImage (`rm -rf ~/.local/share/somescript`), symlink (`rm ~/.local/bin/somescript`), and desktop file (`rm ~/.local/share/applications/somescript.desktop`).
+  - **Windows**: Uninstall from Windows Settings > Apps > Installed apps.
+- **Unsigned app notes**: Releases are currently unsigned. Files downloaded via `curl` or `Invoke-WebRequest` lack quarantine / Mark-of-the-Web attributes, avoiding Gatekeeper / SmartScreen blocks. The Homebrew cask strips `com.apple.quarantine` during postflight until Developer ID signing is configured.
+- **CI and required checks**: `.github/workflows/desktop-install.yml` tests the scripts in `fixture` mode on every PR and push. The `live` jobs run on release events and manual dispatch; they will go green once the first release built with unversioned alias assets (Task 1) is published. Adding the workflow's jobs to GitHub's required checks is the maintainer's call.
 
 ## Turn these on (one-time, in GitHub / the platforms)
 
@@ -47,6 +80,11 @@ These are settings, not files, so they can't be committed:
 4. **Apple signing secrets**, to sign and notarize the desktop app (it is unsigned until they exist): `APPLE_CERTIFICATE`
    (base64 of the Developer ID Application `.p12`), `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`,
    `APPLE_ID`, `APPLE_PASSWORD` (app-specific password), `APPLE_TEAM_ID`.
+5. **Desktop updater signing secrets**, to generate signed update artifacts and `latest.json` on release builds:
+   `TAURI_SIGNING_PRIVATE_KEY` (the raw contents of the private key file) and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
+   (only if the key was created with a password; the generated key has none).
+   **Important**: losing the private key means existing installations can never update.
+   Note that Linux `.deb` and `.rpm` packages cannot be replaced in place by the updater, so their users update manually from GitHub Releases.
 
 ## What the platforms do today
 
@@ -130,7 +168,6 @@ The production builds need env vars that CI fills with placeholders; see the `bu
 ## Not covered yet
 
 - Windows code signing and Windows/Linux on ARM (see above).
-- Auto-update for the desktop app (needs signing keys and an update feed).
 - Browser end-to-end tests of the web and editor apps.
 - Windows' _Controlled folder access_ and macOS' privacy prompt can't be switched on in a hosted runner. The failure they cause (a library folder that can't be made) is covered by tests that use a Documents "folder" that is really a file, by unit tests of how Windows error codes are explained, and by the first-launch smoke test; the real prompts are in the manual matrix (README, _Troubleshooting_).
 - The end-to-end suite runs on Linux only (its stand-in for Tectonic is a shell script), in Chromium and in Playwright's WebKit. The WebView2 job is the only run of the UI in a real Windows window, and nothing drives the app's own window on macOS: the WebKit run stands in for that engine, at a current version rather than the one on an old Mac.

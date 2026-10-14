@@ -1,0 +1,400 @@
+name: Desktop install
+
+# Proves the command-line installation one-liners work (Homebrew cask, install.sh, install.ps1).
+# Lint runs on PRs and pushes to main.
+# Fixture tests run on all three operating systems (macOS, Linux, Windows), staging the newest
+# release locally to prove checksum verification, silent installation, verify-bundle and smoke-bundle.
+# Live tests run against real published releases on tag publish and manual workflow_dispatch.
+
+on:
+  pull_request:
+    paths:
+      - 'apps/tauri/scripts/install/**'
+      - 'Casks/**'
+      - '.github/workflows/desktop-install.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/tauri/scripts/install/**'
+      - 'Casks/**'
+      - '.github/workflows/desktop-install.yml'
+  release:
+    types: [published]
+  workflow_dispatch:
+
+concurrency:
+  group: desktop-install-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint scripts and cask
+    if: github.event_name != 'release' || startsWith(github.event.release.tag_name, 'desktop-v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install linter tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq shellcheck dash ruby
+      - name: Lint install.sh
+        run: |
+          shellcheck apps/tauri/scripts/install/install.sh
+          sh -n apps/tauri/scripts/install/install.sh
+          dash -n apps/tauri/scripts/install/install.sh
+      - name: Lint Casks/somescript.rb
+        run: |
+          ruby -c Casks/somescript.rb
+      - name: Lint install.ps1
+        shell: pwsh
+        run: |
+          $parseErrors = $null
+          $tokens = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path 'apps/tauri/scripts/install/install.ps1').Path,
+            [ref]$tokens,
+            [ref]$parseErrors
+          ) | Out-Null
+          if ($parseErrors -and $parseErrors.Count -gt 0) {
+            $parseErrors | ForEach-Object { Write-Error $_.Message }
+            exit 1
+          }
+          if (Get-Module -ListAvailable -Name PSScriptAnalyzer) {
+            $results = Invoke-ScriptAnalyzer -Path apps/tauri/scripts/install/install.ps1 -Severity Error,Warning
+            if ($results) {
+              $results | Format-Table -AutoSize
+              exit 1
+            }
+          }
+
+  fixture:
+    name: Fixture (${{ matrix.name }})
+    needs: lint
+    if: github.event_name != 'release' || startsWith(github.event.release.tag_name, 'desktop-v')
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS
+            os: macos-latest
+            kind: macos
+            pattern: 'SomeScript-*-macos-universal.dmg'
+            alias: 'SomeScript-macos-universal.dmg'
+          - name: Linux
+            os: ubuntu-24.04
+            kind: linux
+            pattern: 'SomeScript-*-linux-x64.AppImage'
+            alias: 'SomeScript-linux-x64.AppImage'
+          - name: Windows
+            os: windows-latest
+            kind: windows
+            pattern: 'SomeScript-*-windows-x64-setup.exe'
+            alias: 'SomeScript-windows-x64-setup.exe'
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Stage release fixture
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          staged="$RUNNER_TEMP/staged-release"
+          mkdir -p "$staged"
+          gh release download --repo Fankrits/SomeScript --pattern "${{ matrix.pattern }}" --dir "$staged"
+          cp "$staged"/${{ matrix.pattern }} "$staged/${{ matrix.alias }}"
+          cp apps/tauri/scripts/install/install.sh "$staged/"
+          cp apps/tauri/scripts/install/install.ps1 "$staged/"
+          python3 -c "
+          import hashlib, os, sys
+          staged = sys.argv[1]
+          lines = []
+          for fname in sorted(os.listdir(staged)):
+              if fname == 'SHA256SUMS.txt':
+                  continue
+              fpath = os.path.join(staged, fname)
+              if os.path.isfile(fpath):
+                  with open(fpath, 'rb') as f:
+                      h = hashlib.sha256(f.read()).hexdigest()
+                  lines.append(f'{h}  {fname}')
+          with open(os.path.join(staged, 'SHA256SUMS.txt'), 'w') as f:
+              f.write('\n'.join(lines) + '\n')
+          " "$staged"
+          cat "$staged/SHA256SUMS.txt"
+          echo "STAGED_DIR=$staged" >> "$GITHUB_ENV"
+
+      - name: Serve staged release
+        run: |
+          python3 -m http.server 8765 --bind 127.0.0.1 --directory "$STAGED_DIR" &
+          echo "SERVER_PID=$!" >> "$GITHUB_ENV"
+          for _ in $(seq 1 30); do
+            if curl -fsSL http://127.0.0.1:8765/SHA256SUMS.txt >/dev/null 2>&1; then break; fi
+            sleep 0.2
+          done
+
+      - name: Test install and verify (macOS)
+        if: matrix.kind == 'macos'
+        run: |
+          inst_dir="$RUNNER_TEMP/installed"
+          SOMESCRIPT_NO_OPEN=1 SOMESCRIPT_BASE_URL="http://127.0.0.1:8765" SOMESCRIPT_INSTALL_DIR="$inst_dir" sh apps/tauri/scripts/install/install.sh
+          sh apps/tauri/scripts/verify-bundle.sh "$inst_dir/SomeScript.app"
+          sh apps/tauri/scripts/smoke-bundle.sh "$inst_dir/SomeScript.app"
+
+      - name: Test install and verify (Linux)
+        if: matrix.kind == 'linux'
+        run: |
+          inst_dir="$RUNNER_TEMP/installed"
+          bin_dir="$RUNNER_TEMP/bin"
+          SOMESCRIPT_BASE_URL="http://127.0.0.1:8765" SOMESCRIPT_INSTALL_DIR="$inst_dir" SOMESCRIPT_BIN_DIR="$bin_dir" sh apps/tauri/scripts/install/install.sh
+          test -x "$inst_dir/SomeScript.AppImage"
+          test -L "$bin_dir/somescript"
+          mkdir -p "$RUNNER_TEMP/extracted"
+          (cd "$RUNNER_TEMP/extracted" && APPIMAGE_EXTRACT_AND_RUN=1 "$inst_dir/SomeScript.AppImage" --appimage-extract >/dev/null)
+          sh apps/tauri/scripts/verify-bundle.sh "$RUNNER_TEMP/extracted/squashfs-root"
+          wrapper="$RUNNER_TEMP/run-appimage.sh"
+          cat > "$wrapper" << 'EOF'
+          #!/bin/sh
+          export APPIMAGE_EXTRACT_AND_RUN=1
+          exec "$1" "$@"
+          EOF
+          chmod +x "$wrapper"
+          # smoke-bundle clean_env replaces environment, so wrapper passes APPIMAGE_EXTRACT_AND_RUN=1
+          cat > "$RUNNER_TEMP/somescript-appimage-runner" << EOF
+          #!/bin/sh
+          export APPIMAGE_EXTRACT_AND_RUN=1
+          exec "$inst_dir/SomeScript.AppImage" "\$@"
+          EOF
+          chmod +x "$RUNNER_TEMP/somescript-appimage-runner"
+          sh apps/tauri/scripts/smoke-bundle.sh "$RUNNER_TEMP/somescript-appimage-runner"
+
+      - name: Test install and verify (Windows)
+        if: matrix.kind == 'windows'
+        shell: pwsh
+        run: |
+          $instDir = "$env:RUNNER_TEMP\installed"
+          $env:SOMESCRIPT_BASE_URL = "http://127.0.0.1:8765"
+          $env:SOMESCRIPT_INSTALL_DIR = $instDir
+          & (Resolve-Path "apps/tauri/scripts/install/install.ps1").Path
+
+      - name: Smoke test installed bundle (Windows)
+        if: matrix.kind == 'windows'
+        run: |
+          inst_dir="$RUNNER_TEMP/installed"
+          sh apps/tauri/scripts/verify-bundle.sh "$inst_dir"
+          sh apps/tauri/scripts/smoke-bundle.sh "$inst_dir/somescript-desktop.exe" --real-documents
+
+      - name: Negative test — checksum mismatch on tampered installer
+        run: |
+          tampered="$RUNNER_TEMP/staged-tampered"
+          cp -r "$STAGED_DIR" "$tampered"
+          python3 -c "
+          import sys
+          fpath = sys.argv[1]
+          with open(fpath, 'r+b') as f:
+              f.seek(100)
+              b = f.read(1)
+              f.seek(100)
+              f.write(bytes([(b[0] ^ 0xFF)]) if b else b'X')
+          " "$tampered/${{ matrix.alias }}"
+          python3 -m http.server 8766 --bind 127.0.0.1 --directory "$tampered" &
+          for _ in $(seq 1 30); do
+            if curl -fsSL http://127.0.0.1:8766/SHA256SUMS.txt >/dev/null 2>&1; then break; fi
+            sleep 0.2
+          done
+
+      - name: Negative test execution (macOS & Linux)
+        if: matrix.kind != 'windows'
+        run: |
+          neg_dir="$RUNNER_TEMP/tamper-inst"
+          mkdir -p "$neg_dir"
+          if SOMESCRIPT_NO_OPEN=1 SOMESCRIPT_BASE_URL="http://127.0.0.1:8766" SOMESCRIPT_INSTALL_DIR="$neg_dir" SOMESCRIPT_BIN_DIR="$neg_dir/bin" sh apps/tauri/scripts/install/install.sh; then
+            echo "::error::Installer succeeded on tampered asset, expected failure!"
+            exit 1
+          fi
+          test ! -e "$neg_dir/SomeScript.app"
+          test ! -e "$neg_dir/SomeScript.AppImage"
+
+      - name: Negative test execution (Windows)
+        if: matrix.kind == 'windows'
+        shell: pwsh
+        run: |
+          $negDir = "$env:RUNNER_TEMP\tamper-inst"
+          $env:SOMESCRIPT_BASE_URL = "http://127.0.0.1:8766"
+          $env:SOMESCRIPT_INSTALL_DIR = $negDir
+          $failed = $false
+          try {
+            & (Resolve-Path "apps/tauri/scripts/install/install.ps1").Path
+          } catch {
+            $failed = $true
+          }
+          if (-not $failed) {
+            Write-Error "Installer succeeded on tampered asset, expected failure!"
+            exit 1
+          }
+          if (Test-Path "$negDir\somescript-desktop.exe") {
+            Write-Error "File installed despite tampered asset!"
+            exit 1
+          }
+
+  live-macos:
+    name: Live test (macOS install.sh)
+    needs: lint
+    if: (github.event_name == 'release' && startsWith(github.event.release.tag_name, 'desktop-v')) || github.event_name == 'workflow_dispatch'
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Wait for release asset availability
+        run: |
+          url="https://github.com/Fankrits/SomeScript/releases/latest/download/SomeScript-macos-universal.dmg"
+          echo "Checking $url"
+          for i in $(seq 1 30); do
+            if curl -fsIL "$url" >/dev/null 2>&1; then echo "Asset ready."; exit 0; fi
+            echo "Attempt $i: waiting 10s for release asset replication..."
+            sleep 10
+          done
+          echo "Asset not ready after 5 minutes." >&2
+          exit 1
+      - name: Run documented one-liner
+        run: curl -fsSL https://github.com/Fankrits/SomeScript/releases/latest/download/install.sh | sh
+      - name: Verify and smoke test
+        run: |
+          sh apps/tauri/scripts/verify-bundle.sh /Applications/SomeScript.app
+          sh apps/tauri/scripts/smoke-bundle.sh /Applications/SomeScript.app
+      - name: Uninstall / cleanup
+        if: always()
+        run: rm -rf /Applications/SomeScript.app
+
+  live-linux:
+    name: Live test (Linux install.sh)
+    needs: lint
+    if: (github.event_name == 'release' && startsWith(github.event.release.tag_name, 'desktop-v')) || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Wait for release asset availability
+        run: |
+          url="https://github.com/Fankrits/SomeScript/releases/latest/download/SomeScript-linux-x64.AppImage"
+          echo "Checking $url"
+          for i in $(seq 1 30); do
+            if curl -fsIL "$url" >/dev/null 2>&1; then echo "Asset ready."; exit 0; fi
+            echo "Attempt $i: waiting 10s for release asset replication..."
+            sleep 10
+          done
+          echo "Asset not ready after 5 minutes." >&2
+          exit 1
+      - name: Run documented one-liner
+        run: curl -fsSL https://github.com/Fankrits/SomeScript/releases/latest/download/install.sh | sh
+      - name: Verify and smoke test
+        run: |
+          appimage="${XDG_DATA_HOME:-$HOME/.local/share}/somescript/SomeScript.AppImage"
+          test -x "$appimage"
+          mkdir -p "$RUNNER_TEMP/extracted"
+          (cd "$RUNNER_TEMP/extracted" && APPIMAGE_EXTRACT_AND_RUN=1 "$appimage" --appimage-extract >/dev/null)
+          sh apps/tauri/scripts/verify-bundle.sh "$RUNNER_TEMP/extracted/squashfs-root"
+          runner="$RUNNER_TEMP/live-runner"
+          cat > "$runner" << EOF
+          #!/bin/sh
+          export APPIMAGE_EXTRACT_AND_RUN=1
+          exec "$appimage" "\$@"
+          EOF
+          chmod +x "$runner"
+          sh apps/tauri/scripts/smoke-bundle.sh "$runner"
+      - name: Cleanup
+        if: always()
+        run: |
+          rm -rf "${XDG_DATA_HOME:-$HOME/.local/share}/somescript" "$HOME/.local/bin/somescript" "${XDG_DATA_HOME:-$HOME/.local/share}/applications/somescript.desktop"
+
+  live-windows:
+    name: Live test (Windows install.ps1)
+    needs: lint
+    if: (github.event_name == 'release' && startsWith(github.event.release.tag_name, 'desktop-v')) || github.event_name == 'workflow_dispatch'
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Wait for release asset availability
+        shell: bash
+        run: |
+          url="https://github.com/Fankrits/SomeScript/releases/latest/download/SomeScript-windows-x64-setup.exe"
+          echo "Checking $url"
+          for i in $(seq 1 30); do
+            if curl -fsIL "$url" >/dev/null 2>&1; then echo "Asset ready."; exit 0; fi
+            echo "Attempt $i: waiting 10s for release asset replication..."
+            sleep 10
+          done
+          echo "Asset not ready after 5 minutes." >&2
+          exit 1
+      - name: Test in pwsh
+        shell: pwsh
+        run: irm https://github.com/Fankrits/SomeScript/releases/latest/download/install.ps1 | iex
+      - name: Verify pwsh install
+        shell: bash
+        run: |
+          inst_dir="$LOCALAPPDATA/Programs/SomeScript"
+          sh apps/tauri/scripts/verify-bundle.sh "$inst_dir"
+          sh apps/tauri/scripts/smoke-bundle.sh "$inst_dir/somescript-desktop.exe" --real-documents
+      - name: Uninstall pwsh installation
+        shell: bash
+        run: |
+          uninst="$LOCALAPPDATA/Programs/SomeScript/Uninstall SomeScript.exe"
+          if [ -f "$uninst" ]; then "$uninst" /S; sleep 5; fi
+          rm -rf "$LOCALAPPDATA/Programs/SomeScript"
+      - name: Test in powershell.exe (Windows PowerShell 5.1)
+        run: powershell.exe -ExecutionPolicy Bypass -Command "irm https://github.com/Fankrits/SomeScript/releases/latest/download/install.ps1 | iex"
+      - name: Verify powershell.exe install
+        shell: bash
+        run: |
+          inst_dir="$LOCALAPPDATA/Programs/SomeScript"
+          sh apps/tauri/scripts/verify-bundle.sh "$inst_dir"
+          sh apps/tauri/scripts/smoke-bundle.sh "$inst_dir/somescript-desktop.exe" --real-documents
+      - name: Cleanup
+        if: always()
+        shell: bash
+        run: |
+          uninst="$LOCALAPPDATA/Programs/SomeScript/Uninstall SomeScript.exe"
+          if [ -f "$uninst" ]; then "$uninst" /S; sleep 5; fi
+          rm -rf "$LOCALAPPDATA/Programs/SomeScript"
+
+  live-brew:
+    name: Live test (Homebrew cask on macOS)
+    needs: lint
+    if: (github.event_name == 'release' && startsWith(github.event.release.tag_name, 'desktop-v')) || github.event_name == 'workflow_dispatch'
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Tap repository and install cask
+        run: |
+          brew tap Fankrits/somescript https://github.com/Fankrits/SomeScript
+          brew install --cask somescript
+      - name: Verify bundle and smoke test
+        run: |
+          sh apps/tauri/scripts/verify-bundle.sh /Applications/SomeScript.app
+          sh apps/tauri/scripts/smoke-bundle.sh /Applications/SomeScript.app
+      - name: Uninstall cask
+        if: always()
+        run: |
+          brew uninstall --cask somescript
+          brew untap Fankrits/somescript || true
+          test ! -e /Applications/SomeScript.app

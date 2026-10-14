@@ -64,9 +64,22 @@ Ensure you have the following installed on your machine:
 
 - **Bun**: `v1.3.14` (pinned in `package.json`)
 - **Docker & Docker Compose**: Required for PostgreSQL, Redis, RustFS S3, and Compiler service
-- **Tectonic** *(Optional)*: Needed only if running the compiler directly on host OS without Docker
+### SomeScript Desktop (Command-Line Install)
 
-### 1. Installation
+Install SomeScript Desktop directly from your terminal:
+
+```sh
+# macOS (Homebrew cask)
+brew tap Fankrits/somescript https://github.com/Fankrits/SomeScript && brew install --cask somescript
+
+# macOS or Linux (shell installer)
+curl -fsSL https://github.com/Fankrits/SomeScript/releases/latest/download/install.sh | sh
+
+# Windows (PowerShell)
+irm https://github.com/Fankrits/SomeScript/releases/latest/download/install.ps1 | iex
+```
+
+### 1. Local Monorepo Setup (Developers)
 
 Clone the repository and install dependencies:
 
