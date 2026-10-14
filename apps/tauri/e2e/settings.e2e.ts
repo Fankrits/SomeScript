@@ -237,12 +237,16 @@ test("the About section shows app info, links, update controls, and supports dee
   await expect(page.getByRole("heading", { name: "About", exact: true })).toBeVisible();
   await expect(page.getByTestId("app-version")).toContainText("development build");
 
-  const sourceLink = page.getByRole("link", { name: "https://github.com/Fankrits/SomeScript" });
+  const sourceLink = page.getByRole("link", {
+    name: "https://github.com/Fankrits/SomeScript",
+    exact: true,
+  });
   await expect(sourceLink).toHaveAttribute("href", "https://github.com/Fankrits/SomeScript");
-  const websiteLink = page.getByRole("link", { name: "https://somescript.com" });
+  const websiteLink = page.getByRole("link", { name: "https://somescript.com", exact: true });
   await expect(websiteLink).toHaveAttribute("href", "https://somescript.com");
   const issuesLink = page.getByRole("link", {
     name: "https://github.com/Fankrits/SomeScript/issues",
+    exact: true,
   });
   await expect(issuesLink).toHaveAttribute("href", "https://github.com/Fankrits/SomeScript/issues");
 
