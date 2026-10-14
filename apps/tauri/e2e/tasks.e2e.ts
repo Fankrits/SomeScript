@@ -155,9 +155,13 @@ test("selecting text in the PDF and choosing Create task saves it with its page"
   await openEditor(page, project);
   await page.getByRole("button", { name: "Compile", exact: true }).click();
   await expect(page.getByRole("button", { name: /Download PDF/ })).toBeVisible();
-  // The stand-in engine's PDF is one line of text; wait for the viewer to paint it, then drag across it.
+  // The stand-in engine's PDF is one line of text. The viewer takes about a second after the
+  // compile to make it selectable, so the first drag often selects nothing: retry until it does.
   const line = { x: 965, y: 262 };
   await expect(async () => {
+    // Every try starts with the menu closed: the one a failed try leaves open swallows the next drag.
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("menu")).toHaveCount(0, { timeout: 1_000 });
     await page.mouse.move(line.x, line.y);
     await page.mouse.down();
     await page.mouse.move(1200, line.y, { steps: 8 });
