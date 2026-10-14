@@ -356,30 +356,40 @@ jobs:
       - name: Verify pwsh install
         shell: bash
         run: |
-          inst_dir="$LOCALAPPDATA/Programs/SomeScript"
+          # The installer picks the per-user folder itself: find it rather than assume it.
+          inst_dir="$(dirname "$(find "$LOCALAPPDATA" -maxdepth 3 -name somescript-desktop.exe | head -n 1)")"
+          test -x "$inst_dir/somescript-desktop.exe"
           sh apps/tauri/scripts/verify-bundle.sh "$inst_dir"
           sh apps/tauri/scripts/smoke-bundle.sh "$inst_dir/somescript-desktop.exe" --real-documents
       - name: Uninstall pwsh installation
         shell: bash
         run: |
-          uninst="$LOCALAPPDATA/Programs/SomeScript/Uninstall SomeScript.exe"
-          if [ -f "$uninst" ]; then "$uninst" /S; sleep 5; fi
-          rm -rf "$LOCALAPPDATA/Programs/SomeScript"
+          inst_dir="$(dirname "$(find "$LOCALAPPDATA" -maxdepth 3 -name somescript-desktop.exe | head -n 1)")"
+          if [ -d "$inst_dir" ] && [ "$inst_dir" != "." ] && [ "$inst_dir" != "$LOCALAPPDATA" ]; then
+            uninst="$inst_dir/Uninstall SomeScript.exe"
+            if [ -f "$uninst" ]; then "$uninst" /S; sleep 5; fi
+            rm -rf "$inst_dir"
+          fi
       - name: Test in powershell.exe (Windows PowerShell 5.1)
         run: powershell.exe -ExecutionPolicy Bypass -Command "irm https://github.com/Fankrits/SomeScript/releases/latest/download/install.ps1 | iex"
       - name: Verify powershell.exe install
         shell: bash
         run: |
-          inst_dir="$LOCALAPPDATA/Programs/SomeScript"
+          # The installer picks the per-user folder itself: find it rather than assume it.
+          inst_dir="$(dirname "$(find "$LOCALAPPDATA" -maxdepth 3 -name somescript-desktop.exe | head -n 1)")"
+          test -x "$inst_dir/somescript-desktop.exe"
           sh apps/tauri/scripts/verify-bundle.sh "$inst_dir"
           sh apps/tauri/scripts/smoke-bundle.sh "$inst_dir/somescript-desktop.exe" --real-documents
       - name: Cleanup
         if: always()
         shell: bash
         run: |
-          uninst="$LOCALAPPDATA/Programs/SomeScript/Uninstall SomeScript.exe"
-          if [ -f "$uninst" ]; then "$uninst" /S; sleep 5; fi
-          rm -rf "$LOCALAPPDATA/Programs/SomeScript"
+          inst_dir="$(dirname "$(find "$LOCALAPPDATA" -maxdepth 3 -name somescript-desktop.exe | head -n 1)")"
+          if [ -d "$inst_dir" ] && [ "$inst_dir" != "." ] && [ "$inst_dir" != "$LOCALAPPDATA" ]; then
+            uninst="$inst_dir/Uninstall SomeScript.exe"
+            if [ -f "$uninst" ]; then "$uninst" /S; sleep 5; fi
+            rm -rf "$inst_dir"
+          fi
 
   live-brew:
     name: Live test (Homebrew cask on macOS)
@@ -394,6 +404,8 @@ jobs:
       - name: Tap repository and install cask
         run: |
           brew tap Fankrits/somescript https://github.com/Fankrits/SomeScript
+          # Homebrew 7+ refuses to load a third-party tap until it is trusted.
+          brew trust Fankrits/somescript
           brew install --cask somescript
       - name: Verify bundle and smoke test
         run: |
