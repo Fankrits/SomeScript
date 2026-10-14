@@ -146,3 +146,38 @@ test("tasks survive a reload and belong to their own project", async ({
     .then((r) => r.json());
   expect(await api.tasks(other.id)).toEqual([]);
 });
+
+test("selecting text in the PDF and choosing Create task saves it with its page", async ({
+  page,
+  project,
+  api,
+}) => {
+  await openEditor(page, project);
+  await page.getByRole("button", { name: "Compile", exact: true }).click();
+  await expect(page.getByRole("button", { name: /Download PDF/ })).toBeVisible();
+  // The stand-in engine's PDF is one line of text; wait for the viewer to paint it, then drag across it.
+  const line = { x: 965, y: 262 };
+  await expect(async () => {
+    await page.mouse.move(line.x, line.y);
+    await page.mouse.down();
+    await page.mouse.move(1200, line.y, { steps: 8 });
+    await page.mouse.move(1305, line.y, { steps: 8 });
+    await page.mouse.up();
+    await page.mouse.click(1100, line.y, { button: "right" });
+    await expect(page.getByRole("menuitem", { name: "Create task from selection" })).toBeEnabled({
+      timeout: 1_000,
+    });
+  }).toPass({ timeout: 15_000 });
+  await page.getByRole("menuitem", { name: "Create task from selection" }).click();
+
+  // The selected text is offered as the name and the description.
+  await expect(page.locator("#task-name-input")).toHaveValue("Compiled by the test engine");
+  await page.getByRole("button", { name: "Add task" }).click();
+
+  await expect.poll(async () => (await api.tasks(project.id)).length).toBe(1);
+  const [task] = await api.tasks(project.id);
+  expect(task.name).toBe("Compiled by the test engine");
+  expect(task.description).toContain("Compiled by the test engine");
+  expect(task.source).toMatchObject({ page: 1 });
+  await expect(page.getByRole("button", { name: /p\. 1/ })).toBeVisible();
+});
