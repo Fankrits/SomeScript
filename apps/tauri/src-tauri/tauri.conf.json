@@ -25,5 +25,11 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEVFNzEyNDlBQkUyODMzOTQKUldTVU15aSttaVJ4N3V6VjcyL2pkK3RXMkVIcXFLMVNSR3owMW44M0U4cDRwK3o1c2lSRzRPanUK",
+      "endpoints": ["https://github.com/Fankrits/SomeScript/releases/latest/download/latest.json"]
+    }
   }
 }

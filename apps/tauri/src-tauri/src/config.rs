@@ -7,14 +7,32 @@ use std::{
     path::{Path, PathBuf},
 };
 
+fn default_auto_update() -> bool {
+    true
+}
+
 /// Every field has a default, so a file written by an older version (or edited by hand) still loads.
-#[derive(Serialize, Deserialize, Default, Debug, PartialEq, Clone)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Config {
     /// The folder the user chose in Settings or setup. `None` means "the default".
     pub library_path: Option<PathBuf>,
     /// First-run setup was completed or skipped. Not set by versions before 0.1.2.
     pub onboarded: bool,
+    #[serde(default = "default_auto_update")]
+    pub auto_update: bool,
+    pub last_update_check: Option<u64>,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            library_path: None,
+            onboarded: false,
+            auto_update: true,
+            last_update_check: None,
+        }
+    }
 }
 
 /// A missing or corrupt file means "no saved choice", never a startup failure.
@@ -55,6 +73,8 @@ mod tests {
         let cfg = Config {
             library_path: Some("/tmp/Projects".into()),
             onboarded: true,
+            auto_update: false,
+            last_update_check: Some(1710000000000),
         };
         save(&path, &cfg).unwrap();
         assert_eq!(load(&path), cfg);
@@ -72,7 +92,20 @@ mod tests {
             load(&path),
             Config {
                 library_path: Some("/tmp/Old".into()),
-                onboarded: false
+                onboarded: false,
+                auto_update: true,
+                last_update_check: None,
+            }
+        );
+        // 0.1.2 wrote libraryPath and onboarded, but not autoUpdate or lastUpdateCheck.
+        fs::write(&path, r#"{ "libraryPath": "/tmp/Old", "onboarded": true }"#).unwrap();
+        assert_eq!(
+            load(&path),
+            Config {
+                library_path: Some("/tmp/Old".into()),
+                onboarded: true,
+                auto_update: true,
+                last_update_check: None,
             }
         );
     }

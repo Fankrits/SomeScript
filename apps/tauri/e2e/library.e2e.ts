@@ -1,10 +1,11 @@
+import { readFileSync } from "node:fs";
 import { expect, test } from "./fixtures";
 
 // The dashboard (apps/tauri/src/library): projects are folders in the library.
 
 /** A project (or trash) row. Scoped to <main>: toasts are list items too. */
 const row = (page: import("@playwright/test").Page, text: string) =>
-  page.locator("main li").filter({ hasText: text });
+  page.locator("main tr").filter({ hasText: text });
 
 let n = 0;
 const name = (p: string) => `${p} ${Date.now().toString(36)}${n++}`;
@@ -69,8 +70,7 @@ test("renames a project (its folder too)", async ({ page, request, api }) => {
   const renamed = name("New name");
   await request.post("/api/projects", { data: { name: project, template: "blank" } });
   await page.goto("/dashboard");
-  await page.getByRole("button", { name: `Actions for ${project}` }).click();
-  await page.getByRole("menuitem", { name: /Rename/ }).click();
+  await page.getByRole("button", { name: `Rename ${project}` }).click();
   await page.getByLabel("Project name").fill(renamed);
   await page.getByRole("button", { name: "Rename", exact: true }).click();
   await expect(row(page, renamed)).toBeVisible();
@@ -88,9 +88,8 @@ test("exports a project as a ZIP and imports that ZIP as a new project", async (
   await api.writeFile(project, "chapters/one.tex", "\\section{One}\n");
 
   await page.goto("/dashboard");
-  await page.getByRole("button", { name: `Actions for ${project}` }).click();
   const download = page.waitForEvent("download");
-  await page.getByRole("menuitem", { name: /Export as ZIP/ }).click();
+  await page.getByRole("link", { name: `Export ${project} as ZIP` }).click();
   const file = await download;
   expect(file.suggestedFilename()).toBe(`${project}.zip`);
   const path = await file.path();
@@ -108,6 +107,35 @@ test("exports a project as a ZIP and imports that ZIP as a new project", async (
   expect(await api.files(imported, "main.tex")).toContain("\\documentclass");
 });
 
+test("downloads a compiled PDF of a project", async ({ page, request }) => {
+  const project = name("Download PDF");
+  await request.post("/api/projects", { data: { name: project, template: "blank" } });
+
+  await page.goto("/dashboard");
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: `Download PDF of ${project}` }).click();
+  const file = await download;
+  expect(file.suggestedFilename()).toBe(`${project}.pdf`);
+  const path = await file.path();
+  expect(path).toBeTruthy();
+  expect(readFileSync(path!, "utf8").startsWith("%PDF")).toBe(true);
+});
+
+test("surfaces a compile error when downloading a PDF that fails to compile", async ({
+  page,
+  request,
+  api,
+}) => {
+  const project = name("Broken compile");
+  await request.post("/api/projects", { data: { name: project, template: "blank" } });
+  await api.writeFile(project, "main.tex", "FAKE_TEX_ERROR");
+
+  await page.goto("/dashboard");
+  await page.getByRole("button", { name: `Download PDF of ${project}` }).click();
+
+  await expect(page.getByText(/Couldn't make the PDF/)).toBeVisible();
+});
+
 test("moves a project to the trash, restores it, and deletes another one for good", async ({
   page,
   request,
@@ -119,21 +147,19 @@ test("moves a project to the trash, restores it, and deletes another one for goo
     await request.post("/api/projects", { data: { name: p, template: "blank" } });
 
   await page.goto("/dashboard");
-  await page.getByRole("button", { name: `Actions for ${keep}` }).click();
-  await page.getByRole("menuitem", { name: /Move to trash/ }).click();
+  await page.getByRole("button", { name: `Move ${keep} to trash` }).click();
   await expect(row(page, keep)).toHaveCount(0);
 
-  await page.getByRole("tab", { name: /Trash/ }).click();
+  await page.getByRole("button", { name: /Trash/ }).click();
   await expect(row(page, keep)).toContainText("removed for good in 7 days");
   await row(page, keep).getByRole("button", { name: "Restore" }).click();
-  await page.getByRole("tab", { name: /Projects/ }).click();
+  await page.getByRole("button", { name: /Projects/ }).click();
   await expect(row(page, keep)).toBeVisible();
   expect(await api.files(keep, "main.tex")).toContain("\\documentclass");
 
   // Permanent deletion asks first.
-  await page.getByRole("button", { name: `Actions for ${doomed}` }).click();
-  await page.getByRole("menuitem", { name: /Move to trash/ }).click();
-  await page.getByRole("tab", { name: /Trash/ }).click();
+  await page.getByRole("button", { name: `Move ${doomed} to trash` }).click();
+  await page.getByRole("button", { name: /Trash/ }).click();
   await row(page, doomed).getByRole("button", { name: "Delete forever" }).click();
   await expect(page.getByRole("alertdialog")).toContainText(`Delete “${doomed}” forever?`);
   await page.getByRole("alertdialog").getByRole("button", { name: "Delete forever" }).click();
@@ -148,10 +174,11 @@ test("the library folder can be changed, and projects there are listed", async (
   const other = `${current}-other`;
   try {
     await page.goto("/dashboard");
-    await page.getByRole("button", { name: "More options" }).click();
-    await page.getByRole("menuitem", { name: /Change library folder/ }).click();
+    await page.getByTestId("open-settings").click();
+    await page.getByRole("button", { name: /Change/ }).click();
     await page.getByLabel("Folder path").fill(other);
     await page.getByRole("button", { name: "Use this folder" }).click();
+    await page.getByRole("button", { name: "Back" }).click();
     await expect(page.getByText("No projects yet")).toBeVisible();
     await expect(page.getByText(other)).toBeVisible();
   } finally {

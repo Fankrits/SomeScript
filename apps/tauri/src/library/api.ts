@@ -81,6 +81,10 @@ export interface LibrarySettings {
   defaultLibraryPath: string;
   /** Where somescript.log is, if the app could work that out. */
   logFile: string | null;
+  /** Whether automatic update checks are enabled. */
+  autoUpdate: boolean;
+  /** Timestamp (ms since epoch) of last update check, or null if never checked. */
+  lastUpdateCheck: number | null;
 }
 
 /** What setup and Settings learn about a folder before choosing it (src-tauri/src/library.rs). */
@@ -132,11 +136,65 @@ export const getLibraryPath = () => getSettings().then((r) => r.libraryPath);
 export const setLibraryPath = (libraryPath: string) =>
   post<LibrarySettings>("/api/settings", { libraryPath }).then((r) => r.libraryPath);
 export const finishSetup = () => post<LibrarySettings>("/api/settings", { onboarded: true });
+export const setUpdatePrefs = (p: { autoUpdate?: boolean; lastUpdateCheck?: number }) =>
+  post<LibrarySettings>("/api/settings", p);
 
 /** The editor reads ?projectId= from its own URL, so opening a project is a plain navigation. */
 export const openProject = (id: string) =>
   window.location.assign(`/?projectId=${encodeURIComponent(id)}`);
 export const exportUrl = (id: string) => `/api/projects/export?id=${encodeURIComponent(id)}`;
+
+/** Compiles the project and downloads its main.pdf with a clean safe name. */
+export async function downloadPdf(id: string, name: string): Promise<string> {
+  const compileRes = await fetch("/api/compile", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ projectId: id, path: "main.tex" }),
+  });
+  const log = await compileRes.text();
+  if (!compileRes.ok) {
+    let errorMsg: string | undefined;
+    try {
+      const body = JSON.parse(log);
+      if (body && typeof body.error === "string") {
+        errorMsg = body.error;
+      }
+    } catch {
+      // not JSON
+    }
+    if (errorMsg) {
+      throw new Error(errorMsg);
+    }
+  }
+  if (!log.includes("[SUCCESS]")) {
+    const lines = log.trim().split("\n");
+    const tail = lines.slice(-10).join("\n").trim();
+    throw new Error(tail || "Compilation failed");
+  }
+
+  const fileRes = await fetch(
+    `/api/files?projectId=${encodeURIComponent(id)}&path=${encodeURIComponent(".preview-cache/main.pdf")}`,
+  );
+  if (!fileRes.ok) {
+    const body = await fileRes.json().catch(() => ({}));
+    throw new ApiFailure(
+      body.error ?? `Request failed (${fileRes.status})`,
+      fileRes.status,
+      body.hint,
+    );
+  }
+  const blob = await fileRes.blob();
+  const safeName = name.replace(/[^A-Za-z0-9 _.-]+/g, "-").trim() || "project";
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${safeName}.pdf`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  return safeName;
+}
 
 /** Streams the package warm-up compile; resolves with the full log. */
 export async function prepareOffline(onLog: (log: string) => void): Promise<string> {

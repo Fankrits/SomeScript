@@ -916,6 +916,8 @@ async fn the_first_run_gate_reads_settings_without_touching_the_library_folder()
             "onboarded": false,
             "defaultLibraryPath": default.to_str().unwrap(),
             "logFile": null,
+            "autoUpdate": true,
+            "lastUpdateCheck": null,
         })
     );
     assert!(
@@ -1018,6 +1020,55 @@ async fn setup_counts_as_done_for_a_saved_folder_and_for_an_explicit_override() 
         harness().get("/api/settings").await.json()["onboarded"],
         true
     );
+}
+
+#[tokio::test]
+async fn auto_update_settings_roundtrip_and_validation() {
+    let (h, _default, cfg) = first_run();
+
+    let initial = h.get("/api/settings").await;
+    assert_eq!(initial.status, StatusCode::OK);
+    assert_eq!(initial.json()["autoUpdate"], true);
+    assert_eq!(initial.json()["lastUpdateCheck"], Value::Null);
+
+    let r = h
+        .post("/api/settings", json!({ "autoUpdate": false }))
+        .await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert_eq!(r.json()["autoUpdate"], false);
+    assert!(!crate::config::load(&cfg).auto_update);
+
+    let r = h.get("/api/settings").await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert_eq!(r.json()["autoUpdate"], false);
+
+    let r = h
+        .post(
+            "/api/settings",
+            json!({ "lastUpdateCheck": 1710000000000u64 }),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert_eq!(r.json()["lastUpdateCheck"], 1710000000000u64);
+    assert_eq!(
+        crate::config::load(&cfg).last_update_check,
+        Some(1710000000000)
+    );
+
+    let r = h.get("/api/settings").await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert_eq!(r.json()["autoUpdate"], false);
+    assert_eq!(r.json()["lastUpdateCheck"], 1710000000000u64);
+
+    for bad in [
+        json!({ "autoUpdate": "false" }),
+        json!({ "autoUpdate": 123 }),
+        json!({ "lastUpdateCheck": -1 }),
+        json!({ "lastUpdateCheck": "yesterday" }),
+    ] {
+        let r = h.post("/api/settings", bad).await;
+        assert_eq!(r.status, StatusCode::BAD_REQUEST);
+    }
 }
 
 fn enc(s: &str) -> String {
