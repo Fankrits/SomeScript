@@ -1,6 +1,6 @@
 [package]
 name = "somescript-desktop"
-version = "0.1.1"
+version = "0.1.2"
 description = "SomeScript desktop: free, local LaTeX editor"
 authors = ["Fankrits"]
 publish = false
