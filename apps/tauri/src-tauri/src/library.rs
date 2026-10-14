@@ -4,6 +4,7 @@
 
 use crate::{
     error::{ApiError, ApiResult, Os, explain, in_windows_protected_folder},
+    fsutil::retry_busy,
     storage::Project,
 };
 use serde::Serialize;
@@ -283,7 +284,8 @@ impl Library {
         let new_id = self.unique_name(new_name, Some(id));
         if new_id != id {
             let from = self.root().join(id);
-            fs::rename(&from, self.root().join(&new_id))
+            let to = self.root().join(&new_id);
+            retry_busy(|| fs::rename(&from, &to))
                 .map_err(|e| ApiError::io_at("Couldn't rename the project folder", &from, &e))?;
         }
         Ok(new_id)
@@ -301,7 +303,7 @@ impl Library {
             .find(|p| !p.exists())
             .expect("unbounded range always yields a free name");
         let from = self.root().join(id);
-        fs::rename(&from, dest)
+        retry_busy(|| fs::rename(&from, &dest))
             .map_err(|e| ApiError::io_at("Couldn't move the project to the trash", &from, &e))?;
         Ok(())
     }
@@ -349,14 +351,15 @@ impl Library {
         let dir = self.trashed_dir(trash_id)?;
         let original = trash_id.rsplit_once('~').map_or(trash_id, |(n, _)| n);
         let id = self.unique_name(original, None);
-        fs::rename(&dir, self.root().join(&id))
+        let to = self.root().join(&id);
+        retry_busy(|| fs::rename(&dir, &to))
             .map_err(|e| ApiError::io_at("Couldn't restore the project", &dir, &e))?;
         Ok(id)
     }
 
     pub fn purge(&self, trash_id: &str) -> ApiResult<()> {
         let dir = self.trashed_dir(trash_id)?;
-        fs::remove_dir_all(&dir)
+        retry_busy(|| fs::remove_dir_all(&dir))
             .map_err(|e| ApiError::io_at("Couldn't delete the project", &dir, &e))?;
         Ok(())
     }

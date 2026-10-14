@@ -2,6 +2,7 @@ mod ai;
 mod api;
 mod config;
 mod error;
+mod fsutil;
 mod library;
 mod server;
 mod storage;
@@ -137,7 +138,7 @@ pub fn run() {
                 (true, Some(dev)) => dev,
                 _ => served.parse()?,
             };
-            WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url))
+            let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url))
                 .title("SomeScript")
                 .inner_size(1280.0, 800.0)
                 .min_inner_size(900.0, 600.0)
@@ -166,8 +167,13 @@ pub fn run() {
                         }
                         true
                     }
-                })
-                .build()?;
+                });
+            // Windows hands file drops to the window itself unless told not to, and then the page's own
+            // drag-and-drop never fires: the file tree's drag-to-move and drop-to-upload would do
+            // nothing. (Elsewhere the webview delivers them to the page already.)
+            #[cfg(windows)]
+            let window = window.disable_drag_drop_handler();
+            window.build()?;
             Ok(())
         })
         .build(tauri::generate_context!())

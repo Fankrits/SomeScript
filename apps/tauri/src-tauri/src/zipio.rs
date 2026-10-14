@@ -101,6 +101,7 @@ fn import_zip_limited(project: &Project, bytes: &[u8], limits: &Limits) -> ApiRe
         })
         .collect::<Result<_, _>>()
         .map_err(|_| ApiError::bad_request("That ZIP file is damaged"))?;
+    let names = normalize_separators(names);
     let root_prefix = strip_common_zip_root(
         &names
             .iter()
@@ -110,6 +111,7 @@ fn import_zip_limited(project: &Project, bytes: &[u8], limits: &Limits) -> ApiRe
     );
 
     let mut total = 0u64;
+    let mut created = 0usize;
     for (i, name) in names.iter().enumerate() {
         if is_junk(name) {
             continue;
@@ -134,6 +136,7 @@ fn import_zip_limited(project: &Project, bytes: &[u8], limits: &Limits) -> ApiRe
             .map_err(|_| ApiError::bad_request("Could not read an entry in the ZIP file"))?;
         if entry.is_dir() || path.ends_with('/') {
             project.create_dir(path.trim_end_matches('/'))?;
+            created += 1;
             continue;
         }
         // Read at most one byte past the limit: enough to detect a lying size header.
@@ -152,9 +155,33 @@ fn import_zip_limited(project: &Project, bytes: &[u8], limits: &Limits) -> ApiRe
             return Err(too_large("Archive too large when decompressed"));
         }
         project.write(&path, &content)?;
+        created += 1;
+    }
+    // Entries that are skipped on purpose (Finder litter, paths that escape the project) are fine,
+    // but an import that ends with nothing in it is a failure to report, not an empty project.
+    if created == 0 {
+        return Err(ApiError::bad_request(
+            "There was nothing in that ZIP that SomeScript could import (it is empty, or its \
+             file paths aren't valid).",
+        ));
     }
     project.touch();
     Ok(())
+}
+
+/// Archives made by Windows PowerShell 5.1's `Compress-Archive` (and some older Windows tools)
+/// separate folders with backslashes, in every nested entry and never with `/`. Read those as
+/// folders: `safe_zip_path` refuses a backslash, so without this every file below the top level
+/// was dropped and the project came out empty. An archive that also uses `/` isn't one of those, so
+/// a backslash there stays what it is, a character in a name, and is still refused.
+fn normalize_separators(names: Vec<String>) -> Vec<String> {
+    let windows_made =
+        names.iter().any(|n| n.contains('\\')) && !names.iter().any(|n| n.contains('/'));
+    if windows_made {
+        names.iter().map(|n| n.replace('\\', "/")).collect()
+    } else {
+        names
+    }
 }
 
 pub fn export_zip(project: &Project) -> ApiResult<Vec<u8>> {
@@ -266,6 +293,50 @@ mod tests {
         assert!(!p.root().join("My Paper").exists());
         assert!(!p.root().join(".DS_Store").exists());
         assert!(!p.root().join("__MACOSX").exists());
+    }
+
+    #[test]
+    fn an_archive_made_by_windows_powershell_imports_with_its_folders() {
+        // Compress-Archive in Windows PowerShell 5.1 writes `chapters\\one.tex`, never `chapters/one.tex`.
+        let (_d, p) = project();
+        let zip = make_zip(&[
+            ("My Paper\\", b""),
+            ("My Paper\\main.tex", b"root"),
+            ("My Paper\\chapters\\", b""),
+            ("My Paper\\chapters\\one.tex", b"one"),
+            ("My Paper\\figs\\a.png", b"png"),
+        ]);
+        import_zip(&p, &zip).unwrap();
+        assert_eq!(
+            p.read_text("main.tex").unwrap(),
+            "root",
+            "the wrapper folder is stripped too"
+        );
+        assert_eq!(p.read_text("chapters/one.tex").unwrap(), "one");
+        assert_eq!(p.read_text("figs/a.png").unwrap(), "png");
+    }
+
+    #[test]
+    fn a_backslash_in_a_name_is_still_refused_when_the_archive_also_uses_slashes() {
+        let (_d, p) = project();
+        let zip = make_zip(&[("dir/ok.tex", b"fine"), ("dir/we\\ird.tex", b"x")]);
+        import_zip(&p, &zip).unwrap();
+        assert_eq!(p.read_text("ok.tex").unwrap(), "fine");
+        assert!(!p.root().join("weird.tex").exists());
+    }
+
+    #[test]
+    fn an_import_that_ends_up_empty_is_an_error_not_an_empty_project() {
+        let (_d, p) = project();
+        for zip in [
+            make_zip(&[]),
+            make_zip(&[("__MACOSX/._x", b"junk"), (".DS_Store", b"junk")]),
+            make_zip(&[("../evil.txt", b"x"), ("/abs.txt", b"x")]),
+        ] {
+            let e = import_zip(&p, &zip).unwrap_err();
+            assert_eq!(e.status, StatusCode::BAD_REQUEST);
+            assert!(e.message.contains("nothing in that ZIP"), "{}", e.message);
+        }
     }
 
     #[test]
