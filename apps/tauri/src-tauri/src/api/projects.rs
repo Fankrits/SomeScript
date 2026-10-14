@@ -241,6 +241,8 @@ fn settings_json(s: &ApiState) -> Value {
         "defaultLibraryPath": s.default_library,
         // Where somescript.log is (`Show log file` in Settings); a path, not a read of the disk.
         "logFile": s.log_dir.as_ref().map(|d| d.join("somescript.log")),
+        "autoUpdate": saved.auto_update,
+        "lastUpdateCheck": saved.last_update_check,
     })
 }
 
@@ -248,8 +250,8 @@ pub async fn settings_get(State(s): State<ApiState>) -> Json<Value> {
     Json(settings_json(&s))
 }
 
-/// `{ libraryPath?, onboarded? }`: sets the folder (created if missing, and proven writable) and/or
-/// marks first-run setup done. Answers like `GET /api/settings`.
+/// `{ libraryPath?, onboarded?, autoUpdate?, lastUpdateCheck? }`: sets the folder (created if missing, and proven writable) and/or
+/// marks first-run setup done, or updates updater preferences. Answers like `GET /api/settings`.
 pub async fn settings_post(
     State(s): State<ApiState>,
     Json(body): Json<Value>,
@@ -263,10 +265,29 @@ pub async fn settings_post(
                 .ok_or_else(|| ApiError::bad_request("libraryPath must be an absolute path"))?,
         ),
     };
-    let onboarded = body.get("onboarded").and_then(Value::as_bool);
-    if path.is_none() && onboarded.is_none() {
+    let onboarded = match body.get("onboarded") {
+        None | Some(Value::Null) => None,
+        Some(Value::Bool(b)) => Some(*b),
+        Some(_) => return Err(ApiError::bad_request("onboarded must be a boolean")),
+    };
+    let auto_update = match body.get("autoUpdate") {
+        None | Some(Value::Null) => None,
+        Some(Value::Bool(b)) => Some(*b),
+        Some(_) => return Err(ApiError::bad_request("autoUpdate must be a boolean")),
+    };
+    let last_update_check = match body.get("lastUpdateCheck") {
+        None | Some(Value::Null) => None,
+        Some(v) => {
+            let n = v.as_u64().ok_or_else(|| {
+                ApiError::bad_request("lastUpdateCheck must be a non-negative integer")
+            })?;
+            Some(n)
+        }
+    };
+    if path.is_none() && onboarded.is_none() && auto_update.is_none() && last_update_check.is_none()
+    {
         return Err(ApiError::bad_request(
-            "Nothing to change: send libraryPath and/or onboarded",
+            "Nothing to change: send libraryPath, onboarded, autoUpdate, and/or lastUpdateCheck",
         ));
     }
     let state = s.clone();
@@ -287,9 +308,21 @@ pub async fn settings_post(
             state.library.set_root(root, RootSource::Saved);
             state.library.purge_expired(SystemTime::now());
         }
-        if let (Some(done), Some(config_path)) = (onboarded, &state.config_path) {
-            config::update(config_path, |c| c.onboarded = done)
-                .map_err(|e| ApiError::io_at("Couldn't save your settings", config_path, &e))?;
+        let has_updates =
+            onboarded.is_some() || auto_update.is_some() || last_update_check.is_some();
+        if let (true, Some(config_path)) = (has_updates, &state.config_path) {
+            config::update(config_path, |c| {
+                if let Some(done) = onboarded {
+                    c.onboarded = done;
+                }
+                if let Some(auto) = auto_update {
+                    c.auto_update = auto;
+                }
+                if let Some(ts) = last_update_check {
+                    c.last_update_check = Some(ts);
+                }
+            })
+            .map_err(|e| ApiError::io_at("Couldn't save your settings", config_path, &e))?;
         }
         Ok(())
     })

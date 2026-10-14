@@ -7,6 +7,7 @@ import {
   FileText,
   FolderOpen,
   FolderSync,
+  Info,
   KeyRound,
   Pencil,
   Plus,
@@ -30,7 +31,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import {
@@ -43,29 +44,106 @@ import {
 import { AI_SETTINGS_CHANGED } from "../chat/use-ai-settings";
 import { FolderDialog, OfflineDialog } from "../library/dialogs";
 import * as library from "../library/api";
+import { checkForUpdate, installUpdate, openExternalUrl, type Update } from "../updater/updater";
 import { backTarget } from "./back-target";
 import { ProviderDialog } from "./provider-dialog";
 
-type Section = "ai" | "general";
+export type Section = "ai" | "general" | "about";
 
-const sectionFromUrl = (): Section =>
-  new URLSearchParams(window.location.search).get("section") === "general" ? "general" : "ai";
+export function sectionFromUrl(search: string): Section | null {
+  const section = new URLSearchParams(search).get("section");
+  if (section === "ai" || section === "general" || section === "about") {
+    return section;
+  }
+  return null;
+}
 
 const changed = () => window.dispatchEvent(new Event(AI_SETTINGS_CHANGED));
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export default function SettingsPage() {
-  const [section, setSection] = useState<Section>(sectionFromUrl);
-  const toSection = (s: Section) => {
-    setSection(s);
+  const [activeSection, setActiveSection] = useState<Section>(() => {
+    return sectionFromUrl(window.location.search) ?? "ai";
+  });
+
+  const scrollTo = (id: Section, smooth = true) => {
+    setActiveSection(id);
+    const el = document.getElementById(id);
+    if (el) {
+      const prefersReduced =
+        typeof window !== "undefined" &&
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      el.scrollIntoView({
+        behavior: smooth && !prefersReduced ? "smooth" : "auto",
+        block: "start",
+      });
+    }
     const url = new URL(window.location.href);
-    url.searchParams.set("section", s);
+    url.searchParams.set("section", id);
     window.history.replaceState(null, "", url);
   };
 
+  useEffect(() => {
+    const initial = sectionFromUrl(window.location.search);
+    if (initial) {
+      setActiveSection(initial);
+      const el = document.getElementById(initial);
+      if (el) {
+        el.scrollIntoView({ behavior: "auto", block: "start" });
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    const aiEl = document.getElementById("ai");
+    const generalEl = document.getElementById("general");
+    const aboutEl = document.getElementById("about");
+    if (!aiEl || !generalEl || !aboutEl) return;
+
+    const observer = new IntersectionObserver(
+      () => {
+        const atBottom =
+          window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 40;
+        if (atBottom) {
+          setActiveSection("about");
+          return;
+        }
+
+        const visibleSections = [aiEl, generalEl, aboutEl].filter((el) => {
+          const rect = el.getBoundingClientRect();
+          return rect.top < window.innerHeight && rect.bottom > 60;
+        });
+
+        if (visibleSections.length > 0) {
+          setActiveSection(visibleSections[0].id as Section);
+        }
+      },
+      {
+        rootMargin: "-60px 0px -40% 0px",
+        threshold: [0, 0.1, 0.5, 1],
+      },
+    );
+
+    observer.observe(aiEl);
+    observer.observe(generalEl);
+    observer.observe(aboutEl);
+
+    const onScroll = () => {
+      if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 40) {
+        setActiveSection("about");
+      }
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("scroll", onScroll);
+    };
+  }, []);
+
   return (
     <main
-      className="mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-6 px-6 py-10"
+      className="mx-auto flex min-h-screen w-full max-w-5xl flex-col gap-8 px-6 py-10"
       data-testid="settings-page"
     >
       <header className="flex items-center gap-3">
@@ -85,18 +163,71 @@ export default function SettingsPage() {
         </div>
       </header>
 
-      <Tabs value={section} onValueChange={(v) => toSection(v as Section)}>
-        <TabsList>
-          <TabsTrigger value="ai" data-testid="tab-ai">
-            <Sparkles /> AI assistant
-          </TabsTrigger>
-          <TabsTrigger value="general" data-testid="tab-general">
-            <FolderOpen /> General
-          </TabsTrigger>
-        </TabsList>
-      </Tabs>
+      <div className="flex flex-col md:flex-row gap-8 items-start">
+        {/* Sticky left nav (<md collapses into horizontal row) */}
+        <nav className="flex md:flex-col gap-1 w-full md:w-52 shrink-0 md:sticky md:top-6 self-start">
+          <button
+            type="button"
+            onClick={() => scrollTo("ai")}
+            data-testid="nav-ai"
+            className={cn(
+              "flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-all text-left",
+              activeSection === "ai"
+                ? "bg-primary/10 text-primary font-semibold"
+                : "text-muted-foreground hover:text-foreground hover:bg-secondary/60",
+            )}
+          >
+            <Sparkles className="size-4 shrink-0" />
+            AI assistant
+          </button>
+          <button
+            type="button"
+            onClick={() => scrollTo("general")}
+            data-testid="nav-general"
+            className={cn(
+              "flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-all text-left",
+              activeSection === "general"
+                ? "bg-primary/10 text-primary font-semibold"
+                : "text-muted-foreground hover:text-foreground hover:bg-secondary/60",
+            )}
+          >
+            <FolderOpen className="size-4 shrink-0" />
+            General
+          </button>
+          <button
+            type="button"
+            onClick={() => scrollTo("about")}
+            data-testid="nav-about"
+            className={cn(
+              "flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-all text-left",
+              activeSection === "about"
+                ? "bg-primary/10 text-primary font-semibold"
+                : "text-muted-foreground hover:text-foreground hover:bg-secondary/60",
+            )}
+          >
+            <Info className="size-4 shrink-0" />
+            About
+          </button>
+        </nav>
 
-      {section === "ai" ? <AiSection /> : <GeneralSection />}
+        {/* Content Column */}
+        <div className="flex-1 min-w-0 flex flex-col gap-12 w-full">
+          <section id="ai" className="scroll-mt-6 grid gap-6">
+            <h2 className="text-xl font-bold tracking-tight">AI assistant</h2>
+            <AiSection />
+          </section>
+
+          <section id="general" className="scroll-mt-6 grid gap-6">
+            <h2 className="text-xl font-bold tracking-tight">General</h2>
+            <GeneralSection />
+          </section>
+
+          <section id="about" className="scroll-mt-6 grid gap-6">
+            <h2 className="text-xl font-bold tracking-tight">About</h2>
+            <AboutSection />
+          </section>
+        </div>
+      </div>
     </main>
   );
 }
@@ -437,6 +568,259 @@ function GeneralSection() {
         onDone={load}
       />
       <OfflineDialog open={dialog === "offline"} onOpenChange={(o) => !o && setDialog(null)} />
+    </div>
+  );
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+// ---- About ------------------------------------------------------------------------------------
+
+function AboutSection() {
+  const [version, setVersion] = useState("development build");
+  const [autoUpdate, setAutoUpdate] = useState(true);
+  const [loadedSettings, setLoadedSettings] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [installing, setInstalling] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [availableUpdate, setAvailableUpdate] = useState<Update | null>(null);
+  const [progressText, setProgressText] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (library.inTauri()) {
+      import("@tauri-apps/api/app")
+        .then((m) => m.getVersion())
+        .then((v) => setVersion(v))
+        .catch(() => setVersion("development build"));
+    }
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    library
+      .getSettings()
+      .then((s) => {
+        if (!mounted) return;
+        setAutoUpdate(s.autoUpdate);
+        setLoadedSettings(true);
+      })
+      .catch((e) => {
+        console.warn("Failed to load settings:", e);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const handleToggleAutoUpdate = async (checked: boolean) => {
+    const prev = autoUpdate;
+    setAutoUpdate(checked);
+    try {
+      await library.setUpdatePrefs({ autoUpdate: checked });
+    } catch (e) {
+      console.error("Failed to save update preference:", e);
+      setAutoUpdate(prev);
+      toast.error("Couldn't save update settings");
+    }
+  };
+
+  const handleCheckUpdates = async () => {
+    if (!library.inTauri()) return;
+    setChecking(true);
+    setStatusMessage(null);
+    setErrorMessage(null);
+    setAvailableUpdate(null);
+    setProgressText(null);
+
+    try {
+      const update = await checkForUpdate();
+      if (!update) {
+        const vDisplay = version.startsWith("v") ? version : `v${version}`;
+        setStatusMessage(`You're up to date (${vDisplay})`);
+      } else {
+        setAvailableUpdate(update);
+        setStatusMessage(`Version ${update.version} is available`);
+      }
+    } catch (e) {
+      setErrorMessage(errorText(e));
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  const handleInstall = async () => {
+    if (!availableUpdate) return;
+    setInstalling(true);
+    setErrorMessage(null);
+    setProgressText("Starting download…");
+
+    try {
+      await installUpdate(availableUpdate, (downloaded, total) => {
+        if (total && total > 0) {
+          const pct = Math.round((downloaded / total) * 100);
+          setProgressText(`${formatBytes(downloaded)} / ${formatBytes(total)} (${pct}%)`);
+        } else {
+          setProgressText(`${formatBytes(downloaded)} downloaded`);
+        }
+      });
+    } catch (e) {
+      console.error("Install failed:", e);
+      setErrorMessage("Couldn't install the update automatically");
+      toast.error("Couldn't install the update automatically", {
+        action: {
+          label: "Download",
+          onClick: () => {
+            void openExternalUrl("https://github.com/Fankrits/SomeScript/releases/latest");
+          },
+        },
+      });
+    } finally {
+      setInstalling(false);
+    }
+  };
+
+  const handleLinkClick = (e: React.MouseEvent<HTMLAnchorElement>, url: string) => {
+    if (library.inTauri()) {
+      e.preventDefault();
+      void openExternalUrl(url);
+    }
+  };
+
+  return (
+    <div className="grid gap-8">
+      {/* App info */}
+      <section className="grid gap-3">
+        <div className="grid">
+          <h2 className="text-sm font-semibold">SomeScript</h2>
+          <p className="text-sm text-muted-foreground">
+            Version{" "}
+            <span className="font-mono text-xs" data-testid="app-version">
+              {version}
+            </span>
+          </p>
+        </div>
+      </section>
+
+      {/* Check for updates */}
+      <section className="grid gap-3">
+        <div className="grid">
+          <h2 className="text-sm font-semibold">Updates</h2>
+          <p className="text-sm text-muted-foreground">Check for new releases of SomeScript.</p>
+        </div>
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              variant="outline"
+              disabled={checking || installing || !library.inTauri()}
+              onClick={() => void handleCheckUpdates()}
+              data-testid="check-updates"
+            >
+              {checking && <Spinner />} Check for updates
+            </Button>
+            {!library.inTauri() && (
+              <span className="text-xs text-muted-foreground">
+                Updates are only available in the desktop app
+              </span>
+            )}
+            {checking && <span className="text-xs text-muted-foreground">Checking…</span>}
+            {!checking && statusMessage && (
+              <span className="text-xs text-muted-foreground">{statusMessage}</span>
+            )}
+            {!checking && errorMessage && (
+              <span className="text-xs text-destructive">{errorMessage}</span>
+            )}
+          </div>
+          {availableUpdate && (
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                variant="default"
+                disabled={installing}
+                onClick={() => void handleInstall()}
+                data-testid="install-update"
+              >
+                {installing && <Spinner />} Install and restart
+              </Button>
+              {progressText && (
+                <span className="text-xs text-muted-foreground">{progressText}</span>
+              )}
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* Auto-update switch */}
+      <section className="grid gap-3">
+        <div className="flex items-center justify-between gap-4 rounded-xl border border-border px-4 py-3">
+          <div className="grid gap-0.5">
+            <label htmlFor="auto-update" className="text-sm font-semibold cursor-pointer">
+              Check for updates automatically
+            </label>
+            <p className="text-sm text-muted-foreground">
+              Periodically check for new releases in the background.
+            </p>
+          </div>
+          <Switch
+            id="auto-update"
+            checked={autoUpdate}
+            disabled={!loadedSettings}
+            onCheckedChange={handleToggleAutoUpdate}
+            data-testid="auto-update"
+          />
+        </div>
+      </section>
+
+      {/* Links */}
+      <section className="grid gap-3">
+        <div className="grid">
+          <h2 className="text-sm font-semibold">Links</h2>
+          <p className="text-sm text-muted-foreground">
+            Project repository, website, and issue tracker.
+          </p>
+        </div>
+        <div className="grid gap-3 rounded-xl border border-border p-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+            <span className="text-sm font-medium">Source code</span>
+            <a
+              href="https://github.com/Fankrits/SomeScript"
+              target="_blank"
+              rel="noreferrer"
+              onClick={(e) => handleLinkClick(e, "https://github.com/Fankrits/SomeScript")}
+              className="text-xs text-muted-foreground hover:text-foreground font-mono truncate"
+            >
+              https://github.com/Fankrits/SomeScript
+            </a>
+          </div>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+            <span className="text-sm font-medium">Website</span>
+            <a
+              href="https://somescript.com"
+              target="_blank"
+              rel="noreferrer"
+              onClick={(e) => handleLinkClick(e, "https://somescript.com")}
+              className="text-xs text-muted-foreground hover:text-foreground font-mono truncate"
+            >
+              https://somescript.com
+            </a>
+          </div>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+            <span className="text-sm font-medium">Report an issue</span>
+            <a
+              href="https://github.com/Fankrits/SomeScript/issues"
+              target="_blank"
+              rel="noreferrer"
+              onClick={(e) => handleLinkClick(e, "https://github.com/Fankrits/SomeScript/issues")}
+              className="text-xs text-muted-foreground hover:text-foreground font-mono truncate"
+            >
+              https://github.com/Fankrits/SomeScript/issues
+            </a>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }

@@ -217,11 +217,62 @@ test("custom instructions are saved and reach the model", async ({
 });
 
 test("the General tab shows where projects are stored", async ({ page }) => {
-  await page.goto("/settings?section=general");
+  await page.goto("/settings");
+  await expect(page.getByTestId("add-provider").first()).toBeVisible();
   await expect(page.getByTestId("library-path")).toContainText(".run");
   await expect(page.getByRole("button", { name: /Prepare for offline use/ })).toBeVisible();
-  await page.getByTestId("tab-ai").click();
+  await page.getByTestId("nav-general").click();
+  await expect(page).toHaveURL(/section=general/);
+  await page.getByTestId("nav-about").click();
+  await expect(page).toHaveURL(/section=about/);
+  await page.getByTestId("nav-ai").click();
   await expect(page).toHaveURL(/section=ai/);
+});
+
+test("the About section shows app info, links, update controls, and supports deep linking", async ({
+  page,
+  request,
+}) => {
+  await page.goto("/settings?section=about");
+  await expect(page.getByRole("heading", { name: "About", exact: true })).toBeVisible();
+  await expect(page.getByTestId("app-version")).toContainText("development build");
+
+  const sourceLink = page.getByRole("link", {
+    name: "https://github.com/Fankrits/SomeScript",
+    exact: true,
+  });
+  await expect(sourceLink).toHaveAttribute("href", "https://github.com/Fankrits/SomeScript");
+  const websiteLink = page.getByRole("link", { name: "https://somescript.com", exact: true });
+  await expect(websiteLink).toHaveAttribute("href", "https://somescript.com");
+  const issuesLink = page.getByRole("link", {
+    name: "https://github.com/Fankrits/SomeScript/issues",
+    exact: true,
+  });
+  await expect(issuesLink).toHaveAttribute("href", "https://github.com/Fankrits/SomeScript/issues");
+
+  const checkBtn = page.getByTestId("check-updates");
+  await expect(checkBtn).toBeDisabled();
+  await expect(page.getByText("Updates are only available in the desktop app")).toBeVisible();
+
+  await page.getByTestId("nav-general").click();
+  await expect(page).toHaveURL(/section=general/);
+  await page.getByTestId("nav-about").click();
+  await expect(page).toHaveURL(/section=about/);
+
+  const autoUpdateSwitch = page.getByTestId("auto-update");
+  await expect(autoUpdateSwitch).toHaveAttribute("data-state", "checked");
+  await autoUpdateSwitch.click();
+  await expect(autoUpdateSwitch).toHaveAttribute("data-state", "unchecked");
+  const settingsAfterToggle = await request.get("/api/settings").then((r) => r.json());
+  expect(settingsAfterToggle.autoUpdate).toBe(false);
+  await page.reload();
+  await expect(page.getByTestId("auto-update")).toHaveAttribute("data-state", "unchecked");
+  const settingsAfterReload = await request.get("/api/settings").then((r) => r.json());
+  expect(settingsAfterReload.autoUpdate).toBe(false);
+  await page.getByTestId("auto-update").click();
+  await expect(page.getByTestId("auto-update")).toHaveAttribute("data-state", "checked");
+  const settingsAfterReenable = await request.get("/api/settings").then((r) => r.json());
+  expect(settingsAfterReenable.autoUpdate).toBe(true);
 });
 
 test("Back never follows a `from` that points outside the app", async ({ page, baseURL }) => {

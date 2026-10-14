@@ -4,5 +4,18 @@
   "description": "Main window. In release the UI is served from the loopback server, so IPC is granted to that origin.",
   "windows": ["main"],
   "remote": { "urls": ["http://127.0.0.1:*/*"] },
-  "permissions": ["core:default", "dialog:default", "opener:allow-reveal-item-in-dir"]
+  "permissions": [
+    "core:default",
+    "dialog:default",
+    "opener:allow-reveal-item-in-dir",
+    "updater:default",
+    "process:allow-restart",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        { "url": "https://github.com/Fankrits/SomeScript*" },
+        { "url": "https://somescript.com*" }
+      ]
+    }
+  ]
 }

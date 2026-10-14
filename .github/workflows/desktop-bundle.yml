@@ -34,10 +34,19 @@ on:
         required: false
       APPLE_TEAM_ID:
         required: false
+      TAURI_SIGNING_PRIVATE_KEY:
+        description: Private key for signing updater artifacts
+        required: false
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD:
+        description: Password for the updater signing private key
+        required: false
     outputs:
       signed:
         description: '"true" when the macOS bundles were signed and notarized'
         value: ${{ jobs.meta.outputs.signed }}
+      updater_signed:
+        description: '"true" when updater artifacts were signed'
+        value: ${{ jobs.meta.outputs.updater_signed }}
 
 permissions:
   contents: read
@@ -50,16 +59,21 @@ jobs:
     outputs:
       version: ${{ steps.read.outputs.version }}
       signed: ${{ steps.read.outputs.signed }}
+      updater_signed: ${{ steps.read.outputs.updater_signed }}
     env:
       APPLE_SIGN: ${{ inputs.release && secrets.APPLE_CERTIFICATE != '' }}
+      UPDATER_SIGN: ${{ inputs.release && secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - id: read
         run: |
-          echo "version=$(jq -r .version apps/tauri/src-tauri/tauri.conf.json)" >> "$GITHUB_OUTPUT"
-          echo "signed=${APPLE_SIGN}" >> "$GITHUB_OUTPUT"
+          {
+            echo "version=$(jq -r .version apps/tauri/src-tauri/tauri.conf.json)"
+            echo "signed=${APPLE_SIGN}"
+            echo "updater_signed=${UPDATER_SIGN}"
+          } >> "$GITHUB_OUTPUT"
 
   bundle:
     name: ${{ matrix.name }}
@@ -94,6 +108,7 @@ jobs:
       VERSION: ${{ needs.meta.outputs.version }}
       # Deliberately not named SIGN: linuxdeploy's AppImage plugin reads that variable as "sign with GPG".
       APPLE_SIGN: ${{ needs.meta.outputs.signed == 'true' && matrix.kind == 'macos' }}
+      UPDATER_SIGN: ${{ needs.meta.outputs.updater_signed == 'true' }}
       BUNDLE_DIR: ${{ matrix.kind == 'macos' && 'src-tauri/target/universal-apple-darwin/release/bundle' || 'src-tauri/target/release/bundle' }}
       TARGET: ${{ matrix.kind == 'macos' && 'universal-apple-darwin' || '' }}
       # Linux ships the sidecars in the app's lib dir, not /usr/bin (see tauri.bundle.linux.conf.json).
@@ -133,12 +148,31 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: sh scripts/retry.sh "$BUILD_ATTEMPTS" bun run "$BUILD_SCRIPT" --bundles "${{ matrix.bundles }}" ${VERBOSE:+"$VERBOSE"} ${TARGET:+--target "$TARGET"}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if [ "$UPDATER_SIGN" = "true" ]; then
+            export TAURI_SIGNING_PRIVATE_KEY
+            [ -n "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" ] && export TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+            sh scripts/retry.sh "$BUILD_ATTEMPTS" bun run "$BUILD_SCRIPT" --bundles "${{ matrix.bundles }}" ${VERBOSE:+"$VERBOSE"} ${TARGET:+--target "$TARGET"} --config '{"bundle":{"createUpdaterArtifacts":true}}'
+          else
+            sh scripts/retry.sh "$BUILD_ATTEMPTS" bun run "$BUILD_SCRIPT" --bundles "${{ matrix.bundles }}" ${VERBOSE:+"$VERBOSE"} ${TARGET:+--target "$TARGET"}
+          fi
 
       # Apple variables must be absent, not empty, or the tauri CLI tries to import a certificate.
       - name: Build (unsigned)
         if: env.APPLE_SIGN != 'true'
-        run: sh scripts/retry.sh "$BUILD_ATTEMPTS" bun run "$BUILD_SCRIPT" --bundles "${{ matrix.bundles }}" ${VERBOSE:+"$VERBOSE"} ${TARGET:+--target "$TARGET"}
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if [ "$UPDATER_SIGN" = "true" ]; then
+            export TAURI_SIGNING_PRIVATE_KEY
+            [ -n "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" ] && export TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+            sh scripts/retry.sh "$BUILD_ATTEMPTS" bun run "$BUILD_SCRIPT" --bundles "${{ matrix.bundles }}" ${VERBOSE:+"$VERBOSE"} ${TARGET:+--target "$TARGET"} --config '{"bundle":{"createUpdaterArtifacts":true}}'
+          else
+            sh scripts/retry.sh "$BUILD_ATTEMPTS" bun run "$BUILD_SCRIPT" --bundles "${{ matrix.bundles }}" ${VERBOSE:+"$VERBOSE"} ${TARGET:+--target "$TARGET"}
+          fi
 
       # ---- Verify and smoke-test what a user would actually get ----
 
@@ -213,15 +247,32 @@ jobs:
           case "${{ matrix.kind }}" in
             macos)
               cp "$b"/dmg/*_"${VERSION}"_*.dmg "$dist/SomeScript-${VERSION}-macos-${{ matrix.arch }}.dmg"
+              cp "$dist/SomeScript-${VERSION}-macos-${{ matrix.arch }}.dmg" "$dist/SomeScript-macos-${{ matrix.arch }}.dmg"
               ditto -c -k --keepParent "$b/macos/SomeScript.app" "$dist/SomeScript-${VERSION}-macos-${{ matrix.arch }}.app.zip"
+              if [ "$UPDATER_SIGN" = "true" ]; then
+                test -f "$b"/macos/*.app.tar.gz || { echo "::error::Missing macOS updater tarball"; exit 1; }
+                test -f "$b"/macos/*.app.tar.gz.sig || { echo "::error::Missing macOS updater signature"; exit 1; }
+                cp "$b"/macos/*.app.tar.gz "$dist/SomeScript-${VERSION}-macos-${{ matrix.arch }}.app.tar.gz"
+                cp "$b"/macos/*.app.tar.gz.sig "$dist/SomeScript-${VERSION}-macos-${{ matrix.arch }}.app.tar.gz.sig"
+              fi
               ;;
             windows)
               cp "$b"/nsis/*_"${VERSION}"_x64-setup.exe "$dist/SomeScript-${VERSION}-windows-x64-setup.exe"
+              cp "$dist/SomeScript-${VERSION}-windows-x64-setup.exe" "$dist/SomeScript-windows-x64-setup.exe"
+              if [ "$UPDATER_SIGN" = "true" ]; then
+                test -f "$b"/nsis/*_"${VERSION}"_x64-setup.exe.sig || { echo "::error::Missing Windows updater signature"; exit 1; }
+                cp "$b"/nsis/*_"${VERSION}"_x64-setup.exe.sig "$dist/SomeScript-${VERSION}-windows-x64-setup.exe.sig"
+              fi
               ;;
             linux)
               cp "$b"/deb/*_"${VERSION}"_amd64.deb "$dist/SomeScript-${VERSION}-linux-x64.deb"
               cp "$b"/rpm/*"${VERSION}"*.rpm "$dist/SomeScript-${VERSION}-linux-x64.rpm"
               cp "$b"/appimage/*_"${VERSION}"_amd64.AppImage "$dist/SomeScript-${VERSION}-linux-x64.AppImage"
+              cp "$dist/SomeScript-${VERSION}-linux-x64.AppImage" "$dist/SomeScript-linux-x64.AppImage"
+              if [ "$UPDATER_SIGN" = "true" ]; then
+                test -f "$b"/appimage/*_"${VERSION}"_amd64.AppImage.sig || { echo "::error::Missing Linux AppImage signature"; exit 1; }
+                cp "$b"/appimage/*_"${VERSION}"_amd64.AppImage.sig "$dist/SomeScript-${VERSION}-linux-x64.AppImage.sig"
+              fi
               ;;
           esac
           ls -la "$dist"
