@@ -36,6 +36,9 @@ tokio = { version = "1.53.2", features = [
 ] }
 getrandom = "0.4.3"
 tauri-plugin-dialog = "2.8.2"
+# Rotating log file in the OS log folder: a release build on Windows has no console to print to.
+tauri-plugin-log = "2"
+log = "0.4"
 tempfile = "3.27.0"
 # canonicalize() without Windows' \\?\ prefix, which Tectonic and the UI would otherwise see.
 dunce = "1.0.5"

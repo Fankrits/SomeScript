@@ -25,6 +25,10 @@ fn test_state(library: Arc<Library>, config_path: Option<std::path::PathBuf>) ->
         tex: Arc::new(TexTools::new("never-run".into(), "never-run".into())),
         templates_dir: std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("templates"),
         config_path,
+        default_library: std::env::temp_dir().join("SomeScript-default-for-tests"),
+        alternatives: Vec::new(),
+        log_dir: None,
+        webview_version: Some("test-webview 1.0".into()),
         ai: Arc::new(crate::ai::settings::AiStore::in_memory()),
         http: crate::ai::AiHttp::new(),
     }
@@ -844,7 +848,9 @@ async fn changing_the_library_folder_switches_projects_and_is_remembered() {
 async fn an_unreadable_library_folder_is_reported_with_its_path_not_a_generic_500() {
     let h = harness();
     let gone = h.root.path().join("unplugged-drive");
-    let state = test_state(Arc::new(Library::new(gone.clone())), None);
+    // A folder the user chose in Settings: if it vanishes they are told, it isn't recreated empty.
+    let library = Library::with_source(gone.clone(), crate::library::RootSource::Saved);
+    let state = test_state(Arc::new(library), None);
     let h = Harness {
         app: router::<ApiState>().with_state(state),
         root: h.root,
@@ -852,11 +858,17 @@ async fn an_unreadable_library_folder_is_reported_with_its_path_not_a_generic_50
 
     let r = h.get("/api/projects").await;
     assert_eq!(r.status, StatusCode::INTERNAL_SERVER_ERROR);
-    let msg = r.json()["error"].as_str().unwrap().to_owned();
+    let body = r.json();
+    let msg = body["error"].as_str().unwrap().to_owned();
     assert!(
         msg.contains("Can't read the library folder") && msg.contains("unplugged-drive"),
         "{msg}"
     );
+    assert!(
+        body["hint"].is_string(),
+        "the user is told what to try: {body}"
+    );
+    assert!(!gone.exists(), "listing must not recreate a chosen folder");
 
     // Pointing the app at a usable folder repairs it without a restart.
     let fixed = h.root.path().join("fixed");
@@ -871,6 +883,256 @@ async fn an_unreadable_library_folder_is_reported_with_its_path_not_a_generic_50
         h.get("/api/projects").await.json(),
         json!({ "projects": [] })
     );
+}
+
+// ---- First run and the library folder ----------------------------------------------------
+
+/// A router whose library is the app's own default folder, which does not exist yet: a first run.
+/// Returns the harness, the default folder and the config file's path.
+fn first_run() -> (Harness, std::path::PathBuf, std::path::PathBuf) {
+    let h = harness();
+    let default = h.root.path().join("Documents").join("SomeScript");
+    let cfg = h.root.path().join("cfg").join("config.json");
+    let library = Library::with_source(default.clone(), crate::library::RootSource::Default);
+    let mut state = test_state(Arc::new(library), Some(cfg.clone()));
+    state.default_library = default.clone();
+    let h = Harness {
+        app: router::<ApiState>().with_state(state),
+        root: h.root,
+    };
+    (h, default, cfg)
+}
+
+#[tokio::test]
+async fn the_first_run_gate_reads_settings_without_touching_the_library_folder() {
+    let (h, default, _cfg) = first_run();
+    let r = h.get("/api/settings").await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert_eq!(
+        r.json(),
+        json!({
+            "libraryPath": default.to_str().unwrap(),
+            "source": "default",
+            "onboarded": false,
+            "defaultLibraryPath": default.to_str().unwrap(),
+        })
+    );
+    assert!(
+        !default.exists(),
+        "reading the settings must not create, or even open, the folder: the OS may ask permission for it"
+    );
+}
+
+#[tokio::test]
+async fn creating_a_project_works_when_the_default_folder_does_not_exist_yet() {
+    // The reported bug: the default folder could not be made at launch, and creating a project
+    // then failed with "File not found".
+    let (h, default, _cfg) = first_run();
+    let r = h
+        .post(
+            "/api/projects",
+            json!({ "name": "Paper", "template": "blank" }),
+        )
+        .await;
+    assert_eq!(
+        r.status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&r.body)
+    );
+    assert_eq!(r.json(), json!({ "id": "Paper" }));
+    assert!(default.join("Paper").join("main.tex").is_file());
+}
+
+#[tokio::test]
+async fn listing_makes_the_apps_own_default_folder_as_it_used_to_at_launch() {
+    let (h, default, _cfg) = first_run();
+    assert_eq!(
+        h.get("/api/projects").await.json(),
+        json!({ "projects": [] })
+    );
+    assert!(default.is_dir());
+}
+
+#[tokio::test]
+async fn creating_in_a_vanished_chosen_folder_explains_it_instead_of_saying_file_not_found() {
+    let h = harness();
+    let gone = h.root.path().join("unplugged-drive");
+    let library = Library::with_source(gone.clone(), crate::library::RootSource::Saved);
+    let h = Harness {
+        app: router::<ApiState>().with_state(test_state(Arc::new(library), None)),
+        root: h.root,
+    };
+    let r = h
+        .post(
+            "/api/projects",
+            json!({ "name": "Paper", "template": "blank" }),
+        )
+        .await;
+    assert_ne!(r.status, StatusCode::OK);
+    let body = r.json();
+    let msg = body["error"].as_str().unwrap();
+    assert!(msg.contains("unplugged-drive"), "{msg}");
+    assert!(!msg.contains("File not found"), "{msg}");
+    assert!(body["hint"].is_string(), "{body}");
+    assert!(!gone.exists(), "a chosen folder is not recreated empty");
+}
+
+#[tokio::test]
+async fn finishing_setup_is_remembered_and_choosing_a_folder_keeps_it() {
+    let (h, default, cfg) = first_run();
+    let r = h.post("/api/settings", json!({ "onboarded": true })).await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert_eq!(r.json()["onboarded"], true);
+    assert!(crate::config::load(&cfg).onboarded);
+    assert!(!default.exists(), "the flag alone creates nothing");
+
+    // The config is merged, not rewritten: choosing a folder must not wipe the flag.
+    let chosen = h.root.path().join("Mine");
+    let r = h
+        .post(
+            "/api/settings",
+            json!({ "libraryPath": chosen.to_str().unwrap() }),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert!(chosen.is_dir());
+    let saved = crate::config::load(&cfg);
+    assert!(saved.onboarded);
+    assert_eq!(saved.library_path.unwrap().file_name().unwrap(), "Mine");
+    assert_eq!(h.get("/api/settings").await.json()["source"], "saved");
+
+    let r = h.post("/api/settings", json!({})).await;
+    assert_eq!(r.status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn setup_counts_as_done_for_a_saved_folder_and_for_an_explicit_override() {
+    // 0.1.0 and 0.1.1 stored a library path when the user changed folders: nothing left to ask.
+    let (h, _default, cfg) = first_run();
+    crate::config::update(&cfg, |c| c.library_path = Some(h.root.path().join("Old"))).unwrap();
+    assert_eq!(h.get("/api/settings").await.json()["onboarded"], true);
+    // SOMESCRIPT_LIBRARY (developers, tests, portable use): the default harness uses one.
+    assert_eq!(
+        harness().get("/api/settings").await.json()["onboarded"],
+        true
+    );
+}
+
+fn enc(s: &str) -> String {
+    percent_encoding::utf8_percent_encode(s, percent_encoding::NON_ALPHANUMERIC).to_string()
+}
+
+#[tokio::test]
+async fn the_folder_check_describes_a_folder_without_creating_it() {
+    let (h, default, _cfg) = first_run();
+    let uri = |p: &std::path::Path| format!("/api/library/check?path={}", enc(p.to_str().unwrap()));
+
+    // Doesn't exist yet, but can be made.
+    let c = h.get(&uri(&default)).await.json();
+    assert_eq!(
+        (&c["exists"], &c["creatable"], &c["issue"]),
+        (&json!(false), &json!(true), &Value::Null),
+        "{c}"
+    );
+    assert!(!default.exists(), "checking a folder must not create it");
+
+    // A folder with a project in it (the harness makes `p1`).
+    let c = h.get(&uri(h.root.path())).await.json();
+    assert_eq!(
+        (&c["exists"], &c["writable"], &c["projectCount"]),
+        (&json!(true), &json!(true), &json!(1)),
+        "{c}"
+    );
+
+    // A file where a folder should be is an issue with words, not a bare failure.
+    let file = h.root.path().join("a-file");
+    std::fs::write(&file, "x").unwrap();
+    let c = h.get(&uri(&file)).await.json();
+    assert_eq!(c["issue"]["kind"], "not_a_folder", "{c}");
+    assert!(c["issue"]["message"].as_str().unwrap().contains("file"));
+
+    let r = h.get("/api/library/check").await;
+    assert_eq!(r.status, StatusCode::BAD_REQUEST);
+    let c = h.get("/api/library/check?path=relative%2Fdir").await.json();
+    assert_eq!(c["issue"]["kind"], "not_absolute", "{c}");
+}
+
+#[tokio::test]
+async fn the_folder_name_preview_is_what_creating_would_name_it() {
+    async fn preview(h: &Harness, name: &str) -> Value {
+        h.get(&format!("/api/projects/folder-name?name={}", enc(name)))
+            .await
+            .json()
+    }
+    let h = harness(); // holds a project called `p1`
+    assert_eq!(
+        preview(&h, "My Thesis").await,
+        json!({ "id": "My Thesis", "changed": false })
+    );
+    assert_eq!(
+        preview(&h, "a/b").await,
+        json!({ "id": "a-b", "changed": true })
+    );
+    assert_eq!(
+        preview(&h, "con").await,
+        json!({ "id": "_con", "changed": true })
+    );
+    assert_eq!(
+        preview(&h, "P1").await,
+        json!({ "id": "P1 2", "changed": true }),
+        "taken, case-insensitively"
+    );
+    assert_eq!(
+        preview(&h, "  padded  ").await,
+        json!({ "id": "padded", "changed": false })
+    );
+    let r = h
+        .post(
+            "/api/projects",
+            json!({ "name": "a/b", "template": "blank" }),
+        )
+        .await;
+    assert_eq!(
+        r.json(),
+        json!({ "id": "a-b" }),
+        "the preview told the truth"
+    );
+}
+
+#[tokio::test]
+async fn diagnostics_is_a_text_report_that_never_includes_secrets() {
+    let h = harness();
+    let key = ["sk", "diag", "0123456789abcdef"].join("-");
+    let r = h
+        .post(
+            "/api/ai/providers",
+            json!({ "name": "X", "kind": "openai", "baseUrl": "https://127.0.0.1:9/v1", "apiKey": key }),
+        )
+        .await;
+    assert_eq!(r.status, StatusCode::OK);
+
+    let r = h.get("/api/diagnostics").await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert!(
+        r.headers[header::CONTENT_TYPE]
+            .to_str()
+            .unwrap()
+            .starts_with("text/plain")
+    );
+    let text = String::from_utf8(r.body).unwrap();
+    for expected in [
+        "SomeScript ",
+        "Platform:",
+        "WebView: test-webview 1.0",
+        "Library:",
+        "tectonic:",
+        "synctex:",
+    ] {
+        assert!(text.contains(expected), "{expected} missing from:\n{text}");
+    }
+    assert!(text.contains(h.root.path().to_str().unwrap()), "{text}");
+    assert!(!text.contains(&key), "the key must never be in a report");
 }
 
 // ---- AI assistant -------------------------------------------------------------------------

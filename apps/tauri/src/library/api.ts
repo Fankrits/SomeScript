@@ -18,10 +18,24 @@ export interface Template {
   description: string;
 }
 
+/** A failed request: the server's message, plus what the user can try (folder problems carry one). */
+export class ApiFailure extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly hint?: string,
+  ) {
+    super(message);
+    this.name = "ApiFailure";
+  }
+}
+
 async function call<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init);
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.error ?? `Request failed (${res.status})`);
+  if (!res.ok) {
+    throw new ApiFailure(body.error ?? `Request failed (${res.status})`, res.status, body.hint);
+  }
   return body as T;
 }
 
@@ -56,10 +70,24 @@ export function importZip(file: File, name: string) {
   );
 }
 
-export const getLibraryPath = () =>
-  call<{ libraryPath: string }>("/api/settings").then((r) => r.libraryPath);
+/** Why the library is where it is (src-tauri/src/library.rs `RootSource`). */
+export type RootSource = "env" | "saved" | "default" | "fallback";
+export interface LibrarySettings {
+  libraryPath: string;
+  source: RootSource;
+  /** First-run setup is done (or has nothing left to ask). */
+  onboarded: boolean;
+  /** Where the library would be with nothing chosen: what setup proposes. */
+  defaultLibraryPath: string;
+}
+
+/** Read from the config and environment only: it never touches the library folder. */
+export const getSettings = () => call<LibrarySettings>("/api/settings");
+export const getLibraryPath = () => getSettings().then((r) => r.libraryPath);
+/** Creates the folder if needed, proves it can be written to, and remembers it. */
 export const setLibraryPath = (libraryPath: string) =>
-  post<{ libraryPath: string }>("/api/settings", { libraryPath }).then((r) => r.libraryPath);
+  post<LibrarySettings>("/api/settings", { libraryPath }).then((r) => r.libraryPath);
+export const finishSetup = () => post<LibrarySettings>("/api/settings", { onboarded: true });
 
 /** The editor reads ?projectId= from its own URL, so opening a project is a plain navigation. */
 export const openProject = (id: string) =>

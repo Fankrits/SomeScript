@@ -72,7 +72,7 @@ impl AiHttp {
             .get_or_init(Self::build)
             .as_ref()
             .map_err(|e| {
-                eprintln!("[ai] network stack failed to start: {e}");
+                log::error!("[ai] network stack failed to start: {e}");
                 ApiError::new(
                     axum::http::StatusCode::INTERNAL_SERVER_ERROR,
                     "The assistant couldn't set up its secure connection on this computer.",

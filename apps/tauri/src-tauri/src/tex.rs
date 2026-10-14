@@ -53,6 +53,12 @@ impl TexTools {
             find_tool("synctex", "SYNCTEX_BIN", resource_dir),
         )
     }
+
+    /// Where the sidecars were found (or the bare name that will be looked up on `PATH`), for the
+    /// diagnostics report.
+    pub fn paths(&self) -> (&Path, &Path) {
+        (&self.tectonic, &self.synctex)
+    }
 }
 
 fn find_tool(name: &str, env_var: &str, resource_dir: Option<&Path>) -> PathBuf {

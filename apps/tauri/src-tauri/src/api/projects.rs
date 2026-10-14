@@ -10,7 +10,8 @@ use super::{
 };
 use crate::{
     config,
-    error::{ApiError, ApiResult, blocking},
+    error::{ApiError, ApiResult, Os, blocking},
+    library::{self, RootSource},
     storage::{Project, copy_recursive},
     tex, zipio,
 };
@@ -38,15 +39,15 @@ pub async fn list(State(s): State<ApiState>) -> ApiResult<Json<Value>> {
     // The Library screen shows this message with a "Choose another folder" button, so name the
     // folder and the reason (an unplugged drive, a moved folder) instead of a generic 500.
     let projects = blocking(move || {
-        library.list().map_err(|e| {
-            ApiError::new(
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                format!(
-                    "Can't read the library folder {}: {e}",
-                    library.root().display()
-                ),
-            )
-        })
+        let root = library.root();
+        // The app's own default folder is made when it is first looked at (it used to be made at
+        // launch); one the user chose is not recreated, so a moved folder is reported, not replaced.
+        if library.source().creates_on_demand() {
+            library.ensure_root()?;
+        }
+        library
+            .list()
+            .map_err(|e| ApiError::io_at("Can't read the library folder", &root, &e))
     })
     .await?;
     Ok(Json(json!({ "projects": projects })))
@@ -69,8 +70,8 @@ fn seed(templates_dir: &Path, template: &str, dest: &Path) -> ApiResult<()> {
     if !known || !src.is_dir() {
         return Err(ApiError::bad_request("Unknown template"));
     }
-    copy_recursive(&src, dest)?;
-    Ok(())
+    copy_recursive(&src, dest)
+        .map_err(|e| ApiError::io_at("Couldn't copy the template into the new project", dest, &e))
 }
 
 pub async fn create(State(s): State<ApiState>, Json(body): Json<Value>) -> ApiResult<Json<Value>> {
@@ -84,13 +85,19 @@ pub async fn create(State(s): State<ApiState>, Json(body): Json<Value>) -> ApiRe
         }
         let id = library.create(&name)?;
         let dir = library.root().join(&id);
-        if let Err(e) = seed(&templates_dir, &template, &dir) {
+        // Whatever fails after the folder exists, it must not be left behind half-built.
+        let built = (|| -> ApiResult<()> {
+            seed(&templates_dir, &template, &dir)?;
+            let project = Project::open(dir.clone())
+                .map_err(|e| ApiError::io_at("Couldn't open the new project", &dir, &e))?;
+            meta::write_initial_prefs(&project, "main.tex")?;
+            project.touch();
+            Ok(())
+        })();
+        if let Err(e) = built {
             let _ = fs::remove_dir_all(&dir);
             return Err(e);
         }
-        let project = Project::open(dir)?;
-        meta::write_initial_prefs(&project, "main.tex")?;
-        project.touch();
         Ok(id)
     })
     .await?;
@@ -214,37 +221,117 @@ pub async fn export(
     ))
 }
 
-pub async fn settings_get(State(s): State<ApiState>) -> Json<Value> {
-    Json(json!({ "libraryPath": s.library.root() }))
+/// Where the library is, and whether first-run setup is done. Worked out from the config and the
+/// environment alone: it must not touch the library folder, so the first-run screen can decide
+/// what to show before the OS has been asked for access to anything.
+fn settings_json(s: &ApiState) -> Value {
+    let saved = s
+        .config_path
+        .as_deref()
+        .map(config::load)
+        .unwrap_or_default();
+    let source = s.library.source();
+    // A saved folder (0.1.0/0.1.1 stored one when the user changed it) or an explicit override
+    // means setup has no question left to ask.
+    let onboarded = saved.onboarded || saved.library_path.is_some() || source == RootSource::Env;
+    json!({
+        "libraryPath": s.library.root(),
+        "source": source,
+        "onboarded": onboarded,
+        "defaultLibraryPath": s.default_library,
+    })
 }
 
+pub async fn settings_get(State(s): State<ApiState>) -> Json<Value> {
+    Json(settings_json(&s))
+}
+
+/// `{ libraryPath?, onboarded? }`: sets the folder (created if missing, and proven writable) and/or
+/// marks first-run setup done. Answers like `GET /api/settings`.
 pub async fn settings_post(
     State(s): State<ApiState>,
     Json(body): Json<Value>,
 ) -> ApiResult<Json<Value>> {
-    let path = str_field(&body, "libraryPath")
-        .map(std::path::PathBuf::from)
-        .filter(|p| p.is_absolute())
-        .ok_or_else(|| ApiError::bad_request("libraryPath must be an absolute path"))?;
-    let (library, config_path) = (s.library.clone(), s.config_path.clone());
-    let root = blocking(move || {
-        fs::create_dir_all(&path)
-            .map_err(|e| ApiError::bad_request(format!("Can't use that folder: {e}")))?;
-        let root = dunce::canonicalize(&path)?;
-        if let Some(config_path) = config_path {
-            config::save(
-                &config_path,
-                &config::Config {
-                    library_path: Some(root.clone()),
-                },
-            )?;
+    let path = match body.get("libraryPath") {
+        None | Some(Value::Null) => None,
+        Some(v) => Some(
+            v.as_str()
+                .map(std::path::PathBuf::from)
+                .filter(|p| p.is_absolute())
+                .ok_or_else(|| ApiError::bad_request("libraryPath must be an absolute path"))?,
+        ),
+    };
+    let onboarded = body.get("onboarded").and_then(Value::as_bool);
+    if path.is_none() && onboarded.is_none() {
+        return Err(ApiError::bad_request(
+            "Nothing to change: send libraryPath and/or onboarded",
+        ));
+    }
+    let state = s.clone();
+    blocking(move || {
+        if let Some(path) = path {
+            fs::create_dir_all(&path)
+                .map_err(|e| ApiError::io_at("Couldn't use that folder", &path, &e))?;
+            let root = dunce::canonicalize(&path)
+                .map_err(|e| ApiError::io_at("Couldn't use that folder", &path, &e))?;
+            // Existing is not enough: a folder the OS lets us see but not write to (Windows'
+            // Controlled folder access, macOS privacy) must be refused here, not on first save.
+            library::probe_writable(&root)
+                .map_err(|e| ApiError::io_at("Can't save files in that folder", &root, &e))?;
+            if let Some(config_path) = &state.config_path {
+                config::update(config_path, |c| c.library_path = Some(root.clone()))
+                    .map_err(|e| ApiError::io_at("Couldn't save your settings", config_path, &e))?;
+            }
+            state.library.set_root(root, RootSource::Saved);
+            state.library.purge_expired(SystemTime::now());
         }
-        library.set_root(root.clone());
-        library.purge_expired(SystemTime::now());
-        Ok(root)
+        if let (Some(done), Some(config_path)) = (onboarded, &state.config_path) {
+            config::update(config_path, |c| c.onboarded = done)
+                .map_err(|e| ApiError::io_at("Couldn't save your settings", config_path, &e))?;
+        }
+        Ok(())
     })
     .await?;
-    Ok(Json(json!({ "libraryPath": root })))
+    Ok(Json(settings_json(&s)))
+}
+
+/// `?path=<absolute folder>`: can it be used as the library? Setup and Settings call this while the
+/// user types or browses, before anything is saved. Creates nothing (see `library::check_folder`).
+pub async fn library_check(
+    State(s): State<ApiState>,
+    Query(q): Query<HashMap<String, String>>,
+) -> ApiResult<Json<Value>> {
+    let path = q
+        .get("path")
+        .map(|p| std::path::PathBuf::from(p.trim()))
+        .filter(|p| !p.as_os_str().is_empty())
+        .ok_or_else(|| ApiError::bad_request("path is required"))?;
+    let candidates = s.alternatives.clone();
+    let check = blocking(move || {
+        Ok(library::check_with_alternatives(
+            &path,
+            &candidates,
+            Os::CURRENT,
+        ))
+    })
+    .await?;
+    Ok(Json(
+        serde_json::to_value(check).map_err(ApiError::internal)?,
+    ))
+}
+
+/// `?name=<what the user typed>`: the folder it will get, for the preview under the name field.
+pub async fn folder_name(
+    State(s): State<ApiState>,
+    Query(q): Query<HashMap<String, String>>,
+) -> ApiResult<Json<Value>> {
+    let name = q.get("name").cloned().unwrap_or_default();
+    let library = s.library.clone();
+    let id = blocking(move || Ok(library.unique_name(&name, None))).await?;
+    // "changed" = what lands on disk differs from what was typed (illegal characters, a number
+    // added because the name is taken), which is what the preview is there to explain.
+    let changed = id != q.get("name").map_or("", |n| n.trim());
+    Ok(Json(json!({ "id": id, "changed": changed })))
 }
 
 /// Compiles a small document that pulls in the usual packages, so the TeX files they need

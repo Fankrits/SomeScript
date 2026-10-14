@@ -3,6 +3,7 @@
 
 mod ai;
 mod compile;
+mod diagnostics;
 mod files;
 pub(crate) mod meta;
 mod projects;
@@ -32,6 +33,14 @@ pub struct ApiState {
     pub templates_dir: PathBuf,
     /// Where the chosen library folder is remembered; `None` in tests.
     pub config_path: Option<PathBuf>,
+    /// Where the library would be with nothing chosen (`<Documents>/SomeScript`): what setup proposes.
+    pub default_library: PathBuf,
+    /// Places to offer when the chosen folder can't be used (outside the folders the OS protects).
+    pub alternatives: Vec<PathBuf>,
+    /// Where `somescript.log` is, for the diagnostics report.
+    pub log_dir: Option<PathBuf>,
+    /// The system webview's version (WebView2 on Windows), for the diagnostics report.
+    pub webview_version: Option<String>,
     /// Global AI settings (providers and keys), shared by every project.
     pub ai: Arc<AiStore>,
     pub http: AiHttp,
@@ -85,6 +94,11 @@ where
             "/api/settings",
             get(projects::settings_get).post(projects::settings_post),
         )
+        // First-run setup: look at a folder before choosing it, preview a project's folder name,
+        // and a report to paste into a bug report.
+        .route("/api/library/check", get(projects::library_check))
+        .route("/api/projects/folder-name", get(projects::folder_name))
+        .route("/api/diagnostics", get(diagnostics::get))
         .route("/api/prepare-offline", post(projects::prepare_offline))
         // AI assistant (desktop only): global provider settings, streaming chat, per-project history
         .route(

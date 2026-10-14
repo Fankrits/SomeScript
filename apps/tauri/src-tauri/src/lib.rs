@@ -13,19 +13,52 @@ use library::Library;
 use std::{
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
-    time::SystemTime,
 };
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder, webview::DownloadEvent};
 use tex::TexTools;
 
-/// `SOMESCRIPT_LIBRARY` (dev, tests, portable use) beats the folder saved in the app config,
-/// which beats the default `~/Documents/SomeScript`.
-fn library_root(app: &tauri::App, config_path: Option<&Path>) -> PathBuf {
-    std::env::var_os("SOMESCRIPT_LIBRARY")
-        .map(PathBuf::from)
-        .or_else(|| config_path.and_then(|p| config::load(p).library_path))
-        .or_else(|| app.path().document_dir().ok().map(|d| d.join("SomeScript")))
-        .unwrap_or_else(|| PathBuf::from("SomeScript"))
+/// Where the library lives and why (see `library::resolve_root` for the order). Asks the OS where
+/// its known folders are but touches no folder. `SOMESCRIPT_DOCUMENTS_DIR` stands in for the OS's
+/// Documents folder (tests, portable use).
+fn locate_library(app: &tauri::App, config_path: Option<&Path>) -> library::Resolved {
+    let paths = app.path();
+    library::resolve_root(
+        std::env::var_os("SOMESCRIPT_LIBRARY").map(PathBuf::from),
+        config_path.and_then(|p| config::load(p).library_path),
+        std::env::var_os("SOMESCRIPT_DOCUMENTS_DIR")
+            .map(PathBuf::from)
+            .or_else(|| paths.document_dir().ok()),
+        paths.home_dir().ok(),
+        paths.app_local_data_dir().ok(),
+    )
+}
+
+/// A rotating `somescript.log` in the OS log folder. A release build on Windows has no console
+/// (`windows_subsystem = "windows"`), so without a file nothing it says is ever seen.
+fn logging<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
+    use tauri_plugin_log::{RotationStrategy, Target, TargetKind};
+    tauri_plugin_log::Builder::new()
+        .level(log::LevelFilter::Info)
+        .targets([
+            Target::new(TargetKind::Stdout),
+            Target::new(TargetKind::LogDir {
+                file_name: Some("somescript".into()),
+            }),
+        ])
+        .max_file_size(1_000_000)
+        .rotation_strategy(RotationStrategy::KeepSome(3))
+        .build()
+}
+
+/// Release builds are `panic = "abort"` with no console, so a panic would otherwise end the app
+/// without a trace. The hook writes it to the log first.
+fn log_panics() {
+    let previous = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        log::error!("panic: {info}");
+        log::logger().flush();
+        previous(info);
+    }));
 }
 
 /// Bundled templates: the app's resource dir. Under `cargo run` there is no bundle, so debug
@@ -44,7 +77,9 @@ pub fn run() {
     // Automated checks (CI smoke tests of a built bundle) drive the HTTP surface only, so
     // SOMESCRIPT_HEADLESS runs the server with no window and no Dock icon.
     let headless = std::env::var_os("SOMESCRIPT_HEADLESS").is_some();
+    log_panics();
     tauri::Builder::default()
+        .plugin(logging())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(move |app| {
@@ -53,14 +88,20 @@ pub fn run() {
                 .app_config_dir()
                 .ok()
                 .map(|d| d.join("config.json"));
-            let root = library_root(app, config_path.as_deref());
-            // An unusable folder (unplugged drive, moved) must not stop the app from starting:
-            // the Library screen reports it and lets the user pick another one.
-            if let Err(e) = std::fs::create_dir_all(&root) {
-                eprintln!("[library] can't use {}: {e}", root.display());
-            }
-            let library = Arc::new(Library::new(root));
-            library.purge_expired(SystemTime::now());
+            let located = locate_library(app, config_path.as_deref());
+            log::info!(
+                "SomeScript {} starting; library {} ({:?}), default {}",
+                env!("CARGO_PKG_VERSION"),
+                located.root.display(),
+                located.source,
+                located.default.display()
+            );
+            // Nothing is created or read here. The folder may be in a place the OS protects
+            // (Documents), and asking for it before the first-run screen has explained why is both
+            // confusing and the reason a refused prompt used to leave the app without a library.
+            // The first-run screen, the Library screen or creating a project makes it, and reports
+            // the real reason if that fails.
+            let library = Arc::new(Library::with_source(located.root, located.source));
 
             // AI settings live beside config.json in the app config dir, never in a project.
             let ai_path = app.path().app_config_dir().ok().map(|d| d.join("ai.json"));
@@ -69,6 +110,13 @@ pub fn run() {
                 tex: Arc::new(TexTools::locate(app.path().resource_dir().ok().as_deref())),
                 templates_dir: templates_dir(app),
                 config_path,
+                default_library: located.default,
+                alternatives: library::alternative_places(
+                    app.path().home_dir().ok().as_deref(),
+                    app.path().app_local_data_dir().ok().as_deref(),
+                ),
+                log_dir: app.path().app_log_dir().ok(),
+                webview_version: tauri::webview_version().ok(),
                 ai: Arc::new(ai::settings::AiStore::load(ai_path)),
                 http: ai::AiHttp::new(),
             };

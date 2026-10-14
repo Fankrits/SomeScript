@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Spinner } from "@/components/ui/spinner";
 import * as api from "./api";
+import { FailureAlert } from "./failure-alert";
 import { stripZip } from "./format";
 
 interface DialogProps {
@@ -84,10 +85,12 @@ export function NewProjectDialog({ open, onOpenChange }: DialogProps) {
   const [template, setTemplate] = useState("starter");
   const [templates, setTemplates] = useState<api.Template[]>([]);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<unknown>(null);
 
   useEffect(() => {
     if (!open) return;
     setName("");
+    setError(null);
     api
       .listTemplates()
       .then(setTemplates)
@@ -96,10 +99,13 @@ export function NewProjectDialog({ open, onOpenChange }: DialogProps) {
 
   const create = async () => {
     setBusy(true);
+    setError(null);
     try {
       api.openProject(await api.createProject(name, template));
     } catch (e) {
-      failed("Couldn't create the project", e);
+      // In the dialog, not a toast: the message says which folder and what to try, and has to
+      // stay on screen long enough to be read and acted on.
+      setError(e);
       setBusy(false);
     }
   };
@@ -140,6 +146,13 @@ export function NewProjectDialog({ open, onOpenChange }: DialogProps) {
           </Label>
         ))}
       </RadioGroup>
+      {error !== null && (
+        <FailureAlert
+          title="Couldn't create the project"
+          error={error}
+          data-testid="create-error"
+        />
+      )}
     </FormDialog>
   );
 }
