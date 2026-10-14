@@ -120,7 +120,8 @@ home, Documents and config; `e2e/first-run.ts`), because the state under test is
 includes the regression for "File not found" when creating a project: a missing default folder, a Documents "folder"
 that is really a file, and a chosen folder that vanished. `bun run e2e:webview2` drives the Windows app in its
 real WebView2 (over CDP); CI runs it, without gating, in the "Windows (WebView2, first launch)" job, on a release build
-made with the `devtools` Cargo feature (a shipped build has the inspector, and so the debugging port, off).
+made with the `devtools` Cargo feature (a shipped build has the inspector off), where `SOMESCRIPT_CDP_PORT=9222`
+gives the window its debugging port.
 
 The end-to-end suite covers the Settings screen (adding, testing, editing and removing providers; the key
 never coming back), the whole chat (streaming, every tool, Undo, errors, Stop, history, both protocols),

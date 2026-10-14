@@ -16,9 +16,9 @@ name = "somescript_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [features]
-# A release build has the web inspector off, and WebView2 then opens no debugging port either. CI builds
-# the app with this on to drive its real window over the Chrome DevTools Protocol (.github/workflows/
-# desktop.yml, "Windows (WebView2, first launch)"). No build that ships turns it on.
+# A release build has the web inspector off. CI builds the app with this on to drive its real window over
+# the Chrome DevTools Protocol (.github/workflows/desktop.yml, "Windows (WebView2, first launch)"): with
+# it, SOMESCRIPT_CDP_PORT=<port> gives the window a debugging port. No build that ships turns it on.
 devtools = ["tauri/devtools"]
 
 [build-dependencies]

@@ -4,8 +4,8 @@
 // webview does: loading the app from the loopback server with the per-launch cookie, Tauri's IPC being
 // available to that origin (the folder picker needs it), or the OS's own Documents folder on a first launch.
 // CI (desktop.yml, "Windows (WebView2, first launch)") builds the app with the `devtools` Cargo feature (a
-// release build has the inspector off, and WebView2 then opens no debugging port), starts it with
-// WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9222, and runs this.
+// release build has the inspector off), starts it with SOMESCRIPT_CDP_PORT=9222, which gives the window a
+// debugging port, and runs this.
 //
 //   bun run e2e:webview2        (needs APP_URL, and CDP_URL if it isn't http://127.0.0.1:9222)
 import { defineConfig } from "@playwright/test";

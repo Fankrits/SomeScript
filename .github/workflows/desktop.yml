@@ -202,12 +202,13 @@ jobs:
   # The app in its real Windows webview. Everything above drives the Rust server's UI in Chromium,
   # which can't show what only WebView2 does: loading the app from the loopback server with the
   # per-launch cookie, Tauri's IPC reaching that origin, or the OS's own Documents folder on a first
-  # launch (where creating a project broke). It is driven over the Chrome DevTools Protocol. A release
-  # build has the web inspector off and WebView2 then opens no debugging port (the first run of this
-  # job, against the installed app, never got one), so the app is built here with the `devtools`
-  # feature, which no build that ships turns on. It needs a window on the runner, which is new here,
-  # so it reports without gating (continue-on-error, and not in "Desktop success") until it has
-  # proven stable.
+  # launch (where creating a project broke). It is driven over the Chrome DevTools Protocol, which needs
+  # the browser started with a debugging port. WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS did not get one
+  # there (the first runs of this job showed the browser's command line without it), and a release
+  # build has the web inspector off, so the app is built here with the `devtools` feature, which no
+  # build that ships turns on: with it, SOMESCRIPT_CDP_PORT gives the window a debugging port. It
+  # needs a window on the runner, which is new here, so it reports without gating (continue-on-error,
+  # and not in "Desktop success") until it has proven stable.
   webview2:
     name: Windows (WebView2, first launch)
     needs: changes
@@ -246,7 +247,7 @@ jobs:
 
           # No SOMESCRIPT_LIBRARY and no stand-in Documents folder: the OS's own default, as on a first launch.
           export SOMESCRIPT_PORT=47123 SOMESCRIPT_TOKEN=webview2-ci-token-0123456789abcdef
-          export WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS="--remote-debugging-port=9222"
+          export SOMESCRIPT_CDP_PORT=9222
           "$app_dir/somescript-desktop.exe" > "$RUNNER_TEMP/somescript.log" 2>&1 &
           app=$!
           trap 'kill "$app" 2>/dev/null || true' EXIT

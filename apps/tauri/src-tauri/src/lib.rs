@@ -178,6 +178,19 @@ pub fn run() {
             // nothing. (Elsewhere the webview delivers them to the page already.)
             #[cfg(windows)]
             let window = window.disable_drag_drop_handler();
+            // CI drives the real Windows window over the Chrome DevTools Protocol, which needs the
+            // browser started with a debugging port. WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS did not
+            // reach it (the browser's command line had only wry's own arguments), so the window is
+            // given the argument itself, along with the ones wry would have passed. Only a build with
+            // the `devtools` feature has this, and no build that ships does.
+            #[cfg(feature = "devtools")]
+            let window = match std::env::var("SOMESCRIPT_CDP_PORT") {
+                Ok(port) => window.additional_browser_args(&format!(
+                    "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection \
+                     --autoplay-policy=no-user-gesture-required --remote-debugging-port={port}"
+                )),
+                Err(_) => window,
+            };
             window.build()?;
             Ok(())
         })
