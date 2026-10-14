@@ -13,7 +13,7 @@ endpoint) in **Settings** and the chat panel works on the open project. See _AI 
 
 ```sh
 # macOS (Homebrew cask)
-brew tap Fankrits/somescript https://github.com/Fankrits/SomeScript && brew install --cask somescript
+brew tap Fankrits/somescript https://github.com/Fankrits/SomeScript && brew trust Fankrits/somescript && brew install --cask somescript
 
 # macOS or Linux (shell installer)
 curl -fsSL https://github.com/Fankrits/SomeScript/releases/latest/download/install.sh | sh
@@ -21,6 +21,8 @@ curl -fsSL https://github.com/Fankrits/SomeScript/releases/latest/download/insta
 # Windows (PowerShell)
 irm https://github.com/Fankrits/SomeScript/releases/latest/download/install.ps1 | iex
 ```
+
+Homebrew 7 and later ask you to trust a third-party tap (`brew trust`). An older Homebrew has no such command: leave that step out.
 
 ### What each installer does
 

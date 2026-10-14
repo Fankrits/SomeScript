@@ -70,7 +70,7 @@ Install SomeScript Desktop directly from your terminal:
 
 ```sh
 # macOS (Homebrew cask)
-brew tap Fankrits/somescript https://github.com/Fankrits/SomeScript && brew install --cask somescript
+brew tap Fankrits/somescript https://github.com/Fankrits/SomeScript && brew trust Fankrits/somescript && brew install --cask somescript
 
 # macOS or Linux (shell installer)
 curl -fsSL https://github.com/Fankrits/SomeScript/releases/latest/download/install.sh | sh
