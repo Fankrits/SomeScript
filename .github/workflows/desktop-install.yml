@@ -370,6 +370,10 @@ jobs:
             if [ -f "$uninst" ]; then "$uninst" /S; sleep 5; fi
             rm -rf "$inst_dir"
           fi
+          # The smoke test's real-Documents step saves the library choice in the app's real config folder
+          # (the point of that step is to use the runner's own profile). A second install on the same
+          # profile would then see a saved folder instead of a first launch.
+          rm -rf "$APPDATA/com.fankrits.somescript" "$LOCALAPPDATA/com.fankrits.somescript"
       - name: Test in powershell.exe (Windows PowerShell 5.1)
         run: powershell.exe -ExecutionPolicy Bypass -Command "irm https://github.com/Fankrits/SomeScript/releases/latest/download/install.ps1 | iex"
       - name: Verify powershell.exe install
@@ -390,6 +394,10 @@ jobs:
             if [ -f "$uninst" ]; then "$uninst" /S; sleep 5; fi
             rm -rf "$inst_dir"
           fi
+          # The smoke test's real-Documents step saves the library choice in the app's real config folder
+          # (the point of that step is to use the runner's own profile). A second install on the same
+          # profile would then see a saved folder instead of a first launch.
+          rm -rf "$APPDATA/com.fankrits.somescript" "$LOCALAPPDATA/com.fankrits.somescript"
 
   live-brew:
     name: Live test (Homebrew cask on macOS)
