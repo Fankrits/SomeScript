@@ -87,8 +87,9 @@ export default defineConfig({
     // changeOrigin: the Rust server only accepts its own Host (DNS-rebinding guard).
     proxy: { "/api": { target: `http://127.0.0.1:${apiPort}`, changeOrigin: true } },
     watch: {
-      // 3. tell Vite to ignore watching `src-tauri`
-      ignored: ["**/src-tauri/**"],
+      // 3. tell Vite to ignore watching `src-tauri`, and the end-to-end run folder: Playwright writes
+      // HTML trace files there, and each one made the dev server reload the page mid-test.
+      ignored: ["**/src-tauri/**", "**/e2e/.run/**"],
     },
   },
 });

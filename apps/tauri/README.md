@@ -113,6 +113,7 @@ bun run web:build && bun test              # drift guard (below) + the chat's un
 bun run web:build && (cd src-tauri && cargo build)
 bun run e2e:install                        # once: the Chromium Playwright drives
 bun run e2e                                # E2E_APP=<release binary> runs the same suite against it
+bun run e2e:dev e2e/tasks.e2e.ts           # the same specs through the Vite dev server (`tauri dev`'s flow)
 ```
 
 First-run setup is tested in `e2e/onboarding.e2e.ts`, where every test starts an app instance of its own (own port,
@@ -127,6 +128,12 @@ The end-to-end suite covers the Settings screen (adding, testing, editing and re
 never coming back), the whole chat (streaming, every tool, Undo, errors, Stop, history, both protocols),
 auto-compile, and the Tasks board. `e2e/mock-provider.ts` is the scripted provider: its header lists what each
 kind of prompt makes it do.
+
+`bun run e2e:dev` (`e2e/playwright.dev.config.ts`) runs the same specs the way `bun run tauri dev` serves the app:
+unbundled by the Vite dev server on port 1420, with `/api` proxied to the Rust debug server. A built bundle hides two
+failures that only a dev server has (a package missing from its module graph, and a stale dependency cache that
+loads CodeMirror twice and leaves a blank editor), so CI runs the editor specs this way too (tasks, auto-compile,
+editor). The first page load compiles hundreds of modules on demand, hence the longer timeouts.
 
 **Editor drift.** Because the desktop app compiles the editor, a future editor change can add an `/api` call
 the Rust server lacks. `scripts/api-coverage.test.ts` checks the built bundle against the Rust routes and

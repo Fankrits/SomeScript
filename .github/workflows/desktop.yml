@@ -180,6 +180,12 @@ jobs:
       # The app needs a display even though it opens no window when headless.
       - name: Run the end-to-end tests
         run: xvfb-run -a bun run e2e
+      # The editor specs again, the way `bun run tauri dev` serves the app: unbundled by the Vite dev
+      # server instead of the bundle the binary embeds. Two failures got past every other check that
+      # way (a package missing from the dev server's module graph, and a stale dependency cache that
+      # loaded CodeMirror twice and left a blank editor).
+      - name: Run the editor specs against the Vite dev server
+        run: xvfb-run -a bun run e2e:dev e2e/tasks.e2e.ts e2e/autocompile.e2e.ts e2e/editor.e2e.ts
       - name: Keep the report
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

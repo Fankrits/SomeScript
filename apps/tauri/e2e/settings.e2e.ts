@@ -224,7 +224,7 @@ test("the General tab shows where projects are stored", async ({ page }) => {
   await expect(page).toHaveURL(/section=ai/);
 });
 
-test("Back never follows a `from` that points outside the app", async ({ page }) => {
+test("Back never follows a `from` that points outside the app", async ({ page, baseURL }) => {
   for (const from of [
     "/\\evil.example",
     "//evil.example",
@@ -234,6 +234,7 @@ test("Back never follows a `from` that points outside the app", async ({ page })
     await page.goto(`/settings?section=ai&from=${encodeURIComponent(from)}`);
     await page.getByRole("button", { name: "Back" }).click();
     await expect(page).toHaveURL(/\/dashboard$/);
-    expect(new URL(page.url()).hostname).toBe("127.0.0.1");
+    // Still on the app's own origin (the Rust server, or the Vite dev server in the dev-flow config).
+    expect(new URL(page.url()).origin).toBe(new URL(baseURL!).origin);
   }
 });
