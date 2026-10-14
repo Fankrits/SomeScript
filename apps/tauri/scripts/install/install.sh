@@ -53,11 +53,8 @@ verify_checksum() {
 
 is_app_running() {
   app_pattern="${1:-SomeScript.app}"
-  if command -v pgrep >/dev/null 2>&1; then
-    pgrep -f "$app_pattern" >/dev/null 2>&1
-  else
-    ps aux | grep -v grep | grep -q "$app_pattern"
-  fi
+  # Without pgrep (none of the supported systems lack it) the check is skipped rather than guessed.
+  command -v pgrep >/dev/null 2>&1 && pgrep -f "$app_pattern" >/dev/null 2>&1
 }
 
 install_macos() {

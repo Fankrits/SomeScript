@@ -69,9 +69,11 @@ jobs:
           persist-credentials: false
       - id: read
         run: |
-          echo "version=$(jq -r .version apps/tauri/src-tauri/tauri.conf.json)" >> "$GITHUB_OUTPUT"
-          echo "signed=${APPLE_SIGN}" >> "$GITHUB_OUTPUT"
-          echo "updater_signed=${UPDATER_SIGN}" >> "$GITHUB_OUTPUT"
+          {
+            echo "version=$(jq -r .version apps/tauri/src-tauri/tauri.conf.json)"
+            echo "signed=${APPLE_SIGN}"
+            echo "updater_signed=${UPDATER_SIGN}"
+          } >> "$GITHUB_OUTPUT"
 
   bundle:
     name: ${{ matrix.name }}
