@@ -578,6 +578,9 @@ test.describe("models that send tool arguments in another shape", () => {
     await ask(page, "stuck call");
     await expect(page.getByText(/same arguments 3 times/)).toBeVisible({ timeout: 20_000 });
     await expect(page.getByText(/different model/)).toBeVisible();
+    // The scripted provider listens on loopback, like Ollama and LM Studio, so the notice also
+    // names the usual cause for a model running on this computer.
+    await expect(page.getByText(/raise its context window to 16k/)).toBeVisible();
     await waitForTurnEnd(page);
     // Three attempts, not the 25-step limit.
     await expect(page.getByTestId("tool-read_file")).toHaveCount(3);

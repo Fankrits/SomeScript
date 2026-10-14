@@ -78,21 +78,54 @@ impl AiHttp {
                     "The assistant couldn't set up its secure connection on this computer.",
                 )
             })?;
-        let loopback = reqwest::Url::parse(base_url)
-            .ok()
-            .and_then(|u| u.host_str().map(str::to_owned))
-            .is_some_and(|h| {
-                h == "localhost"
-                    || h.ends_with(".localhost")
-                    || h.trim_matches(['[', ']'])
-                        .parse::<std::net::IpAddr>()
-                        .is_ok_and(|ip| ip.is_loopback())
-            });
-        Ok(if loopback {
+        Ok(if is_loopback_url(base_url) {
             clients.local.clone()
         } else {
             clients.remote.clone()
         })
+    }
+}
+
+/// Whether `base_url` points at this computer: Ollama, LM Studio, a local proxy.
+pub fn is_loopback_url(base_url: &str) -> bool {
+    reqwest::Url::parse(base_url)
+        .ok()
+        .and_then(|u| u.host_str().map(str::to_owned))
+        .is_some_and(|h| {
+            h == "localhost"
+                || h.ends_with(".localhost")
+                || h.trim_matches(['[', ']'])
+                    .parse::<std::net::IpAddr>()
+                    .is_ok_and(|ip| ip.is_loopback())
+        })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_loopback_url;
+
+    #[test]
+    fn only_addresses_on_this_computer_are_loopback() {
+        for url in [
+            "http://localhost:11434/v1",
+            "http://LOCALHOST:1234/v1",
+            "http://127.0.0.1:11434/v1",
+            "http://127.1.2.3/v1",
+            "http://[::1]:11434/v1",
+            "http://ollama.localhost:11434/v1",
+        ] {
+            assert!(is_loopback_url(url), "{url}");
+        }
+        for url in [
+            "https://api.openai.com/v1",
+            "http://192.168.1.20:11434/v1",
+            "http://localhost.example.com/v1",
+            "http://127.0.0.1.example.com/v1",
+            "not a url",
+            "",
+        ] {
+            assert!(!is_loopback_url(url), "{url}");
+        }
     }
 }
 

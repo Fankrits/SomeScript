@@ -154,6 +154,13 @@ test("presets pre-fill the form, and local servers need no key", async ({ page }
   await expect(page.getByLabel("Name", { exact: true })).toHaveValue("Ollama (local)");
   await expect(page.getByLabel("Base URL")).toHaveValue("http://localhost:11434/v1");
   await expect(page.getByLabel("API key")).toHaveAttribute("placeholder", "Optional");
+  // A local model's small default context window is the usual reason its tool calls fail.
+  await expect(page.getByText("OLLAMA_CONTEXT_LENGTH=16384")).toBeVisible();
+  await page.getByRole("button", { name: "Back" }).click();
+
+  await page.getByTestId("preset-lmstudio").click();
+  await expect(page.getByLabel("Base URL")).toHaveValue("http://localhost:1234/v1");
+  await expect(page.getByText("Context Length of 16384")).toBeVisible();
   await page.getByRole("button", { name: "Back" }).click();
 
   await page.getByTestId("preset-anthropic").click();

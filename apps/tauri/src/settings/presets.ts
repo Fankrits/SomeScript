@@ -81,7 +81,7 @@ export const PRESETS: Preset[] = [
     baseUrl: "http://localhost:11434/v1",
     needsKey: false,
     models: [],
-    hint: "Runs on this computer, no key. Pick a model you've pulled, e.g. qwen2.5-coder.",
+    hint: "Runs on this computer, no key. Pick a model you've pulled that can use tools, e.g. qwen2.5-coder. Give Ollama a context window of 16k or more (OLLAMA_CONTEXT_LENGTH=16384): its default is too small for the assistant's tools.",
   },
   {
     id: "lmstudio",
@@ -90,7 +90,7 @@ export const PRESETS: Preset[] = [
     baseUrl: "http://localhost:1234/v1",
     needsKey: false,
     models: [],
-    hint: "Start the local server in LM Studio first.",
+    hint: "Start the local server in LM Studio first, and load the model with a Context Length of 16384 or more: the default is too small for the assistant's tools.",
   },
   {
     id: "custom",

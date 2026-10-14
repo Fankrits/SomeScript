@@ -164,6 +164,14 @@ model read it), `delete_file`, `move_file`, `compile_project`, and `todo_write` 
 `.preview-cache`, ...) are off limits. Edits show a diff with **Undo**, which asks first if the file changed since.
 A model that can't use tools (many small local ones) still chats.
 
+**Local models.** Ollama and LM Studio often load a model with a 2–4k-token context window and silently cut
+anything longer from the front, which is where the tool definitions are. The model then calls tools with no
+arguments (or prints the call as text). The fixed part of every request, the instructions plus the nine tool
+definitions, is about 3k tokens (a Rust test keeps it from growing), and the files the model reads come on top, so
+give the model 16k or more: `OLLAMA_CONTEXT_LENGTH=16384 ollama serve` for Ollama, the _Context Length_ setting
+when you load the model in LM Studio. If the same failing call repeats three times the assistant stops and, for a
+model on this computer, tells you to check the context window.
+
 **Keys and privacy.**
 
 - Keys are stored in `ai.json` in the OS app-config dir, written owner-only on Unix, and are never returned: the UI

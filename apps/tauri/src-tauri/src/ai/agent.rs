@@ -228,17 +228,31 @@ pub async fn run(mut input: RunInput, tx: mpsc::Sender<Bytes>) {
         }
         if repeated_failures >= MAX_REPEATED_FAILURES {
             let tool = last_failure.map(|(name, _)| name).unwrap_or_default();
+            let local = super::is_loopback_url(&input.conn.provider.base_url);
             emit(
                 &tx,
-                json!({ "type": "notice", "message": format!(
-                    "The model called {tool} with the same arguments {MAX_REPEATED_FAILURES} times and got an error each time, so the assistant stopped. This model may not handle tool calls well. Try a different model in Settings."
-                ) }),
+                json!({ "type": "notice", "message": stalled_notice(&tool, local) }),
             )
             .await;
             break "stalled";
         }
     };
     emit(&tx, json!({ "type": "done", "reason": reason })).await;
+}
+
+/// Added to the "stuck" notice when the model runs on this computer. A local server often loads
+/// a model with a small context window and silently cuts the front of the request, which is
+/// where the tool definitions are, so the model keeps calling tools with no arguments.
+const LOCAL_CONTEXT_HINT: &str = " If it runs on this computer, also raise its context window to 16k or more, because a small one cuts off the tool definitions (Ollama: OLLAMA_CONTEXT_LENGTH=16384; LM Studio: Context Length when loading the model).";
+
+fn stalled_notice(tool: &str, local: bool) -> String {
+    let mut message = format!(
+        "The model called {tool} with the same arguments {MAX_REPEATED_FAILURES} times and got an error each time, so the assistant stopped. This model may not handle tool calls well. Try a different model in Settings."
+    );
+    if local {
+        message.push_str(LOCAL_CONTEXT_HINT);
+    }
+    message
 }
 
 fn random_prefix() -> String {
@@ -911,6 +925,42 @@ mod tests {
     }
 
     #[test]
+    fn the_fixed_part_of_a_request_stays_small_enough_for_local_models() {
+        // Ollama and LM Studio often load a model with a 2-4k token context and silently cut the
+        // front of anything longer. That drops the tool definitions, and the model then calls
+        // tools with no arguments. What every request carries whatever the user asked (the
+        // instructions and the tool definitions) is about 10.6k characters, roughly 3k tokens
+        // today: don't let it grow without noticing.
+        const BUDGET_CHARS: usize = 12_000;
+        let body = protocol::build_body(
+            &Provider::default(),
+            "m",
+            &system_prompt("", Some("chapters/intro.tex")),
+            &[user("hi")],
+            &specs(),
+        );
+        let size = body.to_string().len();
+        assert!(
+            size <= BUDGET_CHARS,
+            "the instructions and tool definitions are {size} characters; the budget is {BUDGET_CHARS}"
+        );
+    }
+
+    #[test]
+    fn a_stalled_local_model_is_pointed_at_its_context_window() {
+        let local = stalled_notice("read_file", true);
+        assert!(local.contains("read_file"));
+        assert!(local.contains("Try a different model"));
+        assert!(local.contains("context window"));
+        assert!(local.contains("OLLAMA_CONTEXT_LENGTH"));
+        assert!(local.contains("LM Studio"));
+        // A hosted model has no context window to raise, so it only hears the first part.
+        let hosted = stalled_notice("read_file", false);
+        assert!(hosted.contains("Try a different model"));
+        assert!(!hosted.contains("context window"));
+    }
+
+    #[test]
     fn http_errors_become_actionable_messages_without_leaking_markup() {
         let p = Provider {
             name: "OpenAI".into(),
@@ -1319,6 +1369,8 @@ mod tests {
         let message = notice["message"].as_str().unwrap();
         assert!(message.contains("read_file"), "{message}");
         assert!(message.contains("different model"), "{message}");
+        // The mock listens on loopback, like Ollama and LM Studio do.
+        assert!(message.contains("context window"), "{message}");
     }
 
     #[tokio::test]
