@@ -118,8 +118,9 @@ bun run e2e                                # E2E_APP=<release binary> runs the s
 First-run setup is tested in `e2e/onboarding.e2e.ts`, where every test starts an app instance of its own (own port,
 home, Documents and config; `e2e/first-run.ts`), because the state under test is "nothing configured yet". That
 includes the regression for "File not found" when creating a project: a missing default folder, a Documents "folder"
-that is really a file, and a chosen folder that vanished. `bun run e2e:webview2` drives the packaged Windows app in its
-real WebView2 (over CDP); CI runs it, without gating, in the "Windows (WebView2, first launch)" job.
+that is really a file, and a chosen folder that vanished. `bun run e2e:webview2` drives the Windows app in its
+real WebView2 (over CDP); CI runs it, without gating, in the "Windows (WebView2, first launch)" job, on a release build
+made with the `devtools` Cargo feature (a shipped build has the inspector, and so the debugging port, off).
 
 The end-to-end suite covers the Settings screen (adding, testing, editing and removing providers; the key
 never coming back), the whole chat (streaming, every tool, Undo, errors, Stop, history, both protocols),
