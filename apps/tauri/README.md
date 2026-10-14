@@ -141,8 +141,9 @@ WebKit is the engine under the Mac app's WKWebView and the Linux build's WebKitG
 Playwright's current WebKit, not the system's, so it finds what differs between engines (focus, events, drag and drop,
 layout), not what only an old macOS lacks: `e2e/old-webview.e2e.ts` covers that. It found a bug Chromium never showed
 (the editor dropped a project's file when the server answered before React had rendered the selection, leaving a blank
-editor with autosave and auto-compile off), and it is a CI step, not an extra. One test is skipped there, with its
-reason in the test: Playwright's WebKit does not deliver the mouse drag of a task between columns.
+editor with autosave and auto-compile off), and it is a CI step, not an extra. Two tests are skipped there, each with
+its reason in the test: reading the clipboard needs a permission only Chromium has, and Playwright's WebKit does not
+deliver the mouse drag of a task between columns.
 
 **Editor drift.** Because the desktop app compiles the editor, a future editor change can add an `/api` call
 the Rust server lacks. `scripts/api-coverage.test.ts` checks the built bundle against the Rust routes and
