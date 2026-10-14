@@ -188,14 +188,13 @@ jobs:
         run: xvfb-run -a bun run e2e:dev e2e/tasks.e2e.ts e2e/autocompile.e2e.ts e2e/editor.e2e.ts
       # The whole suite again in WebKit, the engine under the Mac app's WKWebView (nothing else here
       # runs it). Playwright's own current WebKit, so it finds what differs from Chromium, not what an
-      # old macOS lacks (e2e/old-webview.e2e.ts covers that). Reports without failing the job until it
-      # has been stable for a few runs.
+      # old macOS lacks (e2e/old-webview.e2e.ts covers that). It found a blank-editor bug that
+      # Chromium never showed: a project's file was dropped when the server answered before React
+      # had rendered the selection.
       - name: Run the end-to-end tests in WebKit
-        id: webkit
-        continue-on-error: true
         run: xvfb-run -a bun run e2e:webkit
       - name: Keep the report
-        if: failure() || steps.webkit.outcome == 'failure'
+        if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: e2e-report

@@ -97,7 +97,7 @@ test("exports a project as a ZIP and imports that ZIP as a new project", async (
   expect(path).toBeTruthy();
 
   const imported = name("Imported");
-  await page.getByRole("button", { name: "Import" }).click();
+  await page.getByRole("button", { name: "Import", exact: true }).click();
   await page.getByLabel("ZIP file").setInputFiles(path!);
   await page.getByLabel("Project name").fill(imported);
   await page.getByRole("button", { name: "Import", exact: true }).last().click();
