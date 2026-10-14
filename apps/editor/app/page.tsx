@@ -1360,6 +1360,13 @@ const Example = () => {
 
       setSelectedPath(path);
       selectingPathRef.current = path;
+      // Mirror the selection into stateRef now, not when React commits it. The stale-body check
+      // below compares against stateRef, and the content fetch can answer before React has
+      // rendered this update and run the effect that syncs the mirror (a local server answers in
+      // a millisecond; a busy page, such as the first paint of a project, takes far longer). A
+      // lagging mirror made that check discard the file's own content, leaving a blank editor
+      // that autosave and auto-compile then ignored for good (loadedPathRef never matched).
+      stateRef.current = { ...stateRef.current, selectedPath: path };
       // Partial update — merged server-side with the settings toggles saved
       // independently from saveSettings, so neither clobbers the other.
       if (projectId) void saveEditorPrefs(projectId, { lastOpenFile: path });

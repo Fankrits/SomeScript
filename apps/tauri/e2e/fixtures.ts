@@ -104,7 +104,9 @@ export const test = base.extend<{ provider: MockProvider; api: Api; project: Pro
 
 export async function openEditor(page: Page, project: Project) {
   await page.goto(`/?projectId=${encodeURIComponent(project.id)}`);
-  await page.locator(".cm-content").waitFor();
+  // The editor is there before the file's text is: wait for the text, as a person would. Typing
+  // sooner is replaced when the file arrives, and a file that never arrives fails here, by name.
+  await expect(page.locator(".cm-content")).not.toBeEmpty({ timeout: 20_000 });
 }
 
 /** Appends text at the end of the open document, typing like a person. */

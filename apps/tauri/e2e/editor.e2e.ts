@@ -101,6 +101,50 @@ test.describe("files", () => {
     expect(await api.files(project.id, "other.tex")).toBe("OTHER FILE\n");
   });
 
+  test("the file opens even when the server answers before the page has rendered the selection", async ({
+    page,
+    project,
+    api,
+  }) => {
+    // The page picks main.tex, asks the server for it and compares the answer with what it has
+    // rendered so far. A local server answers within a millisecond and a busy page (the first paint
+    // of a project, a slow machine, WebKit under load) renders far later: the answer used to be
+    // judged stale and thrown away, leaving a blank editor that autosave and auto-compile then
+    // ignored for good. Answering from memory, in the same task, makes that order certain, not rare.
+    await page.addInitScript((projectId: string) => {
+      const real = window.fetch.bind(window);
+      let main: unknown = null;
+      let served = false;
+      void real(`/api/files?path=main.tex&projectId=${encodeURIComponent(projectId)}`)
+        .then((r) => r.json())
+        .then((data) => {
+          main = data;
+        });
+      window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
+        const url =
+          typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        if (!served && main && url.includes("/api/files?path=main.tex")) {
+          served = true;
+          (window as any).__servedFromMemory = true;
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve(main),
+          } as Response);
+        }
+        return real(input, init);
+      };
+    }, project.id);
+
+    await page.goto(`/?projectId=${encodeURIComponent(project.id)}`);
+    await expect(page.locator(".cm-content")).toContainText("documentclass");
+    expect(await page.evaluate(() => (window as any).__servedFromMemory)).toBe(true);
+
+    // It counts as loaded, so what is typed is saved.
+    await typeInEditor(page, "\nstill saved");
+    await expect.poll(() => api.files(project.id, "main.tex")).toContain("still saved");
+  });
+
   test("a file changed on disk by something else shows up after the tree refreshes", async ({
     page,
     project,
