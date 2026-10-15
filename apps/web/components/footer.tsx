@@ -4,6 +4,8 @@ import React from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { Mail, Send } from "lucide-react";
+import { Github } from "@/components/icons/github";
+import { REPO, RELEASES_URL } from "@/lib/desktop";
 
 const InstagramIcon = ({ className }: { className?: string }) => (
   <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
@@ -37,6 +39,15 @@ export default function Footer() {
             </p>
             <div className="flex items-center gap-3 pt-1">
               <a
+                href={REPO}
+                target="_blank"
+                rel="noreferrer"
+                aria-label="GitHub repository"
+                className="inline-flex text-white/60 transition-colors hover:text-white"
+              >
+                <Github className="h-5 w-5" />
+              </a>
+              <a
                 href="https://www.instagram.com/fankrits/"
                 target="_blank"
                 rel="noreferrer"
@@ -63,6 +74,11 @@ export default function Footer() {
                 Product
               </h4>
               <ul className="space-y-2 text-xs sm:text-sm text-white/60 font-light">
+                <li>
+                  <Link href="#desktop" className="hover:text-white transition-colors">
+                    Desktop App
+                  </Link>
+                </li>
                 <li>
                   <Link href="#features" className="hover:text-white transition-colors">
                     Features
@@ -95,6 +111,26 @@ export default function Footer() {
                     className="hover:text-white transition-colors"
                   >
                     Documentation
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href={REPO}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="hover:text-white transition-colors"
+                  >
+                    GitHub
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href={RELEASES_URL}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="hover:text-white transition-colors"
+                  >
+                    Releases
                   </a>
                 </li>
                 <li>

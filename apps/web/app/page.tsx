@@ -7,8 +7,11 @@ import { Button } from "@/components/ui/button";
 import HeroMockup from "@/components/hero-mockup";
 import GridBackgroundDemo from "@/components/grid-background-demo";
 import { FinalCta } from "@/components/sections/final-cta";
+import { DesktopSection } from "@/components/sections/desktop";
 import Header from "@/components/header";
 import Footer from "@/components/footer";
+import { getRelease } from "@/lib/release";
+import { DownloadButton, DownloadVersionLine } from "@/components/download-button";
 
 const FeaturesBento = dynamic(() =>
   import("@/components/sections/features-bento").then((mod) => mod.FeaturesBento),
@@ -22,6 +25,8 @@ export default async function Home() {
   // Signed in? Skip the marketing page and go straight to the dashboard.
   const { userId } = await auth();
   if (userId) redirect("/dashboard");
+
+  const release = await getRelease();
 
   return (
     <div className="flex flex-col min-h-screen bg-background text-foreground font-sans selection:bg-primary/20 relative overflow-x-clip">
@@ -44,26 +49,40 @@ export default async function Home() {
 
                 {/* Paragraph */}
                 <p className="text-sm sm:text-base text-foreground/80 leading-relaxed font-light max-w-xl">
-                  Your AI co-author for flawless math, citations, and typesetting.
+                  Your AI co-author for flawless math, citations, and typesetting — on the web, or
+                  free on your desktop.
                 </p>
 
-                {/* CTA */}
-                <div className="flex w-full justify-center">
-                  <Button
-                    asChild
-                    size="lg"
-                    className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-primary-foreground px-8 py-5 rounded-lg text-base shadow-lg shadow-primary/15 transition-all font-semibold cursor-pointer"
-                  >
-                    <Link href="/dashboard">
-                      Start Typesetting Free <ChevronRight className="ml-1.5 h-5 w-5" />
-                    </Link>
-                  </Button>
+                {/* CTAs */}
+                <div className="flex flex-col items-center gap-3 w-full">
+                  <div className="flex flex-col sm:flex-row items-center justify-center gap-3 w-full sm:w-auto">
+                    <DownloadButton
+                      release={release}
+                      size="lg"
+                      className="w-full sm:w-auto px-6 sm:px-8 py-5 rounded-lg text-sm sm:text-base"
+                    />
+                    <Button
+                      asChild
+                      variant="outline"
+                      size="lg"
+                      className="w-full sm:w-auto px-6 sm:px-8 py-5 rounded-lg text-sm sm:text-base shadow-xs transition-all font-semibold cursor-pointer border-border/80"
+                    >
+                      <Link href="/dashboard">
+                        Start Typesetting Free{" "}
+                        <ChevronRight className="ml-1.5 h-4 sm:h-5 w-4 sm:w-5" />
+                      </Link>
+                    </Button>
+                  </div>
+                  <DownloadVersionLine release={release} className="mt-1" />
                 </div>
               </div>
             }
           />
         </div>
       </section>
+
+      {/* Desktop App Section */}
+      <DesktopSection release={release} />
 
       <main className="flex-1 flex flex-col relative w-full z-10">
         <FeaturesBento />
