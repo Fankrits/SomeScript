@@ -1,9 +1,7 @@
 import React from "react";
 import {
   Apple,
-  ArrowRight,
   Download,
-  ExternalLink,
   FolderOpen,
   KeyRound,
   RefreshCw,
@@ -11,8 +9,7 @@ import {
   WifiOff,
   UserCheck,
 } from "lucide-react";
-import { Github } from "@/components/icons/github";
-import { type Release, REPO, RELEASES_URL } from "@/lib/release";
+import { type Release, RELEASES_URL } from "@/lib/release";
 import { InstallPanel } from "@/components/install-panel";
 import { Button } from "@/components/ui/button";
 
@@ -93,24 +90,7 @@ const FEATURES = [
   },
 ];
 
-function formatReleaseDate(isoDate: string | null): string | null {
-  if (!isoDate) return null;
-  try {
-    return new Date(isoDate).toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      // UTC, so the server and the browser print the same day.
-      timeZone: "UTC",
-    });
-  } catch {
-    return null;
-  }
-}
-
 export function DesktopSection({ release }: { release: Release }) {
-  const formattedDate = formatReleaseDate(release.publishedAt);
-
   return (
     <section
       id="desktop"
@@ -199,7 +179,7 @@ export function DesktopSection({ release }: { release: Release }) {
       </div>
 
       {/* Terminal / Install Commands Section */}
-      <div className="space-y-4 mb-16 sm:mb-20">
+      <div className="space-y-4">
         <div className="text-center max-w-xl mx-auto mb-6">
           <h3 className="text-xl sm:text-2xl font-serif font-medium text-foreground">
             Install with a single command
@@ -211,55 +191,6 @@ export function DesktopSection({ release }: { release: Release }) {
 
         <InstallPanel />
       </div>
-
-      {/* GitHub Row & Release Notes */}
-      <div className="max-w-2xl mx-auto rounded-xl border border-border bg-card p-4 sm:p-5 text-card-foreground shadow-sm">
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-3 text-center sm:text-left">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground">
-              <Github className="h-5 w-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2 justify-center sm:justify-start">
-                <a
-                  href={REPO}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-sm font-semibold text-foreground hover:underline inline-flex items-center gap-1"
-                >
-                  Fankrits/SomeScript
-                  <ExternalLink className="h-3 w-3 text-muted-foreground" />
-                </a>
-                {release.version ? (
-                  <span className="rounded-full bg-primary/10 px-2 py-0.5 font-mono text-[11px] font-medium text-primary">
-                    v{release.version}
-                  </span>
-                ) : null}
-              </div>
-              <p className="text-xs text-muted-foreground font-light mt-0.5">
-                {formattedDate
-                  ? `Published on ${formattedDate} · Source on GitHub`
-                  : "Desktop app releases · Source on GitHub"}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Button asChild variant="outline" size="sm" className="text-xs">
-              <a href={release.html_url} target="_blank" rel="noreferrer">
-                Release notes <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
-              </a>
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      {/* Honest Unsigned Notice */}
-      <p className="max-w-2xl mx-auto text-center text-[11px] text-muted-foreground/80 font-light leading-relaxed mt-6">
-        Installers are in preview and not code-signed yet. The command-line scripts bypass OS
-        quarantine automatically; directly downloaded .dmg or .exe files may display an OS warning
-        on first launch.
-      </p>
     </section>
   );
 }
