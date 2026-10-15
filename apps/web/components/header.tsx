@@ -4,7 +4,9 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { ArrowRight, Menu, X } from "lucide-react";
+import { Github } from "@/components/icons/github";
 import { Button } from "@/components/ui/button";
+import { REPO } from "@/lib/desktop";
 
 export default function Header({ dark = false }: { dark?: boolean }) {
   const [scrolled, setScrolled] = useState(false);
@@ -44,13 +46,19 @@ export default function Header({ dark = false }: { dark?: boolean }) {
       {/* Desktop Navigation */}
       <nav className="hidden md:flex items-center gap-6">
         <Link
-          href="#features"
+          href="/#desktop"
+          className={`text-xs sm:text-sm font-medium transition-colors ${dark ? "text-white/70 hover:text-white" : "text-foreground/70 hover:text-foreground"}`}
+        >
+          Desktop
+        </Link>
+        <Link
+          href="/#features"
           className={`text-xs sm:text-sm font-medium transition-colors ${dark ? "text-white/70 hover:text-white" : "text-foreground/70 hover:text-foreground"}`}
         >
           Features
         </Link>
         <Link
-          href="#how-it-works"
+          href="/#how-it-works"
           className={`text-xs sm:text-sm font-medium transition-colors ${dark ? "text-white/70 hover:text-white" : "text-foreground/70 hover:text-foreground"}`}
         >
           How it Works
@@ -64,11 +72,20 @@ export default function Header({ dark = false }: { dark?: boolean }) {
           Docs
         </a>
         <Link
-          href="#faq"
+          href="/#faq"
           className={`text-xs sm:text-sm font-medium transition-colors ${dark ? "text-white/70 hover:text-white" : "text-foreground/70 hover:text-foreground"}`}
         >
           FAQ
         </Link>
+        <a
+          href={REPO}
+          target="_blank"
+          rel="noreferrer"
+          aria-label="GitHub repository"
+          className={`p-1.5 rounded-md transition-colors ${dark ? "text-white/70 hover:text-white hover:bg-white/10" : "text-foreground/70 hover:text-foreground hover:bg-foreground/5"}`}
+        >
+          <Github className="h-4 w-4" />
+        </a>
         <Button
           asChild
           size="sm"
@@ -103,14 +120,22 @@ export default function Header({ dark = false }: { dark?: boolean }) {
       {mobileMenuOpen && (
         <div className="md:hidden fixed inset-x-0 top-[68px] bg-background/95 backdrop-blur-xl border-b border-border/40 p-5 shadow-2xl flex flex-col gap-4 animate-in slide-in-from-top-2 duration-200 z-50">
           <Link
-            href="#features"
+            href="/#desktop"
+            onClick={() => setMobileMenuOpen(false)}
+            className="text-sm font-medium text-foreground/80 hover:text-foreground py-2 border-b border-border/30 flex items-center justify-between"
+          >
+            <span>Desktop</span>
+            <span className="text-xs text-primary font-normal">Download</span>
+          </Link>
+          <Link
+            href="/#features"
             onClick={() => setMobileMenuOpen(false)}
             className="text-sm font-medium text-foreground/80 hover:text-foreground py-2 border-b border-border/30"
           >
             Features
           </Link>
           <Link
-            href="#how-it-works"
+            href="/#how-it-works"
             onClick={() => setMobileMenuOpen(false)}
             className="text-sm font-medium text-foreground/80 hover:text-foreground py-2 border-b border-border/30"
           >
@@ -126,12 +151,22 @@ export default function Header({ dark = false }: { dark?: boolean }) {
             Docs
           </a>
           <Link
-            href="#faq"
+            href="/#faq"
             onClick={() => setMobileMenuOpen(false)}
             className="text-sm font-medium text-foreground/80 hover:text-foreground py-2 border-b border-border/30"
           >
             FAQ
           </Link>
+          <a
+            href={REPO}
+            target="_blank"
+            rel="noreferrer"
+            onClick={() => setMobileMenuOpen(false)}
+            className="text-sm font-medium text-foreground/80 hover:text-foreground py-2 border-b border-border/30 flex items-center gap-2"
+          >
+            <Github className="h-4 w-4" />
+            <span>GitHub</span>
+          </a>
           <Button
             asChild
             size="lg"

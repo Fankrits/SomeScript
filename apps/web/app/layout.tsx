@@ -33,7 +33,7 @@ export const metadata: Metadata = {
     template: "%s | SomeScript",
   },
   description:
-    "The modern visual LaTeX editor powered by AI. Design, generate, collaborate, and compile beautiful scientific documents with real-time preview and SyncTeX.",
+    "The modern visual LaTeX editor and desktop app powered by AI. Write on the web or offline on your computer. Design, generate, collaborate, and compile beautiful scientific documents with real-time preview and SyncTeX.",
   keywords: [
     "LaTeX editor",
     "Visual LaTeX",
@@ -58,7 +58,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "SomeScript - Visual LaTeX Editor & AI Writing Suite",
     description:
-      "The modern visual LaTeX editor powered by AI. Design, edit, collaborate, and compile beautiful scientific documents with real-time preview.",
+      "The modern visual LaTeX editor and desktop app powered by AI. Write on the web or offline on your computer. Design, edit, collaborate, and compile beautiful scientific documents with real-time preview.",
     url: siteUrl,
     siteName: "SomeScript",
     images: [
@@ -75,7 +75,7 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: "SomeScript - Visual LaTeX Editor & AI Writing Suite",
-    description: "The modern visual LaTeX editor powered by AI.",
+    description: "The modern visual LaTeX editor and desktop app powered by AI.",
     images: ["/logo192.png"],
     creator: "@somescript",
   },
@@ -123,11 +123,11 @@ const jsonLd = {
       "@type": "SoftwareApplication",
       "@id": `${siteUrl}/#application`,
       name: "SomeScript",
-      operatingSystem: "All",
+      operatingSystem: "macOS, Windows, Linux",
       applicationCategory: "DeveloperApplication",
       offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
       description:
-        "Visual LaTeX editor powered by AI and Tectonic compiler for real-time document creation.",
+        "Visual LaTeX editor and desktop app powered by AI and Tectonic compiler for real-time document creation.",
     },
     {
       "@type": "Organization",

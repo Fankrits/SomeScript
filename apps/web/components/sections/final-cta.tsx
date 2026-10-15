@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export function FinalCta() {
@@ -12,7 +12,7 @@ export function FinalCta() {
         <p className="text-xs sm:text-base text-foreground/70 leading-relaxed font-light max-w-xl">
           Join researchers using SomeScript for flawless math, citations, and typesetting.
         </p>
-        <div className="flex w-full justify-center">
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-3 w-full">
           <Button
             asChild
             size="lg"
@@ -20,6 +20,17 @@ export function FinalCta() {
           >
             <Link href="/dashboard">
               Start Typesetting Free <ChevronRight className="ml-1.5 h-4 sm:h-5 w-4 sm:w-5" />
+            </Link>
+          </Button>
+          <Button
+            asChild
+            variant="outline"
+            size="lg"
+            className="w-full sm:w-auto px-6 sm:px-8 py-4 sm:py-5 rounded-lg text-sm sm:text-base shadow-xs transition-all font-semibold cursor-pointer border-border/80"
+          >
+            <Link href="#desktop">
+              <Download className="mr-1.5 h-4 sm:h-5 w-4 sm:w-5" />
+              Download the desktop app
             </Link>
           </Button>
         </div>
