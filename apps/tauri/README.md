@@ -31,15 +31,15 @@ Homebrew 7 and later ask you to trust a third-party tap (`brew trust`). An older
   - **macOS (Homebrew)**: Installs `SomeScript.app` to `/Applications`.
   - **macOS (`install.sh`)**: Mounts the DMG, replaces `SomeScript.app` in `/Applications` (falls back to `~/Applications` if `/Applications` is not writable; overridable via `SOMESCRIPT_INSTALL_DIR`), and launches the app.
   - **Linux (`install.sh`)**: Downloads the AppImage to `~/.local/share/somescript/SomeScript.AppImage` (or `${XDG_DATA_HOME}/somescript`, overridable via `SOMESCRIPT_INSTALL_DIR`), symlinks `~/.local/bin/somescript` (or `SOMESCRIPT_BIN_DIR`), and creates a desktop shortcut in `~/.local/share/applications/somescript.desktop`. An AppImage is used on Linux because the in-app updater can replace it in place.
-  - **Windows (`install.ps1`)**: Runs the NSIS installer silently (`/S`) into `%LOCALAPPDATA%\Programs\SomeScript` (overridable via `SOMESCRIPT_INSTALL_DIR`, passed as NSIS `/D=`).
+  - **Windows (`install.ps1`)**: Runs the NSIS installer silently (`/S`) for the current user, at the installer's default per-user folder (overridable via `SOMESCRIPT_INSTALL_DIR`, passed as NSIS `/D=`).
 - **How it updates**: The desktop app updates itself automatically via its built-in Tauri updater (cryptographically verified with minisign against `latest.json`). The installers only handle the initial installation.
 - **Uninstallation**:
   - **macOS (Homebrew)**: `brew uninstall --cask somescript` (optionally `brew untap Fankrits/somescript`).
   - **macOS (`install.sh`)**: Delete `/Applications/SomeScript.app` (or `~/Applications/SomeScript.app`).
   - **Linux**: Delete the AppImage directory (`rm -rf ~/.local/share/somescript`), the CLI symlink (`rm ~/.local/bin/somescript`), and the desktop file (`rm ~/.local/share/applications/somescript.desktop`).
-  - **Windows**: Uninstall via Windows **Settings > Apps > Installed apps**, or run `%LOCALAPPDATA%\Programs\SomeScript\Uninstall SomeScript.exe /S`.
+  - **Windows**: Uninstall via Windows **Settings > Apps > Installed apps**, (the installer also leaves an `Uninstall SomeScript.exe` in its folder).
 - **Unsigned application notes**: Releases are currently unsigned. Files downloaded via `curl` or `Invoke-WebRequest` do not receive macOS quarantine (`com.apple.quarantine`) or Windows Mark-of-the-Web attributes, so Gatekeeper and SmartScreen do not block their launch. The Homebrew cask strips `com.apple.quarantine` during postflight until Developer ID signing and notarization are configured.
-- **CI verification**: The `.github/workflows/desktop-install.yml` workflow tests these commands via a `fixture` job (staging release assets and testing positive/negative tamper scenarios across macOS, Ubuntu, and Windows). The `live` test runs on release events against real CDN URLs once the first release publishing the unversioned alias assets is shipped. Adding the install jobs to the required checks is the maintainer's call.
+- **CI verification**: `.github/workflows/desktop-install.yml` lints the scripts and cask, then installs a staged copy of the newest release on macOS, Linux and Windows (including a tampered-download test). When a release is published it also runs the exact commands above against the real release URLs, including the Homebrew install. Adding these jobs to the required checks is the maintainer's call.
 
 ## How it works
 
