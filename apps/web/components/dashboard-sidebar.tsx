@@ -5,9 +5,10 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { UserButton, OrganizationSwitcher } from "@clerk/nextjs";
-import { CreditCard, Folder, X, PanelLeft, LayoutTemplate, Trash2 } from "lucide-react";
+import { CreditCard, Folder, X, PanelLeft, LayoutTemplate, Trash2, Monitor, ArrowUpRight } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { UpgradeDialog } from "@/components/upgrade-dialog";
 import { BillingPanel } from "@/components/billing-panel";
 
@@ -135,10 +136,50 @@ export function DashboardSidebar({
             <Trash2 className="h-4 w-4" />
             Trash
           </Link>
+          <Link
+            href="/?desktop=true#desktop"
+            onClick={() => setMobileOpen(false)}
+            className="flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-all text-muted-foreground hover:text-foreground hover:bg-secondary/60 border border-transparent group"
+          >
+            <div className="flex items-center gap-3">
+              <Monitor className="h-4 w-4" />
+              <span>Desktop App</span>
+            </div>
+            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-muted/80 text-muted-foreground group-hover:text-foreground group-hover:bg-muted">
+              Free
+            </span>
+          </Link>
         </nav>
       </div>
 
-      <div className="flex flex-col gap-4 pt-4 border-t border-sidebar-border">
+      <div className="flex flex-col gap-3 pt-4 border-t border-sidebar-border">
+        {/* Desktop App Download Card */}
+        <div className="rounded-xl border border-sidebar-border/80 bg-sidebar-accent/30 p-3 flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Monitor className="h-4 w-4 text-primary" />
+              <span className="text-xs font-semibold text-foreground">Desktop App</span>
+            </div>
+            <Badge variant="outline" className="text-[9px] px-1.5 py-0 font-medium">
+              Offline
+            </Badge>
+          </div>
+          <p className="text-[11px] text-muted-foreground leading-snug">
+            Write LaTeX offline with local files & free bring-your-own-key AI.
+          </p>
+          <Button
+            asChild
+            size="sm"
+            variant="outline"
+            className="w-full justify-between text-xs h-8 mt-0.5 bg-background/50 hover:bg-background"
+          >
+            <Link href="/?desktop=true#desktop" onClick={() => setMobileOpen(false)}>
+              <span>Get Desktop App</span>
+              <ArrowUpRight className="h-3.5 w-3.5 text-muted-foreground" />
+            </Link>
+          </Button>
+        </div>
+
         <UpgradeDialog autoOpenLocked={workspaceLocked} currentPlan={plan} credits={credits} />
 
         {/* User Info / Profile Avatar */}

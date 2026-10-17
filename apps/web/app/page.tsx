@@ -21,10 +21,18 @@ const HowItWorks = dynamic(() =>
 );
 const Faq = dynamic(() => import("@/components/sections/faq").then((mod) => mod.Faq));
 
-export default async function Home() {
-  // Signed in? Skip the marketing page and go straight to the dashboard.
+export default async function Home({
+  searchParams,
+}: {
+  searchParams?: Promise<{ landing?: string; desktop?: string }>;
+}) {
+  const params = searchParams ? await searchParams : undefined;
+  const allowLanding = params?.landing === "true" || params?.desktop === "true";
+
+  // Signed in? Skip the marketing page and go straight to the dashboard,
+  // unless intentionally viewing the landing or desktop download page.
   const { userId } = await auth();
-  if (userId) redirect("/dashboard");
+  if (userId && !allowLanding) redirect("/dashboard");
 
   const release = await getRelease();
 
