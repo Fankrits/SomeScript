@@ -9,7 +9,7 @@
 //! {"type":"text","delta":"..."}            {"type":"reasoning","delta":"..."}
 //! {"type":"tool-call","id","name","args","step"}  {"type":"tool-result","id","ok","result","output"}
 //! {"type":"usage","input","output"}        {"type":"notice","message":"..."}
-//! {"type":"error","message":"..."}         {"type":"done","reason":"stop"|"max-steps"|"stalled"|"error"}
+//! {"type":"error","message":"..."}         {"type":"done","reason":"stop"|"stalled"|"error"}
 //! ```
 //!
 //! The client going away (the stop button, closing the panel) closes `tx`; every await point
@@ -29,9 +29,6 @@ use std::{pin::pin, time::Duration};
 use tokio::sync::mpsc;
 use tokio_stream::StreamExt;
 
-/// Tool-call rounds per user message. Generous for a multi-file edit, still a hard stop for a
-/// model stuck in a loop.
-pub const MAX_STEPS: usize = 25;
 /// The same call failing the same way this many times in a row means the model is not going to
 /// fix it by trying again, so the turn stops there instead of spending every step on it.
 pub const MAX_REPEATED_FAILURES: usize = 3;
@@ -113,14 +110,6 @@ pub async fn run(mut input: RunInput, tx: mpsc::Sender<Bytes>) {
     let mut repeated_failures = 0usize;
 
     let reason = loop {
-        if step_no >= MAX_STEPS {
-            emit(
-                &tx,
-                json!({ "type": "notice", "message": format!("Stopped after {MAX_STEPS} steps. Say \"continue\" to keep going.") }),
-            )
-            .await;
-            break "max-steps";
-        }
         step_no += 1;
         compact(&mut input.history, MAX_CONTEXT_CHARS);
 
@@ -1322,11 +1311,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_model_that_never_stops_calling_tools_is_cut_off() {
+    async fn a_model_can_execute_more_than_25_steps() {
         let s = setup();
-        let replies = (0..MAX_STEPS + 2)
+        let mut replies: Vec<Reply> = (0..30)
             .map(|_| Reply::Sse(openai_tool("x", "list_files", "{}")))
             .collect();
+        replies.push(Reply::Sse(openai_text(&["Done!"])));
         let mock = spawn_mock(replies).await;
         let events = collect(input(
             &s,
@@ -1336,20 +1326,19 @@ mod tests {
         ))
         .await;
         let last = events.last().unwrap();
-        assert_eq!(last["reason"], "max-steps");
+        assert_eq!(last["reason"], "stop");
         assert_eq!(
             events.iter().filter(|e| e["type"] == "tool-call").count(),
-            MAX_STEPS
+            30
         );
-        assert!(events.iter().any(|e| e["type"] == "notice"));
     }
 
     // A model that sends the same broken call again and again (it never gets the arguments right)
-    // must be stopped after a few tries, not left to spend all MAX_STEPS rounds on it.
+    // must be stopped after a few tries, not left to spend infinite rounds on it.
     #[tokio::test]
     async fn a_model_repeating_the_same_failing_call_is_stopped_early() {
         let s = setup();
-        let replies = (0..MAX_STEPS)
+        let replies = (0..10)
             .map(|_| Reply::Sse(openai_tool("x", "read_file", "{}")))
             .collect();
         let mock = spawn_mock(replies).await;
