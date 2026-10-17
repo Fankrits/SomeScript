@@ -95,9 +95,9 @@ export function ChatThread(props: {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col bg-background" data-testid="chat-thread">
-      <Conversation className="min-h-0 flex-1">
-        <ConversationContent className="gap-5 p-3">
+    <div className="flex h-full min-h-0 min-w-0 w-full flex-1 flex-col bg-background" data-testid="chat-thread">
+      <Conversation className="min-h-0 min-w-0 w-full flex-1">
+        <ConversationContent className="gap-5 p-3 min-w-0 w-full">
           {chat.messages.length === 0 ? (
             configured ? (
               <Welcome onPick={send} />
@@ -372,12 +372,31 @@ function Composer(props: {
     !props.disabled && !props.running && (text.trim().length > 0 || props.attachments.length > 0);
 
   // Grow with the text, up to about eight lines.
-  useEffect(() => {
+  const syncHeight = useCallback(() => {
     const el = area.current;
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 176)}px`;
-  }, [text]);
+    const scrollH = el.scrollHeight;
+    // When hidden in an inactive tab or during transitions, scrollHeight can be 0.
+    // Ensure height never collapses below 40px so the user can always see and click the input.
+    const clamped = scrollH > 0 ? Math.min(Math.max(scrollH, 40), 176) : 40;
+    el.style.height = `${clamped}px`;
+  }, []);
+
+  useEffect(() => {
+    syncHeight();
+  }, [text, syncHeight]);
+
+  // When container visibility or size changes (e.g. switching back to chat tab), re-sync height
+  useEffect(() => {
+    const el = area.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      syncHeight();
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [syncHeight]);
 
   const submit = () => {
     if (!canSend) return;
@@ -394,8 +413,8 @@ function Composer(props: {
   };
 
   return (
-    <div className="shrink-0 border-t border-border/60 p-2">
-      <div className="rounded-xl border border-border bg-background shadow-xs focus-within:ring-2 focus-within:ring-ring/30">
+    <div className="shrink-0 border-t border-border/60 p-2 min-w-0 w-full">
+      <div className="w-full min-w-0 rounded-xl border border-border bg-background shadow-xs focus-within:ring-2 focus-within:ring-ring/30">
         {props.attachments.length > 0 && (
           <div className="flex flex-wrap gap-1 px-2 pt-2" data-testid="attachments">
             {props.attachments.map((a, i) => (
@@ -427,9 +446,10 @@ function Composer(props: {
           placeholder={
             props.disabled ? "Connect a provider to start chatting" : "Ask about your document…"
           }
+          onFocus={syncHeight}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={onKeyDown}
-          className="block max-h-44 w-full resize-none bg-transparent px-3 pt-2.5 pb-1 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed"
+          className="block min-h-[40px] max-h-44 w-full min-w-0 resize-none bg-transparent px-3 pt-2.5 pb-1 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed"
         />
         <div className="flex items-center gap-1 px-1.5 pb-1.5">
           <ModelPicker settings={props.settings} onChoose={props.onChoose} />

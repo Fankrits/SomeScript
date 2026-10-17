@@ -205,10 +205,10 @@ function EveThreadInner({
           <ReadCompileLogToolUI />
           <ComposerInbox />
 
-          <div className="h-full flex flex-col bg-background">
+          <div className="h-full flex flex-col bg-background min-w-0 w-full">
             {/* Thread is h-full, so it needs its own flex box to shrink for the
               error banner instead of pushing it out of view. */}
-            <div className="min-h-0 flex-1">
+            <div className="min-h-0 min-w-0 flex-1 w-full">
               <Thread />
             </div>
             {error && (
