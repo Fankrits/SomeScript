@@ -67,12 +67,26 @@ const TABS: TabConfig[] = [
   },
 ];
 
-export function InstallPanel({ className }: { className?: string }) {
+interface InstallPanelProps {
+  className?: string;
+  selectedOs?: SupportedOS | null;
+  onSelectOs?: (os: SupportedOS) => void;
+}
+
+export function InstallPanel({ className, selectedOs, onSelectOs }: InstallPanelProps) {
   const detected = useDetectedOs();
-  const [selectedOs, setSelectedOs] = useState<SupportedOS | null>(null);
+  const [internalSelectedOs, setInternalSelectedOs] = useState<SupportedOS | null>(null);
   const [copiedCmd, setCopiedCmd] = useState<string | null>(null);
 
-  const activeOs = selectedOs ?? detected;
+  const activeOs = selectedOs !== undefined ? (selectedOs ?? detected) : (internalSelectedOs ?? detected);
+
+  const handleSelectOs = (val: SupportedOS) => {
+    if (onSelectOs) {
+      onSelectOs(val);
+    } else {
+      setInternalSelectedOs(val);
+    }
+  };
 
   const handleCopy = (command: string) => {
     if (typeof navigator !== "undefined" && navigator.clipboard) {
@@ -93,7 +107,7 @@ export function InstallPanel({ className }: { className?: string }) {
     >
       <Tabs
         value={activeOs}
-        onValueChange={(val) => setSelectedOs(val as SupportedOS)}
+        onValueChange={(val) => handleSelectOs(val as SupportedOS)}
         className="w-full"
       >
         <TabsList className="grid w-full grid-cols-3 bg-muted/60 p-1 border-b border-border/40 rounded-none h-11">
