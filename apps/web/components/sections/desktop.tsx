@@ -353,23 +353,23 @@ export function DesktopSection({ release }: { release: Release }) {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 sm:gap-4">
           {FEATURES.map((feature) => {
             const Icon = feature.icon;
             return (
               <div
                 key={feature.title}
-                className="flex items-start gap-3.5 rounded-lg border border-border/60 bg-muted/20 p-4 transition-colors hover:border-border"
+                className="flex flex-col justify-start h-full rounded-xl border border-border/70 bg-card/60 p-4 sm:p-5 transition-all hover:border-foreground/20 hover:bg-card hover:shadow-xs"
               >
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary mb-3.5">
                   <Icon className="h-4 w-4" />
                 </div>
-                <div className="space-y-1">
-                  <h4 className="text-sm font-serif font-medium text-foreground">{feature.title}</h4>
-                  <p className="text-xs text-foreground/70 leading-relaxed font-light">
-                    {feature.description}
-                  </p>
-                </div>
+                <h4 className="text-sm font-serif font-semibold text-foreground mb-1.5">
+                  {feature.title}
+                </h4>
+                <p className="text-xs text-foreground/70 leading-relaxed font-light">
+                  {feature.description}
+                </p>
               </div>
             );
           })}
