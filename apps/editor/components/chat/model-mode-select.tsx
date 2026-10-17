@@ -32,7 +32,7 @@ export function ModelModeSelect({ disabled }: { disabled?: boolean }) {
       <SelectTrigger
         size="sm"
         aria-label="Model mode"
-        className="h-7 gap-1 rounded-full border-none bg-transparent px-2.5 text-xs font-medium text-muted-foreground shadow-none hover:bg-accent hover:text-foreground focus-visible:ring-0"
+        className="h-7 gap-1 rounded-full border-none bg-transparent px-2 text-xs font-medium text-muted-foreground shadow-none hover:bg-accent hover:text-foreground focus-visible:ring-0 shrink-0"
       >
         <SelectValue>{current?.label}</SelectValue>
       </SelectTrigger>

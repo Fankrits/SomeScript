@@ -80,7 +80,7 @@ export function ContextIndicator() {
   return (
     <Context maxTokens={maxTokens} usedTokens={usedTokens} usage={undefined}>
       <ContextTrigger
-        className="h-7 gap-1.5 rounded-full px-2 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
+        className="h-7 gap-1.5 rounded-full px-2 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground shrink-0"
         aria-label={`Context ${compact.format(usage.inputTokens)} of ${compact.format(maxTokens)} tokens used`}
       />
       <ContextContent align="start" side="top">

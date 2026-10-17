@@ -70,9 +70,9 @@ function Row(props: {
       open={expandable && open}
       onOpenChange={setOpen}
       data-testid={props.testId}
-      className="rounded-lg border border-border/60 bg-muted/20 text-xs my-1"
+      className="rounded-lg border border-border/60 bg-muted/20 text-xs my-1 overflow-hidden"
     >
-      <div className="flex items-center gap-1.5 px-2 py-1.5">
+      <div className="flex items-center gap-1.5 px-2 py-1.5 min-w-0">
         <CollapsibleTrigger
           disabled={!expandable}
           className={cn(
@@ -90,14 +90,18 @@ function Row(props: {
           <span className="shrink-0 text-muted-foreground [&_svg]:size-3.5">{icon}</span>
           <span className="min-w-0 truncate font-medium">{title}</span>
           {detail && (
-            <span className="min-w-0 shrink truncate text-muted-foreground">{detail}</span>
+            <span className="min-w-0 shrink truncate text-muted-foreground text-[11px]">{detail}</span>
           )}
         </CollapsibleTrigger>
-        {actions}
-        <StatusIcon status={status} />
+        {actions && <div className="shrink-0">{actions}</div>}
+        <div className="shrink-0">
+          <StatusIcon status={status} />
+        </div>
       </div>
       {expandable && (
-        <CollapsibleContent className="border-t border-border/60">{children}</CollapsibleContent>
+        <CollapsibleContent className="border-t border-border/60 overflow-hidden min-w-0">
+          {children}
+        </CollapsibleContent>
       )}
     </Collapsible>
   );
@@ -162,15 +166,15 @@ function UndoButton(props: {
     await perform();
   };
 
-  if (state === "done") return <span className="px-1 text-muted-foreground">Undone</span>;
+  if (state === "done") return <span className="px-1 text-muted-foreground text-[11px]">Undone</span>;
   if (state === "confirm") {
     return (
-      <span className="flex items-center gap-1">
-        <span className="text-muted-foreground">Changed since. Undo anyway?</span>
-        <Button size="xs" variant="destructive" onClick={() => void perform()}>
+      <span className="flex items-center gap-1 text-[11px]">
+        <span className="text-muted-foreground truncate max-w-[80px]">Changed.</span>
+        <Button size="xs" variant="destructive" className="h-6 px-1.5 text-[10px]" onClick={() => void perform()}>
           Undo
         </Button>
-        <Button size="xs" variant="ghost" onClick={() => setState("idle")}>
+        <Button size="xs" variant="ghost" className="h-6 px-1.5 text-[10px]" onClick={() => setState("idle")}>
           Keep
         </Button>
       </span>
@@ -180,6 +184,7 @@ function UndoButton(props: {
     <Button
       size="xs"
       variant="ghost"
+      className="h-6 px-1.5 text-[11px] text-muted-foreground hover:text-foreground"
       disabled={state === "busy"}
       onClick={(e) => {
         e.stopPropagation();
@@ -187,7 +192,7 @@ function UndoButton(props: {
       }}
       aria-label={`Undo: ${props.label}`}
     >
-      <Undo2 /> Undo
+      <Undo2 className="size-3 mr-0.5" /> Undo
     </Button>
   );
 }
@@ -249,14 +254,17 @@ export function HitlCard({ part }: { part: ToolPart }) {
   const inputRequest = part.inputRequest;
   const status = part.status;
   const [submitted, setSubmitted] = useState(false);
+  const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
 
   if (!inputRequest) return null;
 
   if (submitted || status === "done" || status === "error") {
     return (
-      <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1 px-1">
-        <CheckCircle className="size-3.5 text-green-500" />
-        <span>Response submitted.</span>
+      <div className="flex items-center gap-2 text-xs text-muted-foreground my-1.5 px-2.5 py-1.5 rounded-lg bg-muted/20 border border-border/40">
+        <CheckCircle className="size-3.5 shrink-0 text-emerald-500" />
+        <span className="truncate">
+          Response submitted{selectedAnswer ? `: "${selectedAnswer}"` : "."}
+        </span>
       </div>
     );
   }
@@ -264,17 +272,19 @@ export function HitlCard({ part }: { part: ToolPart }) {
   const isApproval = inputRequest.display === "confirmation" || !inputRequest.options;
   const options = inputRequest.options;
 
-  const handleAnswer = (optionId: string) => {
+  const handleAnswer = (optionId: string, label?: string) => {
     if (!agent) return;
     setSubmitted(true);
+    if (label) setSelectedAnswer(label);
     agent.respond([{ requestId: inputRequest.requestId, optionId }]).catch(() => {
       setSubmitted(false);
+      setSelectedAnswer(null);
       toast.error("Failed to submit response");
     });
   };
 
   return (
-    <div className="rounded-lg border border-border bg-card p-3 my-2 space-y-2 shadow-sm text-xs">
+    <div className="@container rounded-xl border border-border/80 bg-card p-3.5 my-2 space-y-3 shadow-xs text-xs">
       <div className="flex items-center gap-2">
         {isApproval ? (
           <ShieldAlert className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
@@ -286,39 +296,69 @@ export function HitlCard({ part }: { part: ToolPart }) {
         </p>
       </div>
 
-      <p className="text-foreground break-words">{inputRequest.prompt}</p>
+      <p className="text-foreground text-xs leading-relaxed break-words">{inputRequest.prompt}</p>
 
       {options && options.length > 0 ? (
-        <div role="group" aria-label="Response options" className="grid grid-cols-1 gap-1.5 pt-1 sm:grid-cols-2">
-          {options.map((opt) => (
-            <Button
-              key={opt.id}
-              size="sm"
-              variant={
-                opt.style === "primary"
-                  ? "default"
-                  : opt.style === "danger"
-                    ? "destructive"
-                    : "outline"
-              }
-              onClick={() => handleAnswer(opt.id)}
-              disabled={submitted}
-              className="h-auto min-h-8 justify-start py-1.5 px-2.5 text-left text-xs whitespace-normal"
-            >
-              {opt.label}
-            </Button>
-          ))}
+        <div
+          role="group"
+          aria-label="Response options"
+          className={cn(
+            "grid gap-2 pt-1 w-full",
+            options.length === 2 ? "grid-cols-1 @xs:grid-cols-2" : "grid-cols-1",
+          )}
+        >
+          {options.map((opt) => {
+            const hasRecommended = /\(recommended\)/i.test(opt.label);
+            const cleanText = opt.label.replace(/\s*\(recommended\)\s*/i, "").trim();
+
+            return (
+              <Button
+                key={opt.id}
+                size="sm"
+                variant={
+                  opt.style === "primary"
+                    ? "default"
+                    : opt.style === "danger"
+                      ? "destructive"
+                      : "outline"
+                }
+                onClick={() => handleAnswer(opt.id, opt.label)}
+                disabled={submitted}
+                className={cn(
+                  "h-auto min-h-9 w-full justify-start items-center py-2 px-3 text-left text-xs font-normal leading-snug whitespace-normal transition-all rounded-lg group",
+                  opt.style !== "primary" &&
+                    opt.style !== "danger" &&
+                    "bg-background/60 hover:bg-accent/80 hover:border-primary/40 text-foreground",
+                )}
+              >
+                <div className="flex w-full items-center justify-between gap-2">
+                  <span className="break-words min-w-0 flex-1">{cleanText}</span>
+                  {hasRecommended && (
+                    <span className="shrink-0 rounded-full bg-primary/10 text-primary px-2 py-0.5 text-[10px] font-medium border border-primary/20">
+                      Recommended
+                    </span>
+                  )}
+                </div>
+              </Button>
+            );
+          })}
         </div>
       ) : (
         <div role="group" aria-label="Response options" className="flex flex-wrap gap-2 pt-1">
-          <Button size="sm" onClick={() => handleAnswer("approve")} disabled={submitted}>
+          <Button
+            size="sm"
+            onClick={() => handleAnswer("approve", "Approved")}
+            disabled={submitted}
+            className="h-8 px-3 text-xs"
+          >
             Approve
           </Button>
           <Button
             size="sm"
             variant="outline"
-            onClick={() => handleAnswer("reject")}
+            onClick={() => handleAnswer("reject", "Rejected")}
             disabled={submitted}
+            className="h-8 px-3 text-xs"
           >
             Reject
           </Button>

@@ -133,7 +133,7 @@ export function ChatThread(props: {
     <EveAgentContext.Provider value={chat.agent}>
       <ContextUsageProvider value={chat.contextUsage}>
         <div
-          className="flex h-full min-h-0 min-w-0 w-full flex-1 flex-col bg-background"
+          className="@container flex h-full min-h-0 min-w-0 w-full flex-1 flex-col bg-background"
           data-testid="chat-thread"
         >
           <Conversation className="min-h-0 min-w-0 w-full flex-1">
@@ -225,31 +225,46 @@ function Welcome({ onPick }: { onPick: (text: string) => void }) {
 }
 
 function UserBubble({ message }: { message: UserMessage }) {
+  const images = message.attachments?.filter((a) => a.type === "image" && a.url) ?? [];
+  const nonImages = message.attachments?.filter((a) => a.type !== "image" || !a.url) ?? [];
+
   return (
     <div
-      className="ml-auto flex max-w-[92%] flex-col items-end gap-1.5"
+      className="ml-auto flex max-w-[92%] flex-col items-end gap-1.5 min-w-0"
       data-testid="user-message"
     >
-      {message.attachments && message.attachments.length > 0 && (
-        <div className="flex flex-wrap justify-end gap-1.5">
-          {message.attachments.map((a, i) => (
+      {images.length > 0 && (
+        <div className="flex flex-wrap justify-end gap-1.5 max-w-full">
+          {images.map((img, i) => (
+            <div
+              key={i}
+              className="overflow-hidden rounded-lg border border-border/70 bg-muted/30 shadow-xs max-w-full"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={img.url}
+                alt={img.name}
+                className="max-h-48 max-w-full object-contain rounded-md"
+              />
+            </div>
+          ))}
+        </div>
+      )}
+      {nonImages.length > 0 && (
+        <div className="flex flex-wrap justify-end gap-1.5 max-w-full">
+          {nonImages.map((a, i) => (
             <div
               key={i}
               className="flex max-w-full items-center gap-1.5 rounded-md border border-border/60 bg-muted/40 px-2 py-1 text-[11px] text-muted-foreground"
             >
-              {a.type === "image" && a.url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={a.url} alt={a.name} className="size-5 rounded object-cover" />
-              ) : (
-                <FileText className="size-3.5 shrink-0" />
-              )}
+              <FileText className="size-3.5 shrink-0" />
               <span className="truncate max-w-[180px]">{a.name}</span>
             </div>
           ))}
         </div>
       )}
       {message.text && (
-        <div className="rounded-lg bg-secondary px-3 py-2 text-sm break-words whitespace-pre-wrap text-foreground">
+        <div className="rounded-lg bg-secondary px-3.5 py-2.5 text-sm break-words whitespace-pre-wrap text-foreground max-w-full">
           {message.text}
         </div>
       )}
@@ -278,12 +293,12 @@ function AssistantBubble(props: {
     (m.parts.length === 0 || (m.parts[last].type === "tool" && m.parts[last].status !== "running"));
 
   return (
-    <div className="flex min-w-0 flex-col gap-2 text-sm" data-testid="assistant-message">
+    <div className="flex min-w-0 max-w-full flex-col gap-2 text-sm overflow-hidden" data-testid="assistant-message">
       {m.parts.map((p, i) => {
         switch (p.type) {
           case "text":
             return p.text.trim() ? (
-              <div key={i} className="min-w-0 break-words" data-testid="assistant-text">
+              <div key={i} className="min-w-0 max-w-full break-words overflow-hidden" data-testid="assistant-text">
                 <MessageResponse isAnimating={Boolean(m.running) && i === last}>
                   {p.text}
                 </MessageResponse>
@@ -295,17 +310,17 @@ function AssistantBubble(props: {
                 key={i}
                 isStreaming={Boolean(m.running) && i === last}
                 defaultOpen={false}
-                className="mb-0"
+                className="mb-0 max-w-full"
               >
                 <ReasoningTrigger />
-                <ReasoningContent>{p.text}</ReasoningContent>
+                <ReasoningContent className="break-words">{p.text}</ReasoningContent>
               </Reasoning>
             );
           case "notice":
             return (
-              <p key={i} className="flex items-start gap-1.5 text-xs text-muted-foreground">
+              <p key={i} className="flex items-start gap-1.5 text-xs text-muted-foreground break-words">
                 <Info className="mt-0.5 size-3.5 shrink-0" />
-                {p.text}
+                <span>{p.text}</span>
               </p>
             );
           case "tool":
@@ -369,34 +384,36 @@ function ErrorBanner(props: {
     <div
       role="alert"
       data-testid="chat-error"
-      className="mx-2 mb-2 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive"
+      className="mx-2 mb-2 flex flex-col gap-1.5 rounded-lg border border-destructive/30 bg-destructive/10 p-2.5 text-xs text-destructive"
     >
-      <span className="min-w-0 flex-1 break-words">{props.message}</span>
-      <span className="flex shrink-0 items-center gap-1">
-        {props.canContinue && (
-          <Button size="xs" variant="outline" onClick={props.onContinue}>
-            Continue
-          </Button>
-        )}
-        <Button size="xs" variant="outline" onClick={props.onRetry}>
-          <RotateCcw className="size-3" /> Retry
-        </Button>
-        <button
-          type="button"
-          onClick={onCopy}
-          className="rounded px-1 text-[11px] underline underline-offset-2 hover:opacity-70"
-        >
-          {copied ? "Copied" : "Copy diagnostics"}
-        </button>
+      <div className="flex items-start justify-between gap-2">
+        <span className="min-w-0 flex-1 break-words leading-relaxed">{props.message}</span>
         <button
           type="button"
           aria-label="Dismiss"
           onClick={props.onDismiss}
-          className="rounded p-0.5 hover:bg-destructive/10"
+          className="shrink-0 rounded p-0.5 hover:bg-destructive/10"
         >
           <X className="size-3.5" />
         </button>
-      </span>
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+        {props.canContinue && (
+          <Button size="xs" variant="outline" className="h-6 px-2 text-[11px]" onClick={props.onContinue}>
+            Continue
+          </Button>
+        )}
+        <Button size="xs" variant="outline" className="h-6 px-2 text-[11px]" onClick={props.onRetry}>
+          <RotateCcw className="size-3 mr-1" /> Retry
+        </Button>
+        <button
+          type="button"
+          onClick={onCopy}
+          className="rounded px-1 text-[11px] underline underline-offset-2 hover:opacity-70 text-muted-foreground"
+        >
+          {copied ? "Copied" : "Copy diagnostics"}
+        </button>
+      </div>
     </div>
   );
 }
@@ -557,14 +574,14 @@ function Composer(props: {
           onKeyDown={onKeyDown}
           className="block min-h-[40px] max-h-44 w-full min-w-0 resize-none bg-transparent px-3 pt-2.5 pb-1 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed"
         />
-        <div className="flex items-center gap-1.5 px-2 pb-2">
+        <div className="flex flex-wrap items-center gap-1.5 px-2 pb-2 min-w-0">
           <Button
             size="icon-sm"
             variant="ghost"
             type="button"
             aria-label="Attach file"
             onClick={() => fileInputRef.current?.click()}
-            className="text-muted-foreground hover:text-foreground"
+            className="text-muted-foreground hover:text-foreground shrink-0"
           >
             <Paperclip className="size-4" />
           </Button>
@@ -580,6 +597,7 @@ function Composer(props: {
               aria-label="Stop"
               data-testid="chat-stop"
               onClick={props.onStop}
+              className="shrink-0"
             >
               <Square className="size-3 fill-current" />
             </Button>
@@ -590,6 +608,7 @@ function Composer(props: {
               data-testid="chat-send"
               disabled={!canSend}
               onClick={submit}
+              className="shrink-0"
             >
               <ArrowUp className="size-4" />
             </Button>
