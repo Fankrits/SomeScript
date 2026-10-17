@@ -8,7 +8,8 @@ import type { UseEveAgentHelpers, EveMessageData } from "eve/react";
  * components such as the __hitl__ tool card, without prop-drilling through
  * assistant-ui's ToolCallMessagePartComponent props.
  */
-export const EveAgentContext = createContext<UseEveAgentHelpers<EveMessageData> | null>(null);
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const EveAgentContext = createContext<UseEveAgentHelpers<any> | null>(null);
 
 export function useEveAgentCtx() {
   const agent = useContext(EveAgentContext);
