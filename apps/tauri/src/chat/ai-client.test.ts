@@ -208,12 +208,18 @@ describe("presets and the settings link", () => {
       expect(p.baseUrl.endsWith("/")).toBe(false);
     }
     expect(ids).toContain("custom");
+    expect(ids).toContain("vercel");
+    expect(ids).toContain("ollama-cloud");
     // Local servers need no key.
     expect(PRESETS.find((p) => p.id === "ollama")?.needsKey).toBe(false);
+    expect(PRESETS.find((p) => p.id === "vercel")?.needsKey).toBe(true);
+    expect(PRESETS.find((p) => p.id === "ollama-cloud")?.needsKey).toBe(true);
   });
 
   test("presetFor recognises a saved provider by its base URL", () => {
     expect(presetFor("https://api.openai.com/v1/")?.id).toBe("openai");
+    expect(presetFor("https://ai-gateway.vercel.sh/v1")?.id).toBe("vercel");
+    expect(presetFor("https://ollama.com/v1")?.id).toBe("ollama-cloud");
     expect(presetFor("https://my.gateway.example/v1")).toBeUndefined();
   });
 

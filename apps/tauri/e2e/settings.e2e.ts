@@ -171,6 +171,24 @@ test("presets pre-fill the form, and local servers need no key", async ({ page }
   );
   await page.getByText("Advanced").click();
   await expect(page.getByLabel("API style")).toHaveValue("anthropic");
+  await page.getByRole("button", { name: "Back" }).click();
+
+  await page.getByTestId("preset-vercel").click();
+  await expect(page.getByLabel("Name", { exact: true })).toHaveValue("Vercel AI Gateway");
+  await expect(page.getByLabel("Base URL")).toHaveValue("https://ai-gateway.vercel.sh/v1");
+  await expect(page.getByRole("link", { name: /Get a key/ })).toHaveAttribute(
+    "href",
+    /vercel\.com\/dashboard\/ai-gateway/,
+  );
+  await page.getByRole("button", { name: "Back" }).click();
+
+  await page.getByTestId("preset-ollama-cloud").click();
+  await expect(page.getByLabel("Name", { exact: true })).toHaveValue("Ollama (cloud)");
+  await expect(page.getByLabel("Base URL")).toHaveValue("https://ollama.com/v1");
+  await expect(page.getByRole("link", { name: /Get a key/ })).toHaveAttribute(
+    "href",
+    /ollama\.com\/settings\/keys/,
+  );
 });
 
 test("switches the provider in use and removes one, keeping the rest", async ({
