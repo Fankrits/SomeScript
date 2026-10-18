@@ -152,8 +152,8 @@ export function DesktopSection({ release }: { release: Release }) {
           className="w-full"
         >
           {/* OS Switcher Tabs */}
-          <div className="p-3 sm:p-4 bg-muted/40 border-b border-border/60">
-            <TabsList className="grid w-full grid-cols-3 bg-muted/80 p-1 rounded-xl h-12">
+          <div className="p-2.5 sm:p-3 bg-muted/30 border-b border-border/60">
+            <TabsList className="grid w-full grid-cols-3 gap-1 bg-muted/70 p-1 rounded-xl h-11 border border-border/50">
               {PLATFORMS.map((platform) => {
                 const Icon = platform.icon;
                 const isDetected = detected === platform.os;
@@ -161,20 +161,14 @@ export function DesktopSection({ release }: { release: Release }) {
                   <TabsTrigger
                     key={platform.os}
                     value={platform.os}
-                    className="flex items-center justify-center gap-2 text-xs sm:text-sm font-medium transition-all cursor-pointer rounded-lg data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-xs py-2"
+                    className="flex w-full min-w-0 items-center justify-center gap-2 text-xs sm:text-sm font-medium transition-all cursor-pointer rounded-lg py-1.5 px-2 select-none data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-xs data-[state=active]:font-semibold text-muted-foreground hover:text-foreground"
                   >
                     <Icon className="h-4 w-4 shrink-0" />
-                    <span>{platform.name}</span>
-                    <span className="hidden sm:inline font-mono text-[11px] text-muted-foreground">
-                      {platform.ext}
-                    </span>
+                    <span className="truncate">{platform.name}</span>
                     {isDetected && (
-                      <Badge
-                        variant="secondary"
-                        className="hidden md:inline-flex text-[9px] px-1.5 py-0 bg-primary/10 text-primary border-primary/20 font-medium ml-1"
-                      >
+                      <span className="hidden sm:inline-flex items-center text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-medium leading-none shrink-0 border border-primary/20">
                         Your OS
-                      </Badge>
+                      </span>
                     )}
                   </TabsTrigger>
                 );
