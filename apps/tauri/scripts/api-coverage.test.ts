@@ -69,7 +69,7 @@ describe("desktop API coverage", () => {
       "clarity.ms",
       "posthog",
       "/api/eve/",
-      "ai-gateway",
+      "AI_GATEWAY_API_KEY",
     ]) {
       expect(js.includes(marker), `bundle mentions ${marker}`).toBe(false);
     }
