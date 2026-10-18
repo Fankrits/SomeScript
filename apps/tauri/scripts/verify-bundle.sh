@@ -95,6 +95,8 @@ if [ "$kind" = macos ]; then
     version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist" 2>/dev/null || true)"
     [ "$version" = "$want_version" ] || bad "bundle version is '$version', expected '$want_version'"
   fi
+  # Every macOS bundle must be at least ad-hoc signed so TCC/Gatekeeper can verify the bundle identity
+  codesign --verify --deep "$app" 2>&1 || bad "bundle is not code signed"
   if [ "${REQUIRE_SIGNED:-0}" = "1" ]; then
     codesign --verify --deep --strict "$app" 2>&1 || bad "code signature is invalid"
     spctl --assess --type execute "$app" 2>&1 || bad "Gatekeeper rejects the app (not notarized?)"

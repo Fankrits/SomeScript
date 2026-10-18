@@ -73,11 +73,13 @@ A project is a **folder** in the library; its name is its id. There is no databa
 `<library>/.trash/` for 7 days.
 
 **Where the library is.** `SOMESCRIPT_LIBRARY` beats the folder saved by setup or Settings, which beats
-`<Documents>/SomeScript`. When the OS can't say where Documents is (a Linux without XDG user folders) the default is
-`~/SomeScript`, then a `Projects` folder in the app's data directory: never a relative path. The app's own default
-folder is made when it is first needed, not at launch, so any permission prompt from the OS appears in the setup
-screen, next to its explanation. If a folder you chose later vanishes (a moved folder, an unplugged drive) the app
-says so and offers to pick another; it never recreates it empty, which would look like your projects were lost.
+`~/SomeScript` (`C:\Users\<you>\SomeScript`). When the OS can't say where the home folder is, the fallback is
+`<Documents>/SomeScript`, then a `Projects` folder in the app's data directory: never a relative path. Defaulting to
+`~/SomeScript` avoids permission friction on all OSes: macOS never prompts for TCC folder permissions (which protect
+Documents, Desktop, and Downloads), and Windows never blocks the folder with Controlled folder access.
+The app's own default folder is made when it is first needed, not at launch. If a folder you chose later vanishes
+(a moved folder, an unplugged drive) the app says so and offers to pick another; it never recreates it empty,
+which would look like your projects were lost.
 
 **First run.** A fresh install opens setup (`/welcome`) instead of the dashboard:
 

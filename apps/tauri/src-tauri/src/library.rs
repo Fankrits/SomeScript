@@ -41,7 +41,7 @@ pub struct TrashedInfo {
     pub purge_at: u64,
 }
 
-/// The folder name the app proposes inside Documents.
+/// The folder name the app proposes inside the user's home folder.
 const APP_DIR: &str = "SomeScript";
 
 /// Why the library is where it is.
@@ -52,9 +52,9 @@ pub enum RootSource {
     Env,
     /// A folder the user chose in setup or Settings.
     Saved,
-    /// `<Documents>/SomeScript`.
+    /// `<Home>/SomeScript`.
     Default,
-    /// The default, when the OS couldn't say where Documents is (home folder, then app data).
+    /// The default, when the OS couldn't say where the home folder is (Documents, then app data).
     Fallback,
 }
 
@@ -77,9 +77,15 @@ pub struct Resolved {
 }
 
 /// Decides where the library lives: `SOMESCRIPT_LIBRARY`, then the folder saved by the user, then
-/// `<Documents>/SomeScript`. Never a relative path (it would land in whatever the working directory
-/// is, often unwritable): when the OS can't say where Documents is, the home folder and then the
-/// app's own data folder stand in. Pure, so every platform's chain is unit-tested.
+/// `<Home>/SomeScript`. Never a relative path (it would land in whatever the working directory
+/// is, often unwritable): when the OS can't say where the home folder is, the Documents folder and then
+/// the app's own data folder stand in. Pure, so every platform's chain is unit-tested.
+///
+/// Defaulting to `<Home>/SomeScript` avoids permission friction on all operating systems:
+/// - macOS: bypasses TCC privacy permission prompts entirely (macOS protects Documents, Desktop,
+///   and Downloads, but not folders directly under Home).
+/// - Windows: avoids Controlled Folder Access (ransomware protection) blocks.
+/// - Linux: standard user home access without sandbox restrictions.
 pub fn resolve_root(
     env: Option<PathBuf>,
     saved: Option<PathBuf>,
@@ -88,9 +94,9 @@ pub fn resolve_root(
     local_data: Option<PathBuf>,
 ) -> Resolved {
     let absolute = |p: PathBuf| std::path::absolute(&p).unwrap_or(p);
-    let (default, default_source) = match (documents, home, local_data) {
-        (Some(docs), ..) => (docs.join(APP_DIR), RootSource::Default),
-        (None, Some(home), _) => (home.join(APP_DIR), RootSource::Fallback),
+    let (default, default_source) = match (home, documents, local_data) {
+        (Some(home), ..) => (home.join(APP_DIR), RootSource::Default),
+        (None, Some(docs), _) => (docs.join(APP_DIR), RootSource::Fallback),
         (None, None, Some(data)) => (data.join("Projects"), RootSource::Fallback),
         (None, None, None) => (absolute(PathBuf::from(APP_DIR)), RootSource::Fallback),
     };
@@ -956,7 +962,7 @@ mod tests {
     }
 
     #[test]
-    fn the_library_location_follows_env_then_saved_then_documents() {
+    fn the_library_location_follows_env_then_saved_then_home() {
         let base = tempfile::tempdir().unwrap();
         let p = |n: &str| Some(base.path().join(n));
         let r = resolve_root(p("env"), p("saved"), p("docs"), p("home"), p("data"));
@@ -964,7 +970,7 @@ mod tests {
             (r.root, r.source),
             (base.path().join("env"), RootSource::Env)
         );
-        assert_eq!(r.default, base.path().join("docs").join("SomeScript"));
+        assert_eq!(r.default, base.path().join("home").join("SomeScript"));
         let r = resolve_root(None, p("saved"), p("docs"), p("home"), p("data"));
         assert_eq!(
             (r.root, r.source),
@@ -974,18 +980,18 @@ mod tests {
         assert_eq!(
             (r.root, r.source),
             (
-                base.path().join("docs").join("SomeScript"),
+                base.path().join("home").join("SomeScript"),
                 RootSource::Default
             )
         );
     }
 
     #[test]
-    fn without_a_documents_folder_the_default_is_still_an_absolute_path() {
+    fn without_a_home_folder_the_default_is_still_an_absolute_path() {
         let base = tempfile::tempdir().unwrap();
         let p = |n: &str| Some(base.path().join(n));
-        let r = resolve_root(None, None, None, p("home"), p("data"));
-        assert_eq!(r.root, base.path().join("home").join("SomeScript"));
+        let r = resolve_root(None, None, p("docs"), None, p("data"));
+        assert_eq!(r.root, base.path().join("docs").join("SomeScript"));
         assert_eq!((r.source, &r.default), (RootSource::Fallback, &r.root));
         let r = resolve_root(None, None, None, None, p("data"));
         assert_eq!(r.root, base.path().join("data").join("Projects"));
@@ -994,7 +1000,7 @@ mod tests {
         let r = resolve_root(None, None, None, None, None);
         assert!(r.root.is_absolute(), "{:?}", r.root);
         // A relative override is anchored too.
-        let r = resolve_root(Some("rel/dir".into()), None, p("docs"), None, None);
+        let r = resolve_root(Some("rel/dir".into()), None, None, p("home"), None);
         assert!(r.root.is_absolute(), "{:?}", r.root);
         assert_eq!(r.source, RootSource::Env);
     }

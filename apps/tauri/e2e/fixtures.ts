@@ -36,7 +36,7 @@ let counter = 0;
 const unique = (prefix: string) =>
   `${prefix}-${Date.now().toString(36)}${(counter++).toString(36)}`;
 
-async function ok(res: Awaited<ReturnType<APIRequestContext["get"]>>) {
+async function ok(res: Awaited<ReturnType<APIRequestContext["get"]>>): Promise<any> {
   if (!res.ok()) throw new Error(`${res.url()} -> ${res.status()} ${await res.text()}`);
   return res.json();
 }

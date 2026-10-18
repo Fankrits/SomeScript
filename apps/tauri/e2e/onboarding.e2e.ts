@@ -9,13 +9,13 @@ import { expect, test } from "./first-run";
 test("a first launch goes to setup, and nothing is created until the user confirms", async ({
   launch,
 }) => {
-  const { page, documents } = await launch();
+  const { page, home } = await launch();
   await page.goto("/dashboard");
   await expect(page).toHaveURL(/\/welcome/);
   await expect(page.getByTestId("step-welcome")).toBeVisible();
-  await expect(page.getByText(join(documents, "SomeScript"))).toBeVisible();
+  await expect(page.getByText(join(home, "SomeScript"))).toBeVisible();
   expect(
-    existsSync(join(documents, "SomeScript")),
+    existsSync(join(home, "SomeScript")),
     "reading the settings must not make the folder",
   ).toBe(false);
 });
@@ -25,7 +25,7 @@ test("setup creates the projects folder, is remembered, and ends in a first proj
 }) => {
   const app = await launch();
   const { page } = app;
-  const folder = join(app.documents, "SomeScript");
+  const folder = join(app.home, "SomeScript");
 
   await page.goto("/dashboard");
   await page.getByTestId("get-started").click();
@@ -59,6 +59,10 @@ test("a folder the system won't allow is explained, with a way out", async ({ la
   await page.goto("/dashboard");
   await page.getByTestId("get-started").click();
 
+  // Try using the protected Documents folder
+  const input = page.getByTestId("folder-path-input");
+  await input.fill(join(app.documents, "SomeScript"));
+
   const status = page.getByTestId("folder-status");
   await expect(status).toHaveAttribute("data-state", "issue");
   await expect(status).not.toContainText("File not found");
@@ -82,9 +86,14 @@ test("skipping setup still makes the default folder, and can't skip past a broke
   await ok.page.getByTestId("skip-setup").click();
   await expect(ok.page).toHaveURL(/\/dashboard/);
   await expect(ok.page.getByText("No projects yet")).toBeVisible();
-  expect(statSync(join(ok.documents, "SomeScript")).isDirectory()).toBe(true);
+  expect(statSync(join(ok.home, "SomeScript")).isDirectory()).toBe(true);
 
-  const broken = await launch({ documents: "file" });
+  // If the default folder cannot be created (a file is in the way), skip setup stops at the folder step
+  const broken = await launch({
+    prepare: ({ home }) => {
+      writeFileSync(join(home, "SomeScript"), "not a folder");
+    },
+  });
   await broken.page.goto("/dashboard");
   await broken.page.getByTestId("skip-setup").click();
   await expect(broken.page.getByTestId("step-folder")).toBeVisible();
@@ -167,7 +176,7 @@ test("a missing default folder no longer breaks creating a project (the reported
   await page.getByLabel("Name", { exact: true }).fill("Paper");
   await page.getByRole("button", { name: "Create" }).click();
   await expect(page).toHaveURL(/projectId=Paper/);
-  expect(existsSync(join(app.documents, "SomeScript", "Paper", "main.tex"))).toBe(true);
+  expect(existsSync(join(app.home, "SomeScript", "Paper", "main.tex"))).toBe(true);
 });
 
 test("when the chosen folder has vanished, the app says which one instead of 'File not found'", async ({

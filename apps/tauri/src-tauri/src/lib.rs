@@ -19,8 +19,8 @@ use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder, webview::Downloa
 use tex::TexTools;
 
 /// Where the library lives and why (see `library::resolve_root` for the order). Asks the OS where
-/// its known folders are but touches no folder. `SOMESCRIPT_DOCUMENTS_DIR` stands in for the OS's
-/// Documents folder (tests, portable use).
+/// its known folders are but touches no folder. `SOMESCRIPT_HOME_DIR` and `SOMESCRIPT_DOCUMENTS_DIR`
+/// stand in for the OS's Home and Documents folders (tests, portable use).
 fn locate_library(app: &tauri::App, config_path: Option<&Path>) -> library::Resolved {
     let paths = app.path();
     library::resolve_root(
@@ -29,7 +29,9 @@ fn locate_library(app: &tauri::App, config_path: Option<&Path>) -> library::Reso
         std::env::var_os("SOMESCRIPT_DOCUMENTS_DIR")
             .map(PathBuf::from)
             .or_else(|| paths.document_dir().ok()),
-        paths.home_dir().ok(),
+        std::env::var_os("SOMESCRIPT_HOME_DIR")
+            .map(PathBuf::from)
+            .or_else(|| paths.home_dir().ok()),
         paths.app_local_data_dir().ok(),
     )
 }
