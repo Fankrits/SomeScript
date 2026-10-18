@@ -14,12 +14,34 @@
     "format:check": "turbo run format:check"
   },
   "devDependencies": {
-    "turbo": "^2.11.5"
+    "turbo": "^2.11.9"
   },
   "overrides": {
-    "@codemirror/view": "6.43.13",
+    "@codemirror/view": "6.43.14",
     "@codemirror/state": "6.7.6",
     "@codemirror/commands": "6.11.1",
-    "@codemirror/search": "6.7.2"
+    "@codemirror/search": "6.7.2",
+    "@hono/node-server": "^1.19.17",
+    "@vue/server-renderer": "^3.5.44",
+    "brace-expansion": "^1.1.21",
+    "browserslist": "^4.29.3",
+    "devalue": "^5.9.4",
+    "dompurify": "^3.4.17",
+    "esbuild": "^0.25.12",
+    "fast-uri": "^3.1.8",
+    "hono": "^4.13.13",
+    "ip-address": "^10.7.4",
+    "js-yaml": "^4.3.2",
+    "katex": "^0.19.0",
+    "linkify-it": "^5.0.2",
+    "postcss": "^8.5.30",
+    "prosemirror-view": "^1.42.6",
+    "proxy-addr": "^2.0.8",
+    "qs": "^6.16.1",
+    "sharp": "^0.35.5",
+    "shell-quote": "^1.12.0",
+    "source-map-js": "^1.2.2",
+    "tar": "^7.5.22",
+    "undici": "^8.12.2"
   }
 }
