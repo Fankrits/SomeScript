@@ -78,7 +78,8 @@ export function InstallPanel({ className, selectedOs, onSelectOs }: InstallPanel
   const [internalSelectedOs, setInternalSelectedOs] = useState<SupportedOS | null>(null);
   const [copiedCmd, setCopiedCmd] = useState<string | null>(null);
 
-  const activeOs = selectedOs !== undefined ? (selectedOs ?? detected) : (internalSelectedOs ?? detected);
+  const activeOs =
+    selectedOs !== undefined ? (selectedOs ?? detected) : (internalSelectedOs ?? detected);
 
   const handleSelectOs = (val: SupportedOS) => {
     if (onSelectOs) {

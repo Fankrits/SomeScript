@@ -90,7 +90,9 @@ function Row(props: {
           <span className="shrink-0 text-muted-foreground [&_svg]:size-3.5">{icon}</span>
           <span className="min-w-0 truncate font-medium">{title}</span>
           {detail && (
-            <span className="min-w-0 shrink truncate text-muted-foreground text-[11px]">{detail}</span>
+            <span className="min-w-0 shrink truncate text-muted-foreground text-[11px]">
+              {detail}
+            </span>
           )}
         </CollapsibleTrigger>
         {actions && <div className="shrink-0">{actions}</div>}
@@ -166,15 +168,26 @@ function UndoButton(props: {
     await perform();
   };
 
-  if (state === "done") return <span className="px-1 text-muted-foreground text-[11px]">Undone</span>;
+  if (state === "done")
+    return <span className="px-1 text-muted-foreground text-[11px]">Undone</span>;
   if (state === "confirm") {
     return (
       <span className="flex items-center gap-1 text-[11px]">
         <span className="text-muted-foreground truncate max-w-[80px]">Changed.</span>
-        <Button size="xs" variant="destructive" className="h-6 px-1.5 text-[10px]" onClick={() => void perform()}>
+        <Button
+          size="xs"
+          variant="destructive"
+          className="h-6 px-1.5 text-[10px]"
+          onClick={() => void perform()}
+        >
           Undo
         </Button>
-        <Button size="xs" variant="ghost" className="h-6 px-1.5 text-[10px]" onClick={() => setState("idle")}>
+        <Button
+          size="xs"
+          variant="ghost"
+          className="h-6 px-1.5 text-[10px]"
+          onClick={() => setState("idle")}
+        >
           Keep
         </Button>
       </span>
@@ -449,7 +462,12 @@ export function ToolCard({ part, projectId }: { part: ToolPart; projectId: strin
     case "edit_file":
     case "write_file": {
       const before = typeof r.before === "string" ? r.before : null;
-      const after = typeof r.after === "string" ? r.after : typeof args.content === "string" ? args.content : null;
+      const after =
+        typeof r.after === "string"
+          ? r.after
+          : typeof args.content === "string"
+            ? args.content
+            : null;
       const created = r.created === true;
       const verb = normalizedName === "edit_file" ? "Edited" : created ? "Created" : "Rewrote";
       const canUndo = !running && !failed && (created || before !== null);

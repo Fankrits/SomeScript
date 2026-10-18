@@ -56,7 +56,11 @@ describe("applyEvent", () => {
       result: { ok: true, count: 3 },
       output: "3",
     });
-    expect(m.parts[0]).toMatchObject({ status: "done", output: "3", result: { ok: true, count: 3 } });
+    expect(m.parts[0]).toMatchObject({
+      status: "done",
+      output: "3",
+      result: { ok: true, count: 3 },
+    });
 
     m = applyEvent(m, { type: "tool-call", id: "c2", name: "t", args: {} });
     m = applyEvent(m, {

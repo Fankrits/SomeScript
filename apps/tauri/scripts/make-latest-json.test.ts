@@ -90,28 +90,15 @@ describe("makeLatestJson", () => {
   });
 
   test("CLI works via subprocess", () => {
+    const scriptPath = join(import.meta.dir, "make-latest-json.mjs");
     // Unsigned case: exit code 0, no output
-    const resUnsigned = Bun.spawnSync([
-      "bun",
-      "scripts/make-latest-json.mjs",
-      version,
-      repo,
-      tag,
-      tempDir,
-    ]);
+    const resUnsigned = Bun.spawnSync(["bun", scriptPath, version, repo, tag, tempDir]);
     expect(resUnsigned.exitCode).toBe(0);
     expect(resUnsigned.stdout.toString()).toBe("");
 
     // Partial case: exit code 1
     writeFileSync(join(tempDir, `SomeScript-${version}-linux-x64.AppImage.sig`), "partial-sig");
-    const resPartial = Bun.spawnSync([
-      "bun",
-      "scripts/make-latest-json.mjs",
-      version,
-      repo,
-      tag,
-      tempDir,
-    ]);
+    const resPartial = Bun.spawnSync(["bun", scriptPath, version, repo, tag, tempDir]);
     expect(resPartial.exitCode).toBe(1);
     expect(resPartial.stderr.toString()).toContain("Partial artifact/signature set");
   });

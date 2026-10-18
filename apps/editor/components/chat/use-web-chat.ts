@@ -270,8 +270,7 @@ export function useWebChat(opts: {
           : isSubagent
             ? "__subagent__"
             : part.toolName;
-        const status =
-          part.state === "output-error" ? "error" : isTerminal ? "done" : "running";
+        const status = part.state === "output-error" ? "error" : isTerminal ? "done" : "running";
 
         return {
           type: "tool",
@@ -574,7 +573,9 @@ export function useWebChat(opts: {
 
           const firstPart = outgoingParts[0];
           const sendArgs: Parameters<typeof agent.send>[0] =
-            outgoingParts.length === 1 && firstPart.type === "text" ? firstPart.text : outgoingParts;
+            outgoingParts.length === 1 && firstPart.type === "text"
+              ? firstPart.text
+              : outgoingParts;
 
           try {
             setSendError(null);

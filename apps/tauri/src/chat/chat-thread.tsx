@@ -95,7 +95,10 @@ export function ChatThread(props: {
   }
 
   return (
-    <div className="flex h-full min-h-0 min-w-0 w-full flex-1 flex-col bg-background" data-testid="chat-thread">
+    <div
+      className="flex h-full min-h-0 min-w-0 w-full flex-1 flex-col bg-background"
+      data-testid="chat-thread"
+    >
       <Conversation className="min-h-0 min-w-0 w-full flex-1">
         <ConversationContent className="gap-5 p-3 min-w-0 w-full">
           {chat.messages.length === 0 ? (

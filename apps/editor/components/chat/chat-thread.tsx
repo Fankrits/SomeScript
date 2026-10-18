@@ -293,12 +293,19 @@ function AssistantBubble(props: {
     (m.parts.length === 0 || (m.parts[last].type === "tool" && m.parts[last].status !== "running"));
 
   return (
-    <div className="flex min-w-0 max-w-full flex-col gap-2 text-sm overflow-hidden" data-testid="assistant-message">
+    <div
+      className="flex min-w-0 max-w-full flex-col gap-2 text-sm overflow-hidden"
+      data-testid="assistant-message"
+    >
       {m.parts.map((p, i) => {
         switch (p.type) {
           case "text":
             return p.text.trim() ? (
-              <div key={i} className="min-w-0 max-w-full break-words overflow-hidden" data-testid="assistant-text">
+              <div
+                key={i}
+                className="min-w-0 max-w-full break-words overflow-hidden"
+                data-testid="assistant-text"
+              >
                 <MessageResponse isAnimating={Boolean(m.running) && i === last}>
                   {p.text}
                 </MessageResponse>
@@ -318,7 +325,10 @@ function AssistantBubble(props: {
             );
           case "notice":
             return (
-              <p key={i} className="flex items-start gap-1.5 text-xs text-muted-foreground break-words">
+              <p
+                key={i}
+                className="flex items-start gap-1.5 text-xs text-muted-foreground break-words"
+              >
                 <Info className="mt-0.5 size-3.5 shrink-0" />
                 <span>{p.text}</span>
               </p>
@@ -370,7 +380,11 @@ function ErrorBanner(props: {
     void (async () => {
       try {
         await navigator.clipboard.writeText(
-          JSON.stringify((window as unknown as { eveDiagnostics?: () => unknown }).eveDiagnostics?.() ?? [], null, 2),
+          JSON.stringify(
+            (window as unknown as { eveDiagnostics?: () => unknown }).eveDiagnostics?.() ?? [],
+            null,
+            2,
+          ),
         );
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
@@ -399,11 +413,21 @@ function ErrorBanner(props: {
       </div>
       <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
         {props.canContinue && (
-          <Button size="xs" variant="outline" className="h-6 px-2 text-[11px]" onClick={props.onContinue}>
+          <Button
+            size="xs"
+            variant="outline"
+            className="h-6 px-2 text-[11px]"
+            onClick={props.onContinue}
+          >
             Continue
           </Button>
         )}
-        <Button size="xs" variant="outline" className="h-6 px-2 text-[11px]" onClick={props.onRetry}>
+        <Button
+          size="xs"
+          variant="outline"
+          className="h-6 px-2 text-[11px]"
+          onClick={props.onRetry}
+        >
           <RotateCcw className="size-3 mr-1" /> Retry
         </Button>
         <button

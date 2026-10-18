@@ -5,7 +5,16 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { UserButton, OrganizationSwitcher } from "@clerk/nextjs";
-import { CreditCard, Folder, X, PanelLeft, LayoutTemplate, Trash2, Monitor, ArrowUpRight } from "lucide-react";
+import {
+  CreditCard,
+  Folder,
+  X,
+  PanelLeft,
+  LayoutTemplate,
+  Trash2,
+  Monitor,
+  ArrowUpRight,
+} from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

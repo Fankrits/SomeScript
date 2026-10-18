@@ -156,11 +156,7 @@ export function DesktopSection({ release }: { release: Release }) {
             {PLATFORMS.map((platform) => {
               const Icon = platform.icon;
               return (
-                <TabsTrigger
-                  key={platform.os}
-                  value={platform.os}
-                  className="gap-2 cursor-pointer"
-                >
+                <TabsTrigger key={platform.os} value={platform.os} className="gap-2 cursor-pointer">
                   <Icon className="h-4 w-4 shrink-0" />
                   <span>{platform.name}</span>
                 </TabsTrigger>
