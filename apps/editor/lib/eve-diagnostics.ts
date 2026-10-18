@@ -333,8 +333,9 @@ export function logEveEvent(event: MessageStreamEvent) {
       record("info", "input.requested", summarize(event.data.requests));
       return;
 
-    case "subagent.started":
-    case "subagent.completed":
+    case "agent.started":
+    case "task.started":
+    case "task.settled":
       record("info", event.type, summarize(event.data));
       return;
 
