@@ -104,13 +104,27 @@ export async function createProject(formData: FormData): Promise<{ error: string
 
   if (!project) return { error: "Failed to create project" };
 
-  const res = await editorFetch("/api/project/seed", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ projectId: project.id }),
-  });
+  let seeded = false;
+  try {
+    const res = await editorFetch("/api/project/seed", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ projectId: project.id }),
+    });
+    seeded = res.ok;
+    if (!res.ok) {
+      console.error(
+        "[createProject] editor seed failed",
+        res.status,
+        await res.text().catch(() => ""),
+      );
+    }
+  } catch (error) {
+    // Network failure / unreachable editor: same cleanup as a non-2xx.
+    console.error("[createProject] editor seed unreachable", error);
+  }
 
-  if (!res.ok) {
+  if (!seeded) {
     await db.delete(projects).where(eq(projects.id, project.id));
     return { error: "Failed to initialize project files" };
   }
