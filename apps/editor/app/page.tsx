@@ -1495,9 +1495,20 @@ const Example = () => {
       const data = await res.json();
       if (data.tree) {
         setFileTree(data.tree);
+        toast.dismiss("file-tree-error");
+        return;
       }
+      throw new Error(data.error || `HTTP ${res.status}`);
     } catch (err) {
       console.error("Failed to load file tree", err);
+      // Without this a storage/auth failure just leaves an empty tree, which
+      // reads as "this project has no files".
+      toast.error("Couldn't load project files", {
+        id: "file-tree-error",
+        description: "The file service didn't respond correctly. Try again in a moment.",
+        duration: Infinity,
+        action: { label: "Retry", onClick: () => void refreshWorkspace() },
+      });
     }
   }, [withProject]);
 

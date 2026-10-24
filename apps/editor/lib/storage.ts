@@ -337,14 +337,21 @@ class S3StorageProvider implements StorageProvider {
   private bucket: string;
 
   constructor() {
+    // Values pasted into a dashboard routinely carry a trailing newline/space,
+    // which signs fine and then fails every request with SignatureDoesNotMatch.
+    const env = (name: string) => process.env[name]?.trim() || undefined;
     this.client = new S3Client({
-      endpoint: process.env.AWS_ENDPOINT,
-      region: process.env.AWS_REGION || "us-east-1",
+      endpoint: env("AWS_ENDPOINT")?.replace(/\/+$/, ""),
+      region: env("AWS_REGION") || "us-east-1",
       credentials: {
-        accessKeyId: process.env.AWS_ACCESS_KEY_ID || "",
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "",
+        accessKeyId: env("AWS_ACCESS_KEY_ID") || "",
+        secretAccessKey: env("AWS_SECRET_ACCESS_KEY") || "",
       },
-      forcePathStyle: process.env.S3_FORCE_PATH_STYLE === "true", // true for local RustFS/MinIO, false for Railway Object Storage / R2 / managed S3
+      // SDK >=3.729 adds CRC32 checksums to every request by default; S3-compatible
+      // stores (Tigris, R2, MinIO) only reliably accept them when the operation requires one.
+      requestChecksumCalculation: "WHEN_REQUIRED",
+      responseChecksumValidation: "WHEN_REQUIRED",
+      forcePathStyle: env("S3_FORCE_PATH_STYLE") === "true", // true for local RustFS/MinIO, false for Railway Object Storage / R2 / managed S3
       // The SDK defaults both of these to 0, meaning "wait forever". Every Eve
       // file tool goes through this client, and a tool that hangs freezes the
       // whole turn behind a spinner the stall watchdog has deliberately stood
@@ -353,7 +360,7 @@ class S3StorageProvider implements StorageProvider {
       // blip still retries — this only bounds how long one attempt may hang.
       requestHandler: { connectionTimeout: 5_000, requestTimeout: 30_000 },
     });
-    this.bucket = process.env.AWS_BUCKET_NAME || "latex-editor";
+    this.bucket = env("AWS_BUCKET_NAME") || "latex-editor";
   }
 
   private getS3Key(projectId: string, fileRelativePath: string): string {
