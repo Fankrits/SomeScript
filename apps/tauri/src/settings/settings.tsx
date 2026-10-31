@@ -65,6 +65,7 @@ export default function SettingsPage() {
   const [activeSection, setActiveSection] = useState<Section>(() => {
     return sectionFromUrl(window.location.search) ?? "ai";
   });
+  const [scrolled, setScrolled] = useState(false);
 
   const scrollTo = (id: Section, smooth = true) => {
     setActiveSection(id);
@@ -129,6 +130,7 @@ export default function SettingsPage() {
     observer.observe(aboutEl);
 
     const onScroll = () => {
+      setScrolled(window.scrollY > 40);
       if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 40) {
         setActiveSection("about");
       }
@@ -152,11 +154,12 @@ export default function SettingsPage() {
           size="icon"
           aria-label="Back"
           onClick={() => window.location.assign(backTarget(window.location.search))}
+          className="hover:bg-secondary/80 shrink-0"
         >
           <ArrowLeft />
         </Button>
         <div className="grid">
-          <h1 className="text-lg font-semibold tracking-tight">Settings</h1>
+          <h1 className="text-xl font-bold tracking-tight">Settings</h1>
           <p className="text-sm text-muted-foreground">
             These apply to the whole app, not to one project.
           </p>
@@ -165,7 +168,22 @@ export default function SettingsPage() {
 
       <div className="flex flex-col md:flex-row gap-8 items-start">
         {/* Sticky left nav (<md collapses into horizontal row) */}
-        <nav className="flex md:flex-col gap-1 w-full md:w-52 shrink-0 md:sticky md:top-6 self-start">
+        <nav className="flex md:flex-col gap-1.5 w-full md:w-56 shrink-0 md:sticky md:top-8 self-start">
+          {scrolled && (
+            <div className="animate-in fade-in slide-in-from-top-1 duration-200 mb-1 w-auto md:w-full shrink-0">
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label="Back"
+                onClick={() => window.location.assign(backTarget(window.location.search))}
+                className="w-auto md:w-full justify-start gap-2.5 px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary/80 rounded-lg transition-all"
+                data-testid="sticky-nav-back"
+              >
+                <ArrowLeft className="size-4 shrink-0" />
+                <span className="hidden md:inline">Back</span>
+              </Button>
+            </div>
+          )}
           <button
             type="button"
             onClick={() => scrollTo("ai")}
@@ -173,7 +191,7 @@ export default function SettingsPage() {
             className={cn(
               "flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-all text-left",
               activeSection === "ai"
-                ? "bg-primary/10 text-primary font-semibold"
+                ? "bg-primary/10 text-primary font-semibold shadow-2xs"
                 : "text-muted-foreground hover:text-foreground hover:bg-secondary/60",
             )}
           >
@@ -187,7 +205,7 @@ export default function SettingsPage() {
             className={cn(
               "flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-all text-left",
               activeSection === "general"
-                ? "bg-primary/10 text-primary font-semibold"
+                ? "bg-primary/10 text-primary font-semibold shadow-2xs"
                 : "text-muted-foreground hover:text-foreground hover:bg-secondary/60",
             )}
           >
@@ -201,7 +219,7 @@ export default function SettingsPage() {
             className={cn(
               "flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-all text-left",
               activeSection === "about"
-                ? "bg-primary/10 text-primary font-semibold"
+                ? "bg-primary/10 text-primary font-semibold shadow-2xs"
                 : "text-muted-foreground hover:text-foreground hover:bg-secondary/60",
             )}
           >
@@ -211,19 +229,34 @@ export default function SettingsPage() {
         </nav>
 
         {/* Content Column */}
-        <div className="flex-1 min-w-0 flex flex-col gap-12 w-full">
-          <section id="ai" className="scroll-mt-6 grid gap-6">
-            <h2 className="text-xl font-bold tracking-tight">AI assistant</h2>
+        <div className="flex-1 min-w-0 flex flex-col gap-10 w-full">
+          <section id="ai" className="scroll-mt-8 grid gap-4">
+            <div className="flex items-center gap-2.5">
+              <div className="flex size-7 items-center justify-center rounded-md bg-primary/10 text-primary">
+                <Sparkles className="size-4" />
+              </div>
+              <h2 className="text-lg font-semibold tracking-tight">AI assistant</h2>
+            </div>
             <AiSection />
           </section>
 
-          <section id="general" className="scroll-mt-6 grid gap-6">
-            <h2 className="text-xl font-bold tracking-tight">General</h2>
+          <section id="general" className="scroll-mt-8 grid gap-4">
+            <div className="flex items-center gap-2.5">
+              <div className="flex size-7 items-center justify-center rounded-md bg-primary/10 text-primary">
+                <FolderOpen className="size-4" />
+              </div>
+              <h2 className="text-lg font-semibold tracking-tight">General</h2>
+            </div>
             <GeneralSection />
           </section>
 
-          <section id="about" className="scroll-mt-6 grid gap-6">
-            <h2 className="text-xl font-bold tracking-tight">About</h2>
+          <section id="about" className="scroll-mt-8 grid gap-4">
+            <div className="flex items-center gap-2.5">
+              <div className="flex size-7 items-center justify-center rounded-md bg-primary/10 text-primary">
+                <Info className="size-4" />
+              </div>
+              <h2 className="text-lg font-semibold tracking-tight">About</h2>
+            </div>
             <AboutSection />
           </section>
         </div>
@@ -293,54 +326,59 @@ function AiSection() {
     return (
       <p
         role="alert"
-        className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+        className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
       >
         Couldn't load the AI settings: {loadError}
       </p>
     );
   }
-  if (!settings) return <Skeleton className="h-40 w-full" />;
+  if (!settings) return <Skeleton className="h-40 w-full rounded-2xl" />;
 
   const { providers } = settings;
   return (
-    <div className="grid gap-8">
-      <section className="grid gap-3" aria-labelledby="providers-title">
-        <div className="flex items-center gap-3">
-          <div className="grid">
-            <h2 id="providers-title" className="text-sm font-semibold">
+    <div className="grid gap-6">
+      {/* Providers card */}
+      <section
+        className="rounded-2xl border border-border/70 bg-card p-5 shadow-xs grid gap-4"
+        aria-labelledby="providers-title"
+      >
+        <div className="flex items-center justify-between gap-3">
+          <div className="grid gap-0.5">
+            <h3 id="providers-title" className="text-sm font-semibold">
               Providers
-            </h2>
-            <p className="text-sm text-muted-foreground">
+            </h3>
+            <p className="text-xs text-muted-foreground">
               Bring your own key. It is stored on this computer and only ever sent to the provider
               you add.
             </p>
           </div>
           <Button
-            className="ml-auto shrink-0"
+            size="sm"
+            className="shrink-0"
             onClick={() => setDialog("new")}
             data-testid="add-provider"
           >
-            <Plus /> Add provider
+            <Plus className="size-4 mr-1" /> Add provider
           </Button>
         </div>
 
         {providers.length === 0 ? (
           <div
-            className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border px-6 py-10 text-center"
+            className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border px-6 py-10 text-center bg-muted/20"
             data-testid="no-providers"
           >
             <KeyRound className="size-6 text-muted-foreground" />
             <p className="text-sm font-medium">No provider yet</p>
-            <p className="max-w-sm text-sm text-muted-foreground">
+            <p className="max-w-sm text-xs text-muted-foreground">
               Add OpenAI, Anthropic, OpenRouter, Gemini, a local model like Ollama, or any custom
               OpenAI-compatible endpoint to turn on the assistant.
             </p>
-            <Button className="mt-2" onClick={() => setDialog("new")}>
-              <Plus /> Add provider
+            <Button size="sm" className="mt-2" onClick={() => setDialog("new")}>
+              <Plus className="size-4 mr-1" /> Add provider
             </Button>
           </div>
         ) : (
-          <ul className="grid gap-2" data-testid="provider-list">
+          <ul className="grid gap-2.5" data-testid="provider-list">
             {providers.map((p) => {
               const active = p.id === (settings.activeProviderId ?? providers[0].id);
               return (
@@ -348,23 +386,25 @@ function AiSection() {
                   key={p.id}
                   data-testid={`provider-${p.name}`}
                   className={cn(
-                    "flex items-center gap-3 rounded-xl border px-4 py-3",
-                    active ? "border-primary/40 bg-primary/5" : "border-border",
+                    "flex items-center gap-3 rounded-xl border px-4 py-3 transition-colors",
+                    active
+                      ? "border-primary/50 bg-primary/5 shadow-2xs"
+                      : "border-border/70 hover:border-border hover:bg-muted/20",
                   )}
                 >
                   <div className="grid min-w-0 flex-1 gap-0.5">
                     <div className="flex items-center gap-2">
                       <span className="truncate text-sm font-medium">{p.name}</span>
                       {active && (
-                        <Badge variant="secondary">
-                          <Check /> In use
+                        <Badge variant="secondary" className="text-[10px] py-0 px-1.5 h-4 gap-1">
+                          <Check className="size-2.5" /> In use
                         </Badge>
                       )}
                     </div>
-                    <span className="truncate font-mono text-xs text-muted-foreground">
+                    <span className="truncate font-mono text-[11px] text-muted-foreground">
                       {p.baseUrl}
                     </span>
-                    <span className="truncate text-xs text-muted-foreground">
+                    <span className="truncate text-[11px] text-muted-foreground">
                       {p.kind === "anthropic" ? "Anthropic API" : "OpenAI-compatible"} ·{" "}
                       {p.hasKey ? `key …${p.keyHint || "saved"}` : "no key"} ·{" "}
                       {p.defaultModel || p.models[0] || "no model chosen"}
@@ -381,7 +421,7 @@ function AiSection() {
                     aria-label={`Edit ${p.name}`}
                     onClick={() => setDialog(p)}
                   >
-                    <Pencil />
+                    <Pencil className="size-4" />
                   </Button>
                   <Button
                     variant="ghost"
@@ -389,7 +429,7 @@ function AiSection() {
                     aria-label={`Remove ${p.name}`}
                     onClick={() => setRemoving(p)}
                   >
-                    <Trash2 />
+                    <Trash2 className="size-4" />
                   </Button>
                 </li>
               );
@@ -398,12 +438,16 @@ function AiSection() {
         )}
       </section>
 
-      <section className="grid gap-3" aria-labelledby="instructions-title">
-        <div className="grid">
-          <h2 id="instructions-title" className="text-sm font-semibold">
+      {/* Custom instructions card */}
+      <section
+        className="rounded-2xl border border-border/70 bg-card p-5 shadow-xs grid gap-3.5"
+        aria-labelledby="instructions-title"
+      >
+        <div className="grid gap-0.5">
+          <h3 id="instructions-title" className="text-sm font-semibold">
             Your instructions
-          </h2>
-          <p className="text-sm text-muted-foreground">
+          </h3>
+          <p className="text-xs text-muted-foreground">
             Added to every chat, for every project. For example: "Use biblatex, not natbib", or
             "Reply in Thai".
           </p>
@@ -416,10 +460,15 @@ function AiSection() {
           aria-label="Custom instructions"
           data-testid="custom-instructions"
           placeholder="Optional"
+          className="resize-y"
         />
-        <div>
+        <div className="flex items-center justify-between pt-1">
+          <span className="text-[11px] text-muted-foreground">
+            {instructions.length} / 4000 characters
+          </span>
           <Button
             variant="outline"
+            size="sm"
             disabled={savingInstructions || instructions === settings.customInstructions}
             onClick={() => void saveInstructions()}
             data-testid="save-instructions"
@@ -467,7 +516,6 @@ function GeneralSection() {
   }, []);
   useEffect(load, [load]);
 
-  // Where the system lets us, put the report on the clipboard; otherwise say so, rather than fail silently.
   const copyDiagnostics = async () => {
     try {
       await navigator.clipboard.writeText(await library.diagnostics());
@@ -478,13 +526,15 @@ function GeneralSection() {
   };
 
   return (
-    <div className="grid gap-8">
-      <section className="grid gap-3">
-        <div className="grid">
-          <h2 className="text-sm font-semibold">Projects folder</h2>
-          <p className="text-sm text-muted-foreground">Where your projects are stored.</p>
+    <div className="grid gap-5">
+      {/* Projects folder card */}
+      <section className="rounded-2xl border border-border/70 bg-card p-5 shadow-xs grid gap-3">
+        <div className="grid gap-0.5">
+          <h3 className="text-sm font-semibold">Projects folder</h3>
+          <p className="text-xs text-muted-foreground">Where your projects are stored.</p>
         </div>
-        <div className="flex items-center gap-2 rounded-xl border border-border px-4 py-3">
+        <div className="flex items-center gap-2 rounded-xl border border-border/60 bg-muted/30 px-3.5 py-2.5">
+          <FolderOpen className="size-4 shrink-0 text-muted-foreground" />
           <code className="min-w-0 flex-1 truncate font-mono text-xs" data-testid="library-path">
             {libraryPath ?? "…"}
           </code>
@@ -494,68 +544,70 @@ function GeneralSection() {
               size="sm"
               onClick={() => revealItemInDir(libraryPath).catch((e) => toast.error(errorText(e)))}
             >
-              <FolderOpen /> Show
+              Show
             </Button>
           )}
           <Button variant="outline" size="sm" onClick={() => setDialog("folder")}>
-            <FolderSync /> Change…
+            <FolderSync className="size-3.5 mr-1.5" /> Change…
           </Button>
         </div>
       </section>
 
-      <section className="grid gap-3">
-        <div className="grid">
-          <h2 className="text-sm font-semibold">Offline use</h2>
-          <p className="text-sm text-muted-foreground">
+      {/* Offline use card */}
+      <section className="rounded-2xl border border-border/70 bg-card p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="grid gap-0.5">
+          <h3 className="text-sm font-semibold">Offline use</h3>
+          <p className="text-xs text-muted-foreground max-w-md">
             The first compile downloads the LaTeX packages a document needs. Fetch the common ones
             now so compiling works without a connection.
           </p>
         </div>
-        <div>
-          <Button variant="outline" onClick={() => setDialog("offline")}>
-            <WifiOff /> Prepare for offline use…
-          </Button>
-        </div>
+        <Button variant="outline" size="sm" onClick={() => setDialog("offline")} className="shrink-0">
+          <WifiOff className="size-4 mr-1.5" /> Prepare for offline use…
+        </Button>
       </section>
 
-      <section className="grid gap-3">
-        <div className="grid">
-          <h2 className="text-sm font-semibold">Setup</h2>
-          <p className="text-sm text-muted-foreground">
+      {/* Setup card */}
+      <section className="rounded-2xl border border-border/70 bg-card p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="grid gap-0.5">
+          <h3 className="text-sm font-semibold">Setup</h3>
+          <p className="text-xs text-muted-foreground max-w-md">
             Go through the first-run steps again: projects folder, offline packages, a first
             project. Your projects and settings stay as they are.
           </p>
         </div>
-        <div>
-          <Button
-            variant="outline"
-            onClick={() => window.location.assign("/welcome?rerun=1")}
-            data-testid="run-setup-again"
-          >
-            <RotateCw /> Run setup again
-          </Button>
-        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => window.location.assign("/welcome?rerun=1")}
+          data-testid="run-setup-again"
+          className="shrink-0"
+        >
+          <RotateCw className="size-4 mr-1.5" /> Run setup again
+        </Button>
       </section>
 
-      <section className="grid gap-3">
-        <div className="grid">
-          <h2 className="text-sm font-semibold">Diagnostics</h2>
-          <p className="text-sm text-muted-foreground">
+      {/* Diagnostics card */}
+      <section className="rounded-2xl border border-border/70 bg-card p-5 shadow-xs grid gap-3">
+        <div className="grid gap-0.5">
+          <h3 className="text-sm font-semibold">Diagnostics</h3>
+          <p className="text-xs text-muted-foreground">
             If something doesn't work, copy this report into your bug report. It lists versions,
             folders and the end of the log. It never includes your API keys or the contents of your
             files.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={() => void copyDiagnostics()}>
-            <ClipboardCopy /> Copy diagnostics
+        <div className="flex flex-wrap gap-2 pt-1">
+          <Button variant="outline" size="sm" onClick={() => void copyDiagnostics()}>
+            <ClipboardCopy className="size-4 mr-1.5" /> Copy diagnostics
           </Button>
           {library.inTauri() && logFile && (
             <Button
               variant="outline"
+              size="sm"
               onClick={() => revealItemInDir(logFile).catch((e) => toast.error(errorText(e)))}
             >
-              <FileText /> Show log file
+              <FileText className="size-4 mr-1.5" /> Show log file
             </Button>
           )}
         </div>
@@ -692,30 +744,33 @@ function AboutSection() {
   };
 
   return (
-    <div className="grid gap-8">
-      {/* App info */}
-      <section className="grid gap-3">
-        <div className="grid">
-          <h2 className="text-sm font-semibold">SomeScript</h2>
-          <p className="text-sm text-muted-foreground">
-            Version{" "}
-            <span className="font-mono text-xs" data-testid="app-version">
-              {version}
-            </span>
-          </p>
+    <div className="grid gap-5">
+      {/* App info & Updates card */}
+      <section className="rounded-2xl border border-border/70 bg-card p-5 shadow-xs grid gap-4">
+        <div className="flex items-center justify-between">
+          <div className="grid gap-0.5">
+            <h3 className="text-sm font-semibold">SomeScript</h3>
+            <p className="text-xs text-muted-foreground">
+              Version{" "}
+              <span className="font-mono text-xs font-medium text-foreground" data-testid="app-version">
+                {version}
+              </span>
+            </p>
+          </div>
+          <Badge variant="secondary" className="font-mono text-[10px]">
+            Desktop
+          </Badge>
         </div>
-      </section>
 
-      {/* Check for updates */}
-      <section className="grid gap-3">
-        <div className="grid">
-          <h2 className="text-sm font-semibold">Updates</h2>
-          <p className="text-sm text-muted-foreground">Check for new releases of SomeScript.</p>
-        </div>
-        <div className="flex flex-col gap-3">
+        <div className="border-t border-border/50 pt-3 flex flex-col gap-3">
+          <div className="grid gap-0.5">
+            <h4 className="text-xs font-semibold">Updates</h4>
+            <p className="text-xs text-muted-foreground">Check for new releases of SomeScript.</p>
+          </div>
           <div className="flex flex-wrap items-center gap-3">
             <Button
               variant="outline"
+              size="sm"
               disabled={checking || installing || !library.inTauri()}
               onClick={() => void handleCheckUpdates()}
               data-testid="check-updates"
@@ -736,9 +791,10 @@ function AboutSection() {
             )}
           </div>
           {availableUpdate && (
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3 pt-2">
               <Button
                 variant="default"
+                size="sm"
                 disabled={installing}
                 onClick={() => void handleInstall()}
                 data-testid="install-update"
@@ -753,38 +809,36 @@ function AboutSection() {
         </div>
       </section>
 
-      {/* Auto-update switch */}
-      <section className="grid gap-3">
-        <div className="flex items-center justify-between gap-4 rounded-xl border border-border px-4 py-3">
-          <div className="grid gap-0.5">
-            <label htmlFor="auto-update" className="text-sm font-semibold cursor-pointer">
-              Check for updates automatically
-            </label>
-            <p className="text-sm text-muted-foreground">
-              Periodically check for new releases in the background.
-            </p>
-          </div>
-          <Switch
-            id="auto-update"
-            checked={autoUpdate}
-            disabled={!loadedSettings}
-            onCheckedChange={handleToggleAutoUpdate}
-            data-testid="auto-update"
-          />
+      {/* Auto-update switch card */}
+      <section className="rounded-2xl border border-border/70 bg-card p-5 shadow-xs flex items-center justify-between gap-4">
+        <div className="grid gap-0.5">
+          <label htmlFor="auto-update" className="text-sm font-semibold cursor-pointer">
+            Check for updates automatically
+          </label>
+          <p className="text-xs text-muted-foreground">
+            Periodically check for new releases in the background.
+          </p>
         </div>
+        <Switch
+          id="auto-update"
+          checked={autoUpdate}
+          disabled={!loadedSettings}
+          onCheckedChange={handleToggleAutoUpdate}
+          data-testid="auto-update"
+        />
       </section>
 
-      {/* Links */}
-      <section className="grid gap-3">
-        <div className="grid">
-          <h2 className="text-sm font-semibold">Links</h2>
-          <p className="text-sm text-muted-foreground">
+      {/* Links card */}
+      <section className="rounded-2xl border border-border/70 bg-card p-5 shadow-xs grid gap-3">
+        <div className="grid gap-0.5">
+          <h3 className="text-sm font-semibold">Links</h3>
+          <p className="text-xs text-muted-foreground">
             Project repository, website, and issue tracker.
           </p>
         </div>
-        <div className="grid gap-3 rounded-xl border border-border p-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-            <span className="text-sm font-medium">Source code</span>
+        <div className="grid gap-2 pt-1">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 p-2.5 rounded-xl border border-border/50 bg-muted/20">
+            <span className="text-xs font-medium">Source code</span>
             <a
               href="https://github.com/Fankrits/SomeScript"
               target="_blank"
@@ -795,8 +849,8 @@ function AboutSection() {
               https://github.com/Fankrits/SomeScript
             </a>
           </div>
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-            <span className="text-sm font-medium">Website</span>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 p-2.5 rounded-xl border border-border/50 bg-muted/20">
+            <span className="text-xs font-medium">Website</span>
             <a
               href="https://somescript.com"
               target="_blank"
@@ -807,8 +861,8 @@ function AboutSection() {
               https://somescript.com
             </a>
           </div>
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-            <span className="text-sm font-medium">Report an issue</span>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 p-2.5 rounded-xl border border-border/50 bg-muted/20">
+            <span className="text-xs font-medium">Report an issue</span>
             <a
               href="https://github.com/Fankrits/SomeScript/issues"
               target="_blank"
