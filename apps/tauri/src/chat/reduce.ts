@@ -4,6 +4,7 @@
 import type {
   AssistantMessage,
   AssistantPart,
+  Attachment,
   ChatEvent,
   ChatMessage,
   Todo,
@@ -101,13 +102,12 @@ export function sanitizeMessages(input: unknown): ChatMessage[] {
     const id = typeof m.id === "string" && m.id ? m.id : crypto.randomUUID();
     if (m.role === "user" && typeof m.text === "string") {
       const attachments = Array.isArray(m.attachments)
-        ? m.attachments.filter(
-            (a): a is { name: string; text: string } =>
+        ? (m.attachments.filter(
+            (a): a is Attachment =>
               typeof a === "object" &&
               a !== null &&
-              typeof (a as { name?: unknown }).name === "string" &&
-              typeof (a as { text?: unknown }).text === "string",
-          )
+              typeof (a as { name?: unknown }).name === "string",
+          ) as Attachment[])
         : undefined;
       out.push({ id, role: "user", text: m.text, ...(attachments?.length ? { attachments } : {}) });
     } else if (m.role === "assistant" && Array.isArray(m.parts)) {

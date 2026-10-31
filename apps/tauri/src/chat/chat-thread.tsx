@@ -1,18 +1,32 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type ClipboardEvent,
+  type DragEvent,
+  type KeyboardEvent,
+} from "react";
 import {
   ArrowUp,
   Check,
   ChevronDown,
+  FileImage,
   FileText,
   Info,
   KeyRound,
   Loader2,
+  Paperclip,
   RotateCcw,
   Settings,
   Sparkles,
   Square,
+  Upload,
   X,
 } from "lucide-react";
+import { toast } from "sonner";
 import {
   Conversation,
   ConversationContent,
@@ -37,6 +51,8 @@ import { ToolCard, TodoList } from "./tool-cards";
 import type { AssistantMessage, Attachment, ChatMessage, UserMessage } from "./types";
 import { useChat } from "./use-chat";
 import { activeChoice, useAiSettings } from "./use-ai-settings";
+import { isVisionModel, supportsNativePdf } from "./vision";
+import { processUploadedFile } from "./file-attachment";
 
 const openSettings = () => window.location.assign(settingsUrl("ai"));
 /** Pasted-in code can be huge; the model sees at most this much of one attachment. */
@@ -58,6 +74,69 @@ export function ChatThread(props: {
   const chat = useChat(props);
   const ai = useAiSettings();
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragCounter = useRef(0);
+
+  const choice = activeChoice(ai.settings);
+  const provider =
+    ai.settings?.providers.find((p) => p.id === ai.settings?.activeProviderId) ??
+    ai.settings?.providers[0];
+  const providerKind = provider?.kind ?? "openai";
+  const modelName = choice?.model;
+  const isVision = isVisionModel(providerKind, modelName);
+  const isNativePdf = supportsNativePdf(providerKind, modelName);
+
+  const handleFiles = useCallback(
+    async (files: FileList | File[]) => {
+      const newItems: Attachment[] = [];
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const res = await processUploadedFile(file, { isVision, isNativePdf });
+        if (!res.ok) {
+          toast.error(res.error);
+        } else {
+          newItems.push(res.attachment);
+        }
+      }
+      if (newItems.length > 0) {
+        setAttachments((prev) => [...prev, ...newItems]);
+      }
+    },
+    [isVision, isNativePdf],
+  );
+
+  const onDragEnter = useCallback((e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    dragCounter.current += 1;
+    if (e.dataTransfer.types.includes("Files")) {
+      setIsDragging(true);
+    }
+  }, []);
+
+  const onDragLeave = useCallback((e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    dragCounter.current -= 1;
+    if (dragCounter.current <= 0) {
+      dragCounter.current = 0;
+      setIsDragging(false);
+    }
+  }, []);
+
+  const onDragOver = useCallback((e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+  }, []);
+
+  const onDrop = useCallback(
+    async (e: DragEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      dragCounter.current = 0;
+      setIsDragging(false);
+      if (e.dataTransfer.files.length > 0) {
+        await handleFiles(e.dataTransfer.files);
+      }
+    },
+    [handleFiles],
+  );
 
   // Text sent from elsewhere in the editor ("Send to chat" on the terminal, a code selection).
   useEffect(() => {
@@ -67,7 +146,7 @@ export function ChatThread(props: {
       setAttachments((prev) =>
         prev.some((a) => a.name === name && a.text === text)
           ? prev
-          : [...prev, { name, text: text.slice(0, MAX_ATTACHMENT_CHARS) }],
+          : [...prev, { name, text: text.slice(0, MAX_ATTACHMENT_CHARS), type: "text" }],
       );
     };
     window.addEventListener("somescript:attach-to-chat", onAttach);
@@ -96,9 +175,23 @@ export function ChatThread(props: {
 
   return (
     <div
-      className="flex h-full min-h-0 min-w-0 w-full flex-1 flex-col bg-background"
+      className="relative flex h-full min-h-0 min-w-0 w-full flex-1 flex-col bg-background"
       data-testid="chat-thread"
+      onDragEnter={onDragEnter}
+      onDragLeave={onDragLeave}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
     >
+      {isDragging && (
+        <div
+          className="pointer-events-none absolute inset-0 z-50 flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-primary bg-background/85 backdrop-blur-xs"
+          data-testid="chat-dropzone-overlay"
+        >
+          <Upload className="size-8 text-primary animate-bounce mb-2" />
+          <p className="text-sm font-medium">Drop files to attach to chat</p>
+          <p className="text-xs text-muted-foreground">Text, code, images, or PDFs</p>
+        </div>
+      )}
       <Conversation className="min-h-0 min-w-0 w-full flex-1">
         <ConversationContent className="gap-5 p-3 min-w-0 w-full">
           {chat.messages.length === 0 ? (
@@ -139,6 +232,7 @@ export function ChatThread(props: {
         running={chat.running}
         settings={ai.settings}
         attachments={attachments}
+        onAddFiles={handleFiles}
         onRemoveAttachment={(i) => setAttachments((prev) => prev.filter((_, j) => j !== i))}
         onSend={send}
         onStop={chat.stop}
@@ -215,13 +309,23 @@ function UserBubble({ message }: { message: UserMessage }) {
   return (
     <div className="ml-auto flex max-w-[92%] flex-col items-end gap-1.5" data-testid="user-message">
       {message.attachments?.map((a, i) => (
-        <span
-          key={i}
-          className="flex max-w-full items-center gap-1 rounded-md border border-border/60 bg-muted/40 px-1.5 py-0.5 text-[11px] text-muted-foreground"
-        >
-          <FileText className="size-3 shrink-0" />
-          <span className="truncate">{a.name}</span>
-        </span>
+        <div key={i} className="flex flex-col items-end gap-1">
+          {a.type === "image" && a.url && (
+            <img
+              src={a.url}
+              alt={a.name}
+              className="max-h-48 max-w-full rounded-lg border border-border object-contain shadow-xs"
+            />
+          )}
+          <span className="flex max-w-full items-center gap-1 rounded-md border border-border/60 bg-muted/40 px-1.5 py-0.5 text-[11px] text-muted-foreground">
+            {a.type === "image" ? (
+              <FileImage className="size-3 shrink-0" />
+            ) : (
+              <FileText className="size-3 shrink-0" />
+            )}
+            <span className="truncate">{a.name}</span>
+          </span>
+        </div>
       ))}
       {message.text && (
         <div className="rounded-lg bg-secondary px-3 py-2 text-sm break-words whitespace-pre-wrap text-foreground">
@@ -364,6 +468,7 @@ function Composer(props: {
   running: boolean;
   settings: AiSettings | null;
   attachments: Attachment[];
+  onAddFiles: (files: FileList | File[]) => Promise<void>;
   onRemoveAttachment: (index: number) => void;
   onSend: (text: string) => void;
   onStop: () => void;
@@ -371,8 +476,23 @@ function Composer(props: {
 }) {
   const [text, setText] = useState("");
   const area = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const canSend =
     !props.disabled && !props.running && (text.trim().length > 0 || props.attachments.length > 0);
+
+  const onFileInputChange = (e: ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      void props.onAddFiles(e.target.files);
+      e.target.value = "";
+    }
+  };
+
+  const onPaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
+    if (e.clipboardData.files.length > 0) {
+      e.preventDefault();
+      void props.onAddFiles(e.clipboardData.files);
+    }
+  };
 
   // Grow with the text, up to about eight lines.
   const syncHeight = useCallback(() => {
@@ -418,15 +538,28 @@ function Composer(props: {
   return (
     <div className="shrink-0 border-t border-border/60 p-2 min-w-0 w-full">
       <div className="w-full min-w-0 rounded-xl border border-border bg-background shadow-xs focus-within:ring-2 focus-within:ring-ring/30">
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          className="hidden"
+          onChange={onFileInputChange}
+          accept=".tex,.bib,.txt,.md,.json,.csv,.py,.js,.ts,.rs,text/*,image/*,application/pdf"
+          data-testid="chat-file-input"
+        />
         {props.attachments.length > 0 && (
           <div className="flex flex-wrap gap-1 px-2 pt-2" data-testid="attachments">
             {props.attachments.map((a, i) => (
               <span
                 key={`${a.name}-${i}`}
-                className="flex max-w-full items-center gap-1 rounded-md border border-border/60 bg-muted/40 py-0.5 pr-0.5 pl-1.5 text-[11px]"
+                className="flex max-w-full items-center gap-1.5 rounded-md border border-border/60 bg-muted/40 py-0.5 pr-0.5 pl-1.5 text-[11px]"
               >
-                <FileText className="size-3 shrink-0 text-muted-foreground" />
-                <span className="truncate">{a.name}</span>
+                {a.type === "image" && a.url ? (
+                  <img src={a.url} alt={a.name} className="size-4 rounded object-cover" />
+                ) : (
+                  <FileText className="size-3 shrink-0 text-muted-foreground" />
+                )}
+                <span className="truncate max-w-[140px]">{a.name}</span>
                 <button
                   type="button"
                   aria-label={`Remove ${a.name}`}
@@ -452,9 +585,23 @@ function Composer(props: {
           onFocus={syncHeight}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={onKeyDown}
+          onPaste={onPaste}
           className="block min-h-[40px] max-h-44 w-full min-w-0 resize-none bg-transparent px-3 pt-2.5 pb-1 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed"
         />
         <div className="flex items-center gap-1 px-1.5 pb-1.5">
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="ghost"
+            aria-label="Attach file"
+            title="Attach file (text, image, PDF)"
+            disabled={props.disabled || props.running}
+            onClick={() => fileInputRef.current?.click()}
+            className="text-muted-foreground hover:text-foreground"
+            data-testid="chat-attach-button"
+          >
+            <Paperclip className="size-4" />
+          </Button>
           <ModelPicker settings={props.settings} onChoose={props.onChoose} />
           <span className="ml-auto" />
           {props.running ? (
