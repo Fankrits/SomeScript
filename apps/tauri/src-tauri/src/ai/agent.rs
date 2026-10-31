@@ -17,7 +17,7 @@
 //! compile instead of finishing in the background.
 
 use super::{
-    protocol::{self, Finish, Msg, StreamItem, ToolCall, ToolSpec},
+    protocol::{self, Finish, Msg, StreamItem, ToolCall, ToolSpec, UserPart},
     settings::Provider,
     sse::SseDecoder,
     tools::{ToolEnv, specs},
@@ -363,7 +363,7 @@ pub async fn ping(conn: &Conn) -> Result<String, String> {
         system: "Reply with the single word: ok".into(),
         http: conn.http.clone(),
     };
-    let history = [Msg::User("Say ok.".into())];
+    let history = [Msg::user("Say ok.")];
     let result = tokio::time::timeout(
         Duration::from_secs(45),
         stream_step(&probe, &history, &[], &tx),
@@ -557,6 +557,7 @@ pub fn history_from_client(messages: &[Value]) -> Vec<Msg> {
                     .and_then(Value::as_str)
                     .unwrap_or("")
                     .to_owned();
+                let mut parts = Vec::new();
                 for a in m
                     .get("attachments")
                     .and_then(Value::as_array)
@@ -567,13 +568,60 @@ pub fn history_from_client(messages: &[Value]) -> Vec<Msg> {
                         .get("name")
                         .and_then(Value::as_str)
                         .unwrap_or("attachment");
+                    let att_type = a.get("type").and_then(Value::as_str).unwrap_or("text");
                     let body = a.get("text").and_then(Value::as_str).unwrap_or("");
-                    text.push_str(&format!(
-                        "\n\n<attachment name=\"{name}\">\n{body}\n</attachment>"
-                    ));
+                    let url = a.get("url").and_then(Value::as_str).unwrap_or("");
+                    let media_type = a.get("mediaType").and_then(Value::as_str).unwrap_or("");
+
+                    let is_image = att_type == "image"
+                        || (!url.is_empty() && (media_type.starts_with("image/") || url.starts_with("data:image/")));
+                    let is_doc = att_type == "file"
+                        || (!url.is_empty() && (media_type == "application/pdf" || url.starts_with("data:application/pdf")));
+
+                    if is_image {
+                        let mtype = if !media_type.is_empty() {
+                            media_type
+                        } else if let Some(stripped) = url.strip_prefix("data:") {
+                            stripped.split(';').next().unwrap_or("image/png")
+                        } else {
+                            "image/png"
+                        };
+                        let data = if let Some((_, b64)) = url.split_once(",") {
+                            b64.to_string()
+                        } else {
+                            url.to_string()
+                        };
+                        if !data.is_empty() {
+                            parts.push(UserPart::Image {
+                                media_type: mtype.to_string(),
+                                data,
+                            });
+                        }
+                    } else if is_doc {
+                        let mtype = if !media_type.is_empty() {
+                            media_type
+                        } else {
+                            "application/pdf"
+                        };
+                        let data = if let Some((_, b64)) = url.split_once(",") {
+                            b64.to_string()
+                        } else {
+                            url.to_string()
+                        };
+                        if !data.is_empty() {
+                            parts.push(UserPart::Document {
+                                media_type: mtype.to_string(),
+                                data,
+                            });
+                        }
+                    } else if !body.is_empty() {
+                        text.push_str(&format!(
+                            "\n\n<attachment name=\"{name}\">\n{body}\n</attachment>"
+                        ));
+                    }
                 }
-                if !text.trim().is_empty() {
-                    out.push(Msg::User(text));
+                if !text.trim().is_empty() || !parts.is_empty() {
+                    out.push(Msg::User { text, parts });
                 }
             }
             Some("assistant") => push_assistant(&mut out, m),
@@ -664,7 +712,7 @@ fn push_assistant(out: &mut Vec<Msg>, m: &Value) {
 
 fn msg_chars(m: &Msg) -> usize {
     match m {
-        Msg::User(t) => t.chars().count(),
+        Msg::User { text, .. } => text.chars().count(),
         Msg::Assistant { text, calls } => {
             text.chars().count()
                 + calls
@@ -698,7 +746,7 @@ pub fn compact(history: &mut Vec<Msg>, budget: usize) {
             .iter()
             .enumerate()
             .skip(1)
-            .find(|(_, m)| matches!(m, Msg::User(_)))
+            .find(|(_, m)| matches!(m, Msg::User { .. }))
             .map(|(i, _)| i);
         match next_user {
             Some(i) if history.len() - i >= 1 => {
@@ -720,7 +768,7 @@ mod tests {
     use std::sync::Arc;
 
     fn user(t: &str) -> Msg {
-        Msg::User(t.into())
+        Msg::user(t)
     }
 
     // ---- history ----
@@ -744,8 +792,8 @@ mod tests {
         assert_eq!(h.len(), 8, "{h:#?}");
         assert_eq!(
             h[0],
-            Msg::User(
-                "fix this\n\n<attachment name=\"main.tex:3-4\">\n\\bad\n</attachment>".into()
+            Msg::user(
+                "fix this\n\n<attachment name=\"main.tex:3-4\">\n\\bad\n</attachment>"
             )
         );
         let Msg::Assistant { text, calls } = &h[1] else {
@@ -767,6 +815,45 @@ mod tests {
             }
         );
         assert_eq!(h[7], user("thanks"));
+    }
+
+    #[test]
+    fn client_history_parses_multimodal_image_and_document_attachments() {
+        let messages = vec![
+            json!({
+                "role": "user",
+                "text": "examine these",
+                "attachments": [
+                    { "name": "diagram.png", "type": "image", "url": "data:image/png;base64,iVBORw" },
+                    { "name": "paper.pdf", "type": "file", "url": "data:application/pdf;base64,JVBERi" },
+                    { "name": "notes.txt", "type": "text", "text": "extra notes" },
+                ]
+            }),
+        ];
+        let h = history_from_client(&messages);
+        assert_eq!(h.len(), 1);
+        let Msg::User { text, parts } = &h[0] else {
+            panic!("expected user message");
+        };
+        assert_eq!(
+            text,
+            "examine these\n\n<attachment name=\"notes.txt\">\nextra notes\n</attachment>"
+        );
+        assert_eq!(parts.len(), 2);
+        assert_eq!(
+            parts[0],
+            UserPart::Image {
+                media_type: "image/png".into(),
+                data: "iVBORw".into()
+            }
+        );
+        assert_eq!(
+            parts[1],
+            UserPart::Document {
+                media_type: "application/pdf".into(),
+                data: "JVBERi".into()
+            }
+        );
     }
 
     #[test]
@@ -803,7 +890,7 @@ mod tests {
         let shape: Vec<String> = h
             .iter()
             .map(|m| match m {
-                Msg::User(_) => "user".to_owned(),
+                Msg::User { .. } => "user".to_owned(),
                 Msg::Assistant { calls, text } => {
                     format!("assistant({} calls, {:?})", calls.len(), text)
                 }
@@ -876,7 +963,7 @@ mod tests {
         compact(&mut tiny, 100);
         assert_eq!(tiny.last(), Some(&last));
         assert!(
-            matches!(tiny[0], Msg::User(_)),
+            matches!(tiny[0], Msg::User { .. }),
             "history must start with a user message"
         );
         assert!(tiny.len() < h.len());

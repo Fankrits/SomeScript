@@ -201,7 +201,7 @@ pub async fn chat(State(s): State<ApiState>, Json(body): Json<Value>) -> ApiResu
         .filter(|m| !m.is_empty() && m.len() <= MAX_CHAT_MESSAGES)
         .ok_or_else(|| ApiError::bad_request("messages is required"))?;
     let history = agent::history_from_client(messages);
-    if !matches!(history.last(), Some(Msg::User(_))) {
+    if !matches!(history.last(), Some(Msg::User { .. })) {
         return Err(ApiError::bad_request("The last message must be from you."));
     }
     let settings = s.ai.snapshot();

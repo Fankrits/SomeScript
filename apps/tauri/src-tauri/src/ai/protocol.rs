@@ -32,8 +32,17 @@ pub struct ToolCall {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub enum UserPart {
+    Image { media_type: String, data: String },
+    Document { media_type: String, data: String },
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum Msg {
-    User(String),
+    User {
+        text: String,
+        parts: Vec<UserPart>,
+    },
     Assistant {
         text: String,
         calls: Vec<ToolCall>,
@@ -43,6 +52,23 @@ pub enum Msg {
         name: String,
         content: String,
     },
+}
+
+impl Msg {
+    pub fn user(text: impl Into<String>) -> Self {
+        Msg::User {
+            text: text.into(),
+            parts: Vec::new(),
+        }
+    }
+
+    #[cfg(test)]
+    pub fn user_multimodal(text: impl Into<String>, parts: Vec<UserPart>) -> Self {
+        Msg::User {
+            text: text.into(),
+            parts,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -156,7 +182,43 @@ fn openai_body(model: &str, system: &str, history: &[Msg], tools: &[ToolSpec]) -
     let mut messages = vec![json!({ "role": "system", "content": system })];
     for msg in history {
         match msg {
-            Msg::User(text) => messages.push(json!({ "role": "user", "content": text })),
+            Msg::User { text, parts } => {
+                if parts.is_empty() {
+                    messages.push(json!({ "role": "user", "content": text }));
+                } else {
+                    let mut content_parts: Vec<Value> = Vec::new();
+                    if !text.is_empty() {
+                        content_parts.push(json!({ "type": "text", "text": text }));
+                    }
+                    for part in parts {
+                        match part {
+                            UserPart::Image { media_type, data } => {
+                                let url = if data.starts_with("data:") {
+                                    data.clone()
+                                } else {
+                                    format!("data:{media_type};base64,{data}")
+                                };
+                                content_parts.push(json!({
+                                    "type": "image_url",
+                                    "image_url": { "url": url }
+                                }));
+                            }
+                            UserPart::Document { media_type, data } => {
+                                let url = if data.starts_with("data:") {
+                                    data.clone()
+                                } else {
+                                    format!("data:{media_type};base64,{data}")
+                                };
+                                content_parts.push(json!({
+                                    "type": "image_url",
+                                    "image_url": { "url": url }
+                                }));
+                            }
+                        }
+                    }
+                    messages.push(json!({ "role": "user", "content": content_parts }));
+                }
+            }
             Msg::Assistant { text, calls } => {
                 if text.is_empty() && calls.is_empty() {
                     continue; // empty assistant turns are rejected by most servers
@@ -221,7 +283,45 @@ fn anthropic_body(model: &str, system: &str, history: &[Msg], tools: &[ToolSpec]
     };
     for msg in history {
         match msg {
-            Msg::User(text) => user_blocks.push(json!({ "type": "text", "text": text })),
+            Msg::User { text, parts } => {
+                if !text.is_empty() {
+                    user_blocks.push(json!({ "type": "text", "text": text }));
+                }
+                for part in parts {
+                    match part {
+                        UserPart::Image { media_type, data } => {
+                            let clean_data = if let Some((_, b64)) = data.split_once(",") {
+                                b64
+                            } else {
+                                data.as_str()
+                            };
+                            user_blocks.push(json!({
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": media_type,
+                                    "data": clean_data,
+                                }
+                            }));
+                        }
+                        UserPart::Document { media_type, data } => {
+                            let clean_data = if let Some((_, b64)) = data.split_once(",") {
+                                b64
+                            } else {
+                                data.as_str()
+                            };
+                            user_blocks.push(json!({
+                                "type": "document",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": media_type,
+                                    "data": clean_data,
+                                }
+                            }));
+                        }
+                    }
+                }
+            }
             Msg::Tool {
                 call_id, content, ..
             } => {
@@ -758,7 +858,7 @@ mod tests {
 
     fn history() -> Vec<Msg> {
         vec![
-            Msg::User("fix main.tex".into()),
+            Msg::user("fix main.tex"),
             Msg::Assistant {
                 text: "Reading it.".into(),
                 calls: vec![
@@ -780,7 +880,7 @@ mod tests {
                 text: "Done.".into(),
                 calls: vec![],
             },
-            Msg::User("thanks".into()),
+            Msg::user("thanks"),
         ]
     }
 
@@ -816,7 +916,7 @@ mod tests {
     fn openai_body_skips_empty_assistant_turns_and_nulls_content_for_pure_tool_calls() {
         let p = provider(ProviderKind::Openai, "https://x/v1", "k");
         let hist = vec![
-            Msg::User("a".into()),
+            Msg::user("a"),
             Msg::Assistant {
                 text: String::new(),
                 calls: vec![],
@@ -831,6 +931,34 @@ mod tests {
         assert_eq!(m.len(), 3);
         assert!(m[2]["content"].is_null());
         assert!(body.get("tools").is_none());
+    }
+
+    #[test]
+    fn openai_body_serializes_multimodal_user_parts() {
+        let p = provider(ProviderKind::Openai, "https://x/v1", "k");
+        let hist = vec![
+            Msg::user_multimodal(
+                "look at this",
+                vec![
+                    UserPart::Image {
+                        media_type: "image/png".into(),
+                        data: "abc".into(),
+                    },
+                ],
+            ),
+        ];
+        let body = build_body(&p, "gpt-4o", "SYS", &hist, &[]);
+        let m = body["messages"].as_array().unwrap();
+        assert_eq!(m[1]["role"], "user");
+        let content = m[1]["content"].as_array().unwrap();
+        assert_eq!(content[0], json!({ "type": "text", "text": "look at this" }));
+        assert_eq!(
+            content[1],
+            json!({
+                "type": "image_url",
+                "image_url": { "url": "data:image/png;base64,abc" }
+            })
+        );
     }
 
     #[test]
@@ -855,15 +983,61 @@ mod tests {
     }
 
     #[test]
+    fn anthropic_body_serializes_multimodal_images_and_documents() {
+        let p = provider(ProviderKind::Anthropic, "https://api.anthropic.com", "k");
+        let hist = vec![
+            Msg::user_multimodal(
+                "check both",
+                vec![
+                    UserPart::Image {
+                        media_type: "image/png".into(),
+                        data: "data:image/png;base64,iVBORw".into(),
+                    },
+                    UserPart::Document {
+                        media_type: "application/pdf".into(),
+                        data: "JVBERi0x".into(),
+                    },
+                ],
+            ),
+        ];
+        let body = build_body(&p, "claude-3-5-sonnet", "SYS", &hist, &[]);
+        let m = body["messages"].as_array().unwrap();
+        let blocks = m[0]["content"].as_array().unwrap();
+        assert_eq!(blocks[0], json!({ "type": "text", "text": "check both" }));
+        assert_eq!(
+            blocks[1],
+            json!({
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": "image/png",
+                    "data": "iVBORw"
+                }
+            })
+        );
+        assert_eq!(
+            blocks[2],
+            json!({
+                "type": "document",
+                "source": {
+                    "type": "base64",
+                    "media_type": "application/pdf",
+                    "data": "JVBERi0x"
+                }
+            })
+        );
+    }
+
+    #[test]
     fn anthropic_puts_tool_results_before_a_following_user_text() {
         let p = provider(ProviderKind::Anthropic, "https://api.anthropic.com", "k");
         let hist = vec![
-            Msg::User("go".into()),
+            Msg::user("go"),
             Msg::Assistant {
                 text: String::new(),
                 calls: vec![call("c1", "grep", json!({}))],
             },
-            Msg::User("also this".into()),
+            Msg::user("also this"),
             Msg::Tool {
                 call_id: "c1".into(),
                 name: "grep".into(),
