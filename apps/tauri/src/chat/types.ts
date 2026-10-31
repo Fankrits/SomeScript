@@ -5,6 +5,9 @@
 export interface Attachment {
   name: string;
   text: string;
+  type?: "text" | "image" | "file";
+  url?: string;
+  mediaType?: string;
 }
 
 export interface UserMessage {
