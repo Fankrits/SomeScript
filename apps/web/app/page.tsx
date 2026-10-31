@@ -16,9 +16,6 @@ import { DownloadButton, DownloadVersionLine } from "@/components/download-butto
 const FeaturesBento = dynamic(() =>
   import("@/components/sections/features-bento").then((mod) => mod.FeaturesBento),
 );
-const HowItWorks = dynamic(() =>
-  import("@/components/sections/how-it-works").then((mod) => mod.HowItWorks),
-);
 const Faq = dynamic(() => import("@/components/sections/faq").then((mod) => mod.Faq));
 
 export default async function Home({
@@ -94,7 +91,6 @@ export default async function Home({
 
       <main className="flex-1 flex flex-col relative w-full z-10">
         <FeaturesBento />
-        <HowItWorks />
         <Faq />
         <FinalCta />
       </main>

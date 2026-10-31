@@ -57,12 +57,6 @@ export default function Header({ dark = false }: { dark?: boolean }) {
         >
           Features
         </Link>
-        <Link
-          href="/#how-it-works"
-          className={`text-xs sm:text-sm font-medium transition-colors ${dark ? "text-white/70 hover:text-white" : "text-foreground/70 hover:text-foreground"}`}
-        >
-          How it Works
-        </Link>
         <a
           href="https://docs.somescript.com"
           target="_blank"
@@ -133,13 +127,6 @@ export default function Header({ dark = false }: { dark?: boolean }) {
             className="text-sm font-medium text-foreground/80 hover:text-foreground py-2 border-b border-border/30"
           >
             Features
-          </Link>
-          <Link
-            href="/#how-it-works"
-            onClick={() => setMobileMenuOpen(false)}
-            className="text-sm font-medium text-foreground/80 hover:text-foreground py-2 border-b border-border/30"
-          >
-            How it Works
           </Link>
           <a
             href="https://docs.somescript.com"
