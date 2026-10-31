@@ -107,14 +107,17 @@ export function ChatThread(props: {
 
   const onDragEnter = useCallback((e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
+    e.stopPropagation();
     dragCounter.current += 1;
     if (e.dataTransfer.types.includes("Files")) {
+      e.dataTransfer.dropEffect = "copy";
       setIsDragging(true);
     }
   }, []);
 
   const onDragLeave = useCallback((e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
+    e.stopPropagation();
     dragCounter.current -= 1;
     if (dragCounter.current <= 0) {
       dragCounter.current = 0;
@@ -124,11 +127,14 @@ export function ChatThread(props: {
 
   const onDragOver = useCallback((e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = "copy";
   }, []);
 
   const onDrop = useCallback(
     async (e: DragEvent<HTMLDivElement>) => {
       e.preventDefault();
+      e.stopPropagation();
       dragCounter.current = 0;
       setIsDragging(false);
       if (e.dataTransfer.files.length > 0) {
@@ -494,6 +500,14 @@ function Composer(props: {
     }
   };
 
+  const onTextareaDrop = (e: DragEvent<HTMLTextAreaElement>) => {
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      e.preventDefault();
+      e.stopPropagation();
+      void props.onAddFiles(e.dataTransfer.files);
+    }
+  };
+
   // Grow with the text, up to about eight lines.
   const syncHeight = useCallback(() => {
     const el = area.current;
@@ -586,6 +600,7 @@ function Composer(props: {
           onChange={(e) => setText(e.target.value)}
           onKeyDown={onKeyDown}
           onPaste={onPaste}
+          onDrop={onTextareaDrop}
           className="block min-h-[40px] max-h-44 w-full min-w-0 resize-none bg-transparent px-3 pt-2.5 pb-1 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed"
         />
         <div className="flex items-center gap-1 px-1.5 pb-1.5">

@@ -177,10 +177,10 @@ pub fn run() {
                         true
                     }
                 });
-            // Windows hands file drops to the window itself unless told not to, and then the page's own
-            // drag-and-drop never fires: the file tree's drag-to-move and drop-to-upload would do
-            // nothing. (Elsewhere the webview delivers them to the page already.)
-            #[cfg(windows)]
+            // Tauri's native file drop handler intercepts OS file drops to emit internal Tauri events,
+            // which prevents the webview from receiving standard HTML5 drag-and-drop events (dragenter,
+            // dragover, drop) on macOS and Windows. Disabling it ensures HTML5 drag-and-drop works for
+            // both the chat thread attachment dropzone and the project file tree.
             let window = window.disable_drag_drop_handler();
             // CI drives the real Windows window over the Chrome DevTools Protocol, which needs the
             // browser started with a debugging port. WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS did not
