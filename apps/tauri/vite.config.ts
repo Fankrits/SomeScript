@@ -38,6 +38,8 @@ export default defineConfig({
       "lucide-react",
       "@codemirror/state",
       "@codemirror/view",
+      "@codemirror/language",
+      "@lezer/highlight",
     ],
   },
 
