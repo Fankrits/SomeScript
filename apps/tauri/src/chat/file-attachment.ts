@@ -7,9 +7,7 @@ export interface ProcessFileOptions {
   isNativePdf: boolean;
 }
 
-export type ProcessFileResult =
-  | { ok: true; attachment: Attachment }
-  | { ok: false; error: string };
+export type ProcessFileResult = { ok: true; attachment: Attachment } | { ok: false; error: string };
 
 const TEXT_EXTENSIONS = new Set([
   "tex",

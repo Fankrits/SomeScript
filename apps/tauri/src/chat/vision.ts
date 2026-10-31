@@ -6,7 +6,8 @@
 const VISION_REGEX =
   /(?:^|[-/_])(?:vision|vl|llava|bakllava|pixtral|minicpm-v|internvl|cogvlm)(?:$|[-/_:])|llama-3\.2-(?:11|90)b-vision/i;
 
-const OPENAI_VISION_REGEX = /^(?:openai\/)?(?:gpt-4o(?:-mini)?|gpt-4-turbo|gpt-4-vision|chatgpt-4o|o1)(?:$|[-_])/i;
+const OPENAI_VISION_REGEX =
+  /^(?:openai\/)?(?:gpt-4o(?:-mini)?|gpt-4-turbo|gpt-4-vision|chatgpt-4o|o1)(?:$|[-_])/i;
 const OPENAI_TEXT_ONLY_REGEX = /^(?:openai\/)?(?:o1-mini|o3-mini|gpt-4$|gpt-3\.5)/i;
 
 const GEMINI_VISION_REGEX = /(?:google\/)?gemini-(?:1\.5|2\.0|2\.5|exp)/i;

@@ -562,7 +562,12 @@ function GeneralSection() {
             now so compiling works without a connection.
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => setDialog("offline")} className="shrink-0">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setDialog("offline")}
+          className="shrink-0"
+        >
           <WifiOff className="size-4 mr-1.5" /> Prepare for offline use…
         </Button>
       </section>
@@ -752,7 +757,10 @@ function AboutSection() {
             <h3 className="text-sm font-semibold">SomeScript</h3>
             <p className="text-xs text-muted-foreground">
               Version{" "}
-              <span className="font-mono text-xs font-medium text-foreground" data-testid="app-version">
+              <span
+                className="font-mono text-xs font-medium text-foreground"
+                data-testid="app-version"
+              >
                 {version}
               </span>
             </p>
