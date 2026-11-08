@@ -8,8 +8,8 @@
     "build": "bun build server.ts --outdir dist --target bun"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1161.0",
-    "@clerk/backend": "^3.26.5",
+    "@aws-sdk/client-s3": "^3.1164.0",
+    "@clerk/backend": "^3.27.0",
     "@hocuspocus/extension-logger": "4.8.0",
     "@hocuspocus/extension-redis": "4.8.0",
     "@hocuspocus/server": "4.8.0",
