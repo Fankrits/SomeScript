@@ -49,4 +49,21 @@ a[href*="github.com"] {
   display: none !important;
 }
 
+/* Shiki code syntax highlighting */
+.shiki span {
+  color: var(--shiki-default, var(--shiki-light, inherit));
+  background-color: var(--shiki-default-bg, var(--shiki-light-bg, transparent));
+  font-style: var(--shiki-default-font-style, var(--shiki-light-font-style, inherit));
+  font-weight: var(--shiki-default-font-weight, var(--shiki-light-font-weight, inherit));
+  text-decoration: var(--shiki-default-text-decoration, var(--shiki-light-text-decoration, inherit));
+}
+
+html.dark .shiki span {
+  color: var(--shiki-dark) !important;
+  background-color: var(--shiki-dark-bg, transparent) !important;
+  font-style: var(--shiki-dark-font-style, inherit) !important;
+  font-weight: var(--shiki-dark-font-weight, inherit) !important;
+  text-decoration: var(--shiki-dark-text-decoration, inherit) !important;
+}
+
 
