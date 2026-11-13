@@ -138,7 +138,9 @@ export default defineNuxtConfig({
   },
   nitro: {
     externals: {
-      inline: ['docus'],
+      // zod must be inlined with docus: docus' assistant pulls @ai-sdk/provider-utils,
+      // whose zod/v4/locales imports otherwise hit a Rollup external/manualChunks conflict.
+      inline: ['docus', 'zod'],
     },
   },
 })
