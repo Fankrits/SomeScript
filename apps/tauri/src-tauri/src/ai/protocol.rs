@@ -936,22 +936,21 @@ mod tests {
     #[test]
     fn openai_body_serializes_multimodal_user_parts() {
         let p = provider(ProviderKind::Openai, "https://x/v1", "k");
-        let hist = vec![
-            Msg::user_multimodal(
-                "look at this",
-                vec![
-                    UserPart::Image {
-                        media_type: "image/png".into(),
-                        data: "abc".into(),
-                    },
-                ],
-            ),
-        ];
+        let hist = vec![Msg::user_multimodal(
+            "look at this",
+            vec![UserPart::Image {
+                media_type: "image/png".into(),
+                data: "abc".into(),
+            }],
+        )];
         let body = build_body(&p, "gpt-4o", "SYS", &hist, &[]);
         let m = body["messages"].as_array().unwrap();
         assert_eq!(m[1]["role"], "user");
         let content = m[1]["content"].as_array().unwrap();
-        assert_eq!(content[0], json!({ "type": "text", "text": "look at this" }));
+        assert_eq!(
+            content[0],
+            json!({ "type": "text", "text": "look at this" })
+        );
         assert_eq!(
             content[1],
             json!({
@@ -985,21 +984,19 @@ mod tests {
     #[test]
     fn anthropic_body_serializes_multimodal_images_and_documents() {
         let p = provider(ProviderKind::Anthropic, "https://api.anthropic.com", "k");
-        let hist = vec![
-            Msg::user_multimodal(
-                "check both",
-                vec![
-                    UserPart::Image {
-                        media_type: "image/png".into(),
-                        data: "data:image/png;base64,iVBORw".into(),
-                    },
-                    UserPart::Document {
-                        media_type: "application/pdf".into(),
-                        data: "JVBERi0x".into(),
-                    },
-                ],
-            ),
-        ];
+        let hist = vec![Msg::user_multimodal(
+            "check both",
+            vec![
+                UserPart::Image {
+                    media_type: "image/png".into(),
+                    data: "data:image/png;base64,iVBORw".into(),
+                },
+                UserPart::Document {
+                    media_type: "application/pdf".into(),
+                    data: "JVBERi0x".into(),
+                },
+            ],
+        )];
         let body = build_body(&p, "claude-3-5-sonnet", "SYS", &hist, &[]);
         let m = body["messages"].as_array().unwrap();
         let blocks = m[0]["content"].as_array().unwrap();

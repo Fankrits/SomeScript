@@ -17,6 +17,7 @@ yanked = "deny"
 # Add an entry only with a reason and a date to revisit.
 ignore = [
   { id = "RUSTSEC-2024-0370", reason = "proc-macro-error is a build-time dependency of gtk3-macros (the Linux GTK3 bindings under tauri/wry): unmaintained, not a vulnerability, and not in the shipped binary. Nothing to upgrade until tauri leaves gtk3-rs (revisit 2027-01)" },
+  { id = "RUSTSEC-2026-0372", reason = "zvariant_derive is unmaintained only because zbus 6 folded the derive macros into zbus itself; it is a compile-time proc-macro reached through tauri-plugin-opener -> zbus 5 (Linux D-Bus), not a vulnerability. No zbus-5 release moves off it until tauri-plugin-opener 3 is stable (revisit 2027-01)" },
 ]
 
 [licenses]

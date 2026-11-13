@@ -1,16 +1,22 @@
 {
   "advisories": {
-    "braces#GHSA-vfj7-8cjw-p6xm": {
-      "advisory": "GHSA-vfj7-8cjw-p6xm",
-      "package": "braces",
-      "severity": "high",
-      "title": "braces vulnerable to stack-exhaustion denial of service through deeply nested patterns"
+    "deepmerge#GHSA-gcqx-w48m-w2h4": {
+      "advisory": "GHSA-gcqx-w48m-w2h4",
+      "package": "deepmerge",
+      "severity": "low",
+      "title": "deepmerge mergeObject() allows prototype poisoning of returned objects"
     },
-    "node-forge#GHSA-86w9-cpqp-85rv": {
-      "advisory": "GHSA-86w9-cpqp-85rv",
-      "package": "node-forge",
-      "severity": "high",
-      "title": "node-forge RSA PKCS#1 v1.5 signature verification accepts extra nested DigestAlgorithm elements"
+    "glob#GHSA-3g3m-2fjr-6pw4": {
+      "advisory": "GHSA-3g3m-2fjr-6pw4",
+      "package": "glob",
+      "severity": "moderate",
+      "title": "Glob: AbortSignal cancellation bypass allows post-timeout filesystem traversal"
+    },
+    "minimatch#GHSA-g3hv-75wg-m249": {
+      "advisory": "GHSA-g3hv-75wg-m249",
+      "package": "minimatch",
+      "severity": "moderate",
+      "title": "minimatch has potential denial of service via globparts amplification"
     }
   }
 }

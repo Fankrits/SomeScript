@@ -35,6 +35,8 @@ test.describe("files", () => {
 
     await fileNode(page, "untitled.tex").click({ button: "right" });
     await page.getByRole("menuitem", { name: "Rename" }).click();
+    // The inline input mounts after the context menu closes; typing before it has focus is lost.
+    await expect(filesPanel(page).locator("input[type=text]")).toBeFocused();
     await page.keyboard.press("ControlOrMeta+a");
     await page.keyboard.type("chapter1.tex");
     await page.keyboard.press("Enter");
