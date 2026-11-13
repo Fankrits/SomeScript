@@ -98,6 +98,31 @@ export default defineNuxtConfig({
   content: {
     build: {
       markdown: {
+        highlight: {
+          theme: {
+            default: 'material-theme-lighter',
+            dark: 'material-theme-palenight',
+          },
+          langs: [
+            'bash',
+            'diff',
+            'json',
+            'js',
+            'ts',
+            'html',
+            'css',
+            'vue',
+            'shell',
+            'mdc',
+            'md',
+            'yaml',
+            'latex',
+            'tex',
+            'bibtex',
+            'vim',
+            'gnuplot',
+          ],
+        },
         remarkPlugins: {
           'remark-math': {
             options: {
@@ -109,6 +134,42 @@ export default defineNuxtConfig({
           'rehype-katex': {},
         },
       },
+    },
+  },
+  mdc: {
+    highlight: {
+      shikiEngine: 'javascript',
+      theme: {
+        default: 'material-theme-lighter',
+        dark: 'material-theme-palenight',
+      },
+      langs: [
+        'bash',
+        'diff',
+        'json',
+        'js',
+        'ts',
+        'html',
+        'css',
+        'vue',
+        'shell',
+        'mdc',
+        'md',
+        'yaml',
+        'latex',
+        'tex',
+        'bibtex',
+        'vim',
+        'gnuplot',
+      ],
+    },
+  },
+  routeRules: {
+    '/18b25640efb6d3ea/script.js': {
+      proxy: 'https://us-assets.i.posthog.com/static/array.js',
+    },
+    '/18b25640efb6d3ea/**': {
+      proxy: 'https://us.i.posthog.com/**',
     },
   },
   docus: {
@@ -140,7 +201,7 @@ export default defineNuxtConfig({
     externals: {
       // zod must be inlined with docus: docus' assistant pulls @ai-sdk/provider-utils,
       // whose zod/v4/locales imports otherwise hit a Rollup external/manualChunks conflict.
-      inline: ['docus', 'zod'],
+      inline: ['docus', 'consola', 'zod'],
     },
   },
 })

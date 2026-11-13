@@ -132,7 +132,7 @@ export function useCodeMirrorExtensions(
 
     if (settings.foldingEnabled) {
       extensions.push(foldGutter());
-      extensions.push(keymap.of(foldKeymap));
+      extensions.push(keymap.of(foldKeymap as any));
     }
 
     if (settings.bracketMatchingEnabled) {
