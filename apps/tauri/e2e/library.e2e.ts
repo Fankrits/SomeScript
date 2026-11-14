@@ -91,7 +91,8 @@ test("exports a project as a ZIP and imports that ZIP as a new project", async (
   const download = page.waitForEvent("download");
   await page.getByRole("link", { name: `Export ${project} as ZIP` }).click();
   const file = await download;
-  expect(file.suggestedFilename()).toBe(`${project}.zip`);
+  // WebKit turns spaces in a suggested filename into underscores; Chromium keeps them.
+  expect(file.suggestedFilename().replaceAll("_", " ")).toBe(`${project}.zip`);
   const path = await file.path();
   expect(path).toBeTruthy();
 
@@ -115,7 +116,7 @@ test("downloads a compiled PDF of a project", async ({ page, request }) => {
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: `Download PDF of ${project}` }).click();
   const file = await download;
-  expect(file.suggestedFilename()).toBe(`${project}.pdf`);
+  expect(file.suggestedFilename().replaceAll("_", " ")).toBe(`${project}.pdf`);
   const path = await file.path();
   expect(path).toBeTruthy();
   expect(readFileSync(path!, "utf8").startsWith("%PDF")).toBe(true);

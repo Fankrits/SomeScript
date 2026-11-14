@@ -2456,9 +2456,14 @@ const Example = () => {
                   // document and the effect never force-resets anything.
                   value={contentBound && boundYText ? boundYText.toString() : editedCode}
                   height="100%"
-                  theme="dark"
+                  // Theme, line numbers and active-line highlight live in
+                  // useCodeMirrorExtensions (see the note there).
+                  theme="none"
                   extensions={extensions}
                   basicSetup={{
+                    lineNumbers: false,
+                    highlightActiveLineGutter: false,
+                    highlightActiveLine: false,
                     foldGutter: false,
                     bracketMatching: false,
                     autocompletion: false,

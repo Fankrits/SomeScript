@@ -46,7 +46,7 @@ test("without a provider the chat explains how to connect one, and Settings lead
   await page.reload();
   await expect(page.getByTestId("provider-Mock")).toBeVisible();
 
-  await page.getByRole("button", { name: "Back" }).click();
+  await page.getByRole("button", { name: "Back" }).first().click();
   await expect(page).toHaveURL(new RegExp(`projectId=${project.id}`));
   await openChat(page);
   await expect(page.getByTestId("chat-welcome")).toBeVisible();

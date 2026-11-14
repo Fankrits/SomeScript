@@ -574,9 +574,13 @@ pub fn history_from_client(messages: &[Value]) -> Vec<Msg> {
                     let media_type = a.get("mediaType").and_then(Value::as_str).unwrap_or("");
 
                     let is_image = att_type == "image"
-                        || (!url.is_empty() && (media_type.starts_with("image/") || url.starts_with("data:image/")));
+                        || (!url.is_empty()
+                            && (media_type.starts_with("image/")
+                                || url.starts_with("data:image/")));
                     let is_doc = att_type == "file"
-                        || (!url.is_empty() && (media_type == "application/pdf" || url.starts_with("data:application/pdf")));
+                        || (!url.is_empty()
+                            && (media_type == "application/pdf"
+                                || url.starts_with("data:application/pdf")));
 
                     if is_image {
                         let mtype = if !media_type.is_empty() {
@@ -792,9 +796,7 @@ mod tests {
         assert_eq!(h.len(), 8, "{h:#?}");
         assert_eq!(
             h[0],
-            Msg::user(
-                "fix this\n\n<attachment name=\"main.tex:3-4\">\n\\bad\n</attachment>"
-            )
+            Msg::user("fix this\n\n<attachment name=\"main.tex:3-4\">\n\\bad\n</attachment>")
         );
         let Msg::Assistant { text, calls } = &h[1] else {
             panic!()
@@ -819,17 +821,15 @@ mod tests {
 
     #[test]
     fn client_history_parses_multimodal_image_and_document_attachments() {
-        let messages = vec![
-            json!({
-                "role": "user",
-                "text": "examine these",
-                "attachments": [
-                    { "name": "diagram.png", "type": "image", "url": "data:image/png;base64,iVBORw" },
-                    { "name": "paper.pdf", "type": "file", "url": "data:application/pdf;base64,JVBERi" },
-                    { "name": "notes.txt", "type": "text", "text": "extra notes" },
-                ]
-            }),
-        ];
+        let messages = vec![json!({
+            "role": "user",
+            "text": "examine these",
+            "attachments": [
+                { "name": "diagram.png", "type": "image", "url": "data:image/png;base64,iVBORw" },
+                { "name": "paper.pdf", "type": "file", "url": "data:application/pdf;base64,JVBERi" },
+                { "name": "notes.txt", "type": "text", "text": "extra notes" },
+            ]
+        })];
         let h = history_from_client(&messages);
         assert_eq!(h.len(), 1);
         let Msg::User { text, parts } = &h[0] else {

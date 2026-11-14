@@ -1,6 +1,12 @@
 import { useMemo } from "react";
 import { Extension } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
+import {
+  EditorView,
+  highlightActiveLine,
+  highlightActiveLineGutter,
+  lineNumbers,
+} from "@codemirror/view";
+import { oneDark } from "@codemirror/theme-one-dark";
 import { latex } from "codemirror-lang-latex";
 import { search as searchExtension } from "@codemirror/search";
 import { vim } from "@replit/codemirror-vim";
@@ -93,6 +99,18 @@ export function useCodeMirrorExtensions(
   const awareness = collaboration?.awareness;
   return useMemo(() => {
     const extensions: Extension[] = [
+      // The editor's look (One Dark theme + syntax highlighting, line numbers,
+      // active-line highlight) is declared here, in the same extension list as
+      // lineWrapping and the language, instead of relying on
+      // @uiw/react-codemirror's `theme="dark"` / `basicSetup` defaults. Production
+      // rendered black text on white with no gutter, i.e. only extensions from
+      // this array took effect. page.tsx passes theme="none" and disables these
+      // basicSetup pieces so nothing is registered twice (a second lineNumbers()
+      // would draw a second gutter).
+      oneDark,
+      lineNumbers(),
+      highlightActiveLineGutter(),
+      highlightActiveLine(),
       EditorView.lineWrapping,
       searchExtension(),
       lintGutter(),

@@ -17,7 +17,7 @@ test("the dashboard has a Settings button that opens the app-wide settings", asy
   await expect(page.getByText("apply to the whole app, not to one project")).toBeVisible();
   await expect(page.getByTestId("no-providers")).toBeVisible();
 
-  await page.getByRole("button", { name: "Back" }).click();
+  await page.getByRole("button", { name: "Back" }).first().click();
   await expect(page).toHaveURL(/\/dashboard/);
 });
 
@@ -156,12 +156,12 @@ test("presets pre-fill the form, and local servers need no key", async ({ page }
   await expect(page.getByLabel("API key")).toHaveAttribute("placeholder", "Optional");
   // A local model's small default context window is the usual reason its tool calls fail.
   await expect(page.getByText("OLLAMA_CONTEXT_LENGTH=16384")).toBeVisible();
-  await page.getByRole("button", { name: "Back" }).click();
+  await page.getByRole("button", { name: "Back" }).first().click();
 
   await page.getByTestId("preset-lmstudio").click();
   await expect(page.getByLabel("Base URL")).toHaveValue("http://localhost:1234/v1");
   await expect(page.getByText("Context Length of 16384")).toBeVisible();
-  await page.getByRole("button", { name: "Back" }).click();
+  await page.getByRole("button", { name: "Back" }).first().click();
 
   await page.getByTestId("preset-anthropic").click();
   await expect(page.getByLabel("Base URL")).toHaveValue("https://api.anthropic.com");
@@ -171,7 +171,7 @@ test("presets pre-fill the form, and local servers need no key", async ({ page }
   );
   await page.getByText("Advanced").click();
   await expect(page.getByLabel("API style")).toHaveValue("anthropic");
-  await page.getByRole("button", { name: "Back" }).click();
+  await page.getByRole("button", { name: "Back" }).first().click();
 
   await page.getByTestId("preset-vercel").click();
   await expect(page.getByLabel("Name", { exact: true })).toHaveValue("Vercel AI Gateway");
@@ -180,7 +180,7 @@ test("presets pre-fill the form, and local servers need no key", async ({ page }
     "href",
     /vercel\.com\/dashboard\/ai-gateway/,
   );
-  await page.getByRole("button", { name: "Back" }).click();
+  await page.getByRole("button", { name: "Back" }).first().click();
 
   await page.getByTestId("preset-ollama-cloud").click();
   await expect(page.getByLabel("Name", { exact: true })).toHaveValue("Ollama (cloud)");
@@ -301,7 +301,7 @@ test("Back never follows a `from` that points outside the app", async ({ page, b
     "/\t/evil.example",
   ]) {
     await page.goto(`/settings?section=ai&from=${encodeURIComponent(from)}`);
-    await page.getByRole("button", { name: "Back" }).click();
+    await page.getByRole("button", { name: "Back" }).first().click();
     await expect(page).toHaveURL(/\/dashboard$/);
     // Still on the app's own origin (the Rust server, or the Vite dev server in the dev-flow config).
     expect(new URL(page.url()).origin).toBe(new URL(baseURL!).origin);
